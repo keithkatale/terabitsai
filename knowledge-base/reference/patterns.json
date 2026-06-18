@@ -1,0 +1,168 @@
+{
+  "candlestick_patterns": {
+    "single_candle": {
+      "doji": {
+        "description": "Opening and closing prices nearly identical",
+        "formation": "Body very small, wicks can be any size",
+        "signals": ["Indecision", "Potential reversal", "Consolidation"],
+        "reliability": {
+          "alone": 0.45,
+          "with_support_level": 0.65,
+          "after_strong_trend": 0.70
+        },
+        "best_after": "Strong move (strong reversal signal)",
+        "location": "Key support/resistance levels",
+        "confirmation": "Next candle direction",
+        "win_rate": 0.62
+      },
+      "hammer": {
+        "description": "Small body at top, long lower wick (2-3x body size)",
+        "formation": "Open > Close (bearish), but strong lower support",
+        "signals": ["Bullish reversal", "Support bounce", "Trend exhaustion"],
+        "location": "Support levels (crucial)",
+        "condition": "After downtrend or near support",
+        "reliability": {
+          "at_support": 0.72,
+          "in_downtrend": 0.68,
+          "alone": 0.50
+        },
+        "volume_confirmation": "Higher volume = stronger signal",
+        "win_rate": 0.68
+      },
+      "shooting_star": {
+        "description": "Small body at bottom, long upper wick",
+        "formation": "Open < Close (bullish), but rejected from highs",
+        "signals": ["Bearish reversal", "Resistance rejection", "Trend exhaustion"],
+        "location": "Resistance levels (crucial)",
+        "condition": "After uptrend or near resistance",
+        "reliability": {
+          "at_resistance": 0.70,
+          "in_uptrend": 0.66,
+          "alone": 0.48
+        },
+        "volume_confirmation": "Higher volume = stronger signal",
+        "win_rate": 0.65
+      },
+      "spinning_top": {
+        "description": "Small body with wicks on both sides",
+        "signals": ["Indecision", "Consolidation", "Potential breakout"],
+        "best_after": "Strong move (signals trend pause)",
+        "action": "Wait for next candle (breakout direction)",
+        "reliability": 0.45,
+        "win_rate": 0.55
+      }
+    },
+    "two_candle": {
+      "bullish_engulfing": {
+        "description": "First: bearish/small, Second: bullish, completely engulfs first",
+        "signals": ["Bullish reversal", "Support bounce", "Trend reversal"],
+        "location": "Support levels (best), uptrend reversals",
+        "volume_rule": "Second candle should have higher volume",
+        "reliability": {
+          "with_volume": 0.75,
+          "at_support": 0.72,
+          "without_volume": 0.60
+        },
+        "context": "Best after downtrend or at support",
+        "win_rate": 0.70,
+        "risk_reward": "1:2.5 minimum"
+      },
+      "bearish_engulfing": {
+        "description": "First: bullish/small, Second: bearish, completely engulfs first",
+        "signals": ["Bearish reversal", "Resistance rejection", "Trend reversal"],
+        "location": "Resistance levels (best), downtrend reversals",
+        "volume_rule": "Second candle should have higher volume",
+        "reliability": {
+          "with_volume": 0.73,
+          "at_resistance": 0.70,
+          "without_volume": 0.58
+        },
+        "context": "Best after uptrend or at resistance",
+        "win_rate": 0.68,
+        "risk_reward": "1:2.5 minimum"
+      },
+      "harami": {
+        "description": "First: large candle, Second: small candle completely inside first",
+        "signals": ["Reversal setup", "Indecision", "Consolidation"],
+        "reliability": 0.50,
+        "follow_up": "Pattern incomplete, need confirmation from 3rd+ candle",
+        "win_rate": 0.58
+      }
+    },
+    "three_candle": {
+      "morning_star": {
+        "description": "Bearish, Small doji, Bullish = Strong bullish reversal",
+        "formation": [
+          "Candle 1: Bearish candle",
+          "Candle 2: Small body (doji-like), gap down",
+          "Candle 3: Bullish candle, closes above midpoint of candle 1"
+        ],
+        "signals": ["Strong bullish reversal", "Bottom formation", "Trend change"],
+        "location": "Support levels, bottoms, downtrend reversals",
+        "gaps": "Gap down important (between candle 1 and 2)",
+        "reliability": 0.75,
+        "win_rate": 0.72,
+        "best_for": "Downtrend reversal confirmation"
+      },
+      "evening_star": {
+        "description": "Bullish, Small doji, Bearish = Strong bearish reversal",
+        "formation": [
+          "Candle 1: Bullish candle",
+          "Candle 2: Small body (doji-like), gap up",
+          "Candle 3: Bearish candle, closes below midpoint of candle 1"
+        ],
+        "signals": ["Strong bearish reversal", "Top formation", "Trend change"],
+        "location": "Resistance levels, tops, uptrend reversals",
+        "gaps": "Gap up important (between candle 1 and 2)",
+        "reliability": 0.73,
+        "win_rate": 0.70,
+        "best_for": "Uptrend reversal confirmation"
+      },
+      "three_white_soldiers": {
+        "description": "Three consecutive bullish candles with increasing closes",
+        "signals": ["Strong uptrend", "Continuation", "Momentum"],
+        "location": "Uptrends, support bounces",
+        "volume": "Each candle should have similar/increasing volume",
+        "reliability": 0.68,
+        "win_rate": 0.70,
+        "best_for": "Continuation in strong uptrend"
+      },
+      "three_black_crows": {
+        "description": "Three consecutive bearish candles with decreasing closes",
+        "signals": ["Strong downtrend", "Continuation", "Momentum"],
+        "location": "Downtrends, resistance rejections",
+        "volume": "Each candle should have similar/increasing volume",
+        "reliability": 0.67,
+        "win_rate": 0.68,
+        "best_for": "Continuation in strong downtrend"
+      }
+    }
+  },
+  "pattern_statistics": {
+    "single_candle_accuracy": 0.50,
+    "two_candle_accuracy": 0.65,
+    "three_candle_accuracy": 0.72,
+    "with_support_resistance": 0.78,
+    "with_volume_confirmation": 0.75,
+    "with_moving_average": 0.73,
+    "multiple_confirmations": 0.85
+  },
+  "pattern_optimization": {
+    "reliability_factors": [
+      "Higher timeframe (1H+ better than 15min)",
+      "Multiple confirmation signals",
+      "Support/resistance level location",
+      "Volume confirmation",
+      "Trend context",
+      "Previous pattern success rate"
+    ],
+    "timeframe_impact": {
+      "5_minute": 0.40,
+      "15_minute": 0.48,
+      "1_hour": 0.65,
+      "4_hour": 0.72,
+      "daily": 0.78,
+      "weekly": 0.82
+    }
+  }
+}

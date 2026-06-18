@@ -1,0 +1,96 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id        String    @id @default(uuid())
+  email     String    @unique
+  name      String?
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  accounts  Account[]
+
+  @@map("users")
+}
+
+model Account {
+  id           String               @id @default(uuid())
+  userId       String               @map("user_id")
+  balance      Float                @default(0.0)
+  currency     String               @default("USD")
+  leverage     Float                @default(1.0)
+  type         String               @default("STANDARD") // STANDARD, PRO
+  createdAt    DateTime             @default(now()) @map("created_at")
+  updatedAt    DateTime             @updatedAt @map("updated_at")
+  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions DepositTransaction[]
+
+  @@map("accounts")
+}
+
+model DepositTransaction {
+  id                  String   @id @default(uuid())
+  accountId           String   @map("account_id")
+  amount              Float
+  currency            String   @default("USD")
+  method              String   // BANK_TRANSFER, CARD, CRYPTO, E_WALLET
+  status              String   @default("PENDING") // PENDING, COMPLETED, FAILED
+  bankName            String?  @map("bank_name")
+  cardLast4           String?  @map("card_last_4")
+  cryptoWalletAddress String?  @map("crypto_wallet_address")
+  cryptoTxHash        String?  @map("crypto_tx_hash")
+  eWalletEmail        String?  @map("e_wallet_email")
+  referenceNote       String?  @map("reference_note")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+  account             Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@map("deposit_transactions")
+}
+
+model AssetAnalysis {
+  id              String   @id @default(uuid())
+  symbol          String
+  timeframe       String   @default("1h")
+  price           Float?
+  changePct       Float?   @map("change_pct")
+  rsi             Float?
+  ema20           Float?   @map("ema_20")
+  ema50           Float?   @map("ema_50")
+  smcStructure    Json?    @map("smc_structure")   // JSON: { fvgs: [], orderBlocks: [], ch_of_ch: boolean, bos: boolean }
+  sentimentRating String   @map("sentiment_rating") // BULLISH, BEARISH, NEUTRAL
+  sentimentScore  Float    @map("sentiment_score")  // -1.0 to 1.0
+  newsTeasers     Json?    @map("news_teasers")     // JSON array of titles and sources
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@map("asset_analyses")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  action    String
+  details   String
+  ipAddress String?  @map("ip_address")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("audit_logs")
+}
+
+model ExplainabilityLog {
+  id               String   @id @default(uuid())
+  symbol           String
+  side             String   // BUY, SELL, FLAT
+  confidence       Float
+  rationale        String
+  agentVotes       Json     @map("agent_votes")       // JSON array of individual agent votes
+  riskDecision     Json?    @map("risk_decision")     // JSON: { approved: boolean, reasons: string[] }
+  executionDetails Json?    @map("execution_details") // JSON: { orderId: string, status: string, filledPrice: float }
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@map("explainability_logs")
+}

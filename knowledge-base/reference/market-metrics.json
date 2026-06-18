@@ -1,0 +1,236 @@
+{
+  "stocks": {
+    "liquidity_requirements": {
+      "minimum_daily_volume": "$1,000,000",
+      "minimum_price": "$10",
+      "minimum_market_cap": "$500,000,000",
+      "typical_spread": "0.01-0.02%"
+    },
+    "beta_ranges": {
+      "ideal": "0.5-2.0",
+      "explanation": "Not too stable, not too volatile for algorithms"
+    },
+    "trading_hours": {
+      "regular": "9:30 AM - 4:00 PM EST",
+      "pre_market": "4:00 AM - 9:30 AM (low liquidity)",
+      "after_hours": "4:00 PM - 8:00 PM (very low liquidity)",
+      "best_for_automation": "10 AM - 2 PM (peak liquidity)"
+    },
+    "liquidity_patterns": {
+      "first_30_min": "Very high volume, wider spreads",
+      "mid_day": "Normal trading, stable spreads",
+      "final_hour": "Volume spike, position closing"
+    },
+    "sector_volatility": {
+      "tech": "High beta, momentum-driven",
+      "finance": "Lower beta, rate-sensitive",
+      "energy": "Mean reversion, seasonal",
+      "healthcare": "Event-driven (FDA news)",
+      "consumer": "Economic sensitivity",
+      "utilities": "Stable, dividend-focused"
+    },
+    "typical_costs": {
+      "commission": "$0.50-2.00 per trade",
+      "spread_cost": "0.005-0.02%",
+      "slippage": "0.1-0.5% on limit orders"
+    },
+    "position_sizing": {
+      "per_stock": "1-3% of portfolio",
+      "sector_max": "20% of portfolio",
+      "correlated_max": "10% each"
+    }
+  },
+  "crypto": {
+    "major_pairs": {
+      "bitcoin_eth": {
+        "minimum_trade": "$100",
+        "typical_spread": "0.1-0.2%",
+        "liquidity": "Excellent across exchanges",
+        "24_7_trading": true,
+        "volatility": "40-60% annual"
+      },
+      "altcoins": {
+        "minimum_liquidity": "Market cap > $10B",
+        "spread": "0.2-0.5%",
+        "24_7_trading": true,
+        "volatility": "60-150% annual"
+      }
+    },
+    "exchange_risks": {
+      "counterparty_risk": "Keep < 50% on any exchange",
+      "self_custody": "Use hardware wallet for holdings",
+      "insurance_coverage": "Varies by exchange (read terms)"
+    },
+    "trading_patterns": {
+      "us_hours": "Higher volume 9:30 AM - 4 PM EST",
+      "asian_hours": "Secondary peak 8 PM - 8 AM EST",
+      "weekend": "Lower liquidity",
+      "best_execution": "US trading hours"
+    },
+    "fee_structure": {
+      "maker_fee": "0.05-0.1%",
+      "taker_fee": "0.1-0.15%",
+      "withdrawal_fee": "$5-50 blockchain dependent",
+      "impact": "0.5-1% annual drag on strategies"
+    },
+    "volatility_adjustment": {
+      "normal": "Standard position sizing",
+      "high": "Reduce sizes 50%",
+      "extreme": "Reduce sizes 75%"
+    },
+    "whale_tracking": {
+      "large_transfers": "Often precede moves",
+      "accumulation": "Bullish signal",
+      "distribution": "Bearish signal",
+      "on_chain_metrics": "Hash rate, active addresses, transaction volume"
+    }
+  },
+  "forex": {
+    "major_pairs": {
+      "eur_usd": {
+        "description": "Euro vs US Dollar (most liquid)",
+        "spread": "0.1-0.5 pips",
+        "daily_volume": "~$1.5 trillion"
+      },
+      "gbp_usd": {
+        "description": "British Pound vs US Dollar",
+        "spread": "0.1-0.5 pips",
+        "volatility": "Slightly higher than EUR/USD"
+      },
+      "usd_jpy": {
+        "description": "US Dollar vs Japanese Yen",
+        "spread": "0.1-0.5 pips",
+        "characteristics": "Safe haven, rate-driven"
+      }
+    },
+    "exotic_pairs": {
+      "spread": "2-10+ pips",
+      "liquidity": "Low",
+      "recommendation": "Avoid for automated trading"
+    },
+    "trading_sessions": {
+      "tokyo": {
+        "time_est": "7 PM Sun - 4 AM Mon",
+        "jpy_volatility": "High",
+        "eur_usd_volume": "Lower"
+      },
+      "london": {
+        "time_est": "3 AM - 12 PM",
+        "liquidity": "HIGHEST volume",
+        "spreads": "TIGHTEST"
+      },
+      "new_york": {
+        "time_est": "8 AM - 5 PM",
+        "liquidity": "High",
+        "spreads": "Good"
+      },
+      "overlap_london_ny": {
+        "time_est": "8 AM - 12 PM",
+        "liquidity": "MAXIMUM",
+        "spreads": "MINIMUM",
+        "recommendation": "OPTIMAL for trading"
+      }
+    },
+    "session_spreads": {
+      "trading_hours": "0.1-0.5 pips",
+      "off_hours": "2-5 pips (50-100x wider)"
+    },
+    "correlation_pairs": {
+      "high_correlation": ["EUR/USD and GBP/USD (0.85+)", "USD/JPY and EUR/USD (-0.75)"],
+      "portfolio_management": "Don't hold all highly correlated"
+    },
+    "leverage_limits": {
+      "retail_max": "50:1 (typical)",
+      "professional": "500:1 (with risk controls)"
+    },
+    "costs": {
+      "spread": "0.1-0.5 pips major pairs",
+      "commission": "$2-3 per 100k units round trip",
+      "slippage": "0.5-2% on market orders"
+    }
+  },
+  "options": {
+    "pricing_greeks": {
+      "delta": "Change in option price per $1 move",
+      "gamma": "Change in delta per $1 move (gamma burn risk)",
+      "theta": "Time decay per day (seller's friend)",
+      "vega": "Change per 1% IV change",
+      "rho": "Change per 1% interest rate (usually ignored)"
+    },
+    "trading_hours": {
+      "pre_market": "Limited trading",
+      "regular": "9:30 AM - 4:00 PM (full)",
+      "after_hours": "Very limited",
+      "best_execution": "10 AM - 3 PM EST"
+    },
+    "spreads": {
+      "liquid_options": "0.05-0.10",
+      "mid_range": "0.10-0.25",
+      "illiquid": "0.25-1.00+",
+      "impact": "Wide spreads reduce profitability"
+    },
+    "contract_sizes": {
+      "equity_options": "100 shares per contract",
+      "index_options": "100 × index level"
+    },
+    "expiration": {
+      "standard": "Third Friday of month",
+      "weekly_options": "Fridays for some symbols",
+      "avoid": "Last day of expiration (wide spreads, gap risk)"
+    }
+  },
+  "market_correlations": {
+    "asset_class_pairs": {
+      "stocks_bonds": "-0.3 to -0.1 (inverse in crisis)",
+      "stocks_crypto": "0.3-0.7 (increasing)",
+      "crypto_volatility": "0.7+ (move together)",
+      "gold_stocks": "-0.2 to 0.1 (flight to safety)"
+    },
+    "sector_correlations": {
+      "tech_stocks": "0.75-0.85 (highly correlated)",
+      "bank_stocks": "0.70-0.80 (rate sensitive)",
+      "energy_stocks": "0.60-0.75 (commodity linked)"
+    },
+    "currency_correlations": {
+      "eur_usd_gbp_usd": "0.80-0.90 (high)",
+      "usd_jpy_eur_usd": "-0.70 to -0.60 (inverse)",
+      "commodity_currencies": "Oil prices affect CAD, AUD"
+    }
+  },
+  "volatility_regimes": {
+    "vix_interpretation": {
+      "below_15": "Low volatility, normal markets",
+      "15_25": "Normal range",
+      "25_35": "Elevated volatility, uncertainty",
+      "above_35": "Crisis mode, large moves expected"
+    },
+    "volatility_impact": {
+      "low": "Tight stops, smaller position sizes",
+      "normal": "Standard position sizing",
+      "high": "Reduce size 50%, wider stops",
+      "extreme": "Reduce size 75%, consider flat"
+    }
+  },
+  "black_swan_events": {
+    "historical_examples": [
+      "March 2020: COVID crash (35% in weeks)",
+      "2008: Financial crisis (50%+ losses)",
+      "2010: Flash crash (quick recovery)",
+      "Crypto: Luna/UST collapse 2022"
+    ],
+    "common_triggers": [
+      "Central bank policy surprise",
+      "Geopolitical crisis",
+      "Pandemic/health emergency",
+      "Company bankruptcy/fraud",
+      "Cyber attack/exchange hack"
+    ],
+    "protection_strategies": [
+      "Position size limits (max 50% capital)",
+      "Portfolio diversification (< 0.4 avg correlation)",
+      "Tail hedges (long volatility, long bonds)",
+      "Stop losses on all positions",
+      "Regular stress testing"
+    ]
+  }
+}

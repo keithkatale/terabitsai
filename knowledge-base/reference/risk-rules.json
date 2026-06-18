@@ -1,0 +1,256 @@
+{
+  "position_sizing": {
+    "fixed_percentage_method": {
+      "description": "Risk fixed percentage of account per trade",
+      "formula": "Position Size = (Account × Risk %) / Stop Distance",
+      "parameters": {
+        "account": "$100,000",
+        "risk_per_trade": "1-2% per trade",
+        "recommended_risk": "2%"
+      },
+      "example": {
+        "account": 100000,
+        "risk_percentage": 0.02,
+        "risk_amount": 2000,
+        "stop_distance_pips": 50,
+        "position_size": "4 pips per pip of loss"
+      },
+      "advantages": [
+        "Simple implementation",
+        "Scales with account growth",
+        "Prevents catastrophic losses"
+      ],
+      "disadvantages": [
+        "Ignores volatility",
+        "Same size in calm and volatile markets"
+      ]
+    },
+    "volatility_adjusted_sizing": {
+      "description": "Position size based on ATR volatility",
+      "formula": "Position Size = (Account × Risk %) / (ATR × Multiplier)",
+      "parameters": {
+        "atr_multiplier": "1 to 3",
+        "stop_loss_distance": "2 × ATR"
+      },
+      "advantages": [
+        "Accounts for market volatility",
+        "Consistent risk across markets",
+        "Larger positions in calm markets"
+      ],
+      "disadvantages": [
+        "More complex",
+        "Requires volatility calculation"
+      ]
+    },
+    "kelly_criterion": {
+      "description": "Mathematically optimal position sizing",
+      "formula": "f = (Win Rate × Avg Win) - (Loss Rate × Avg Loss) / Avg Loss",
+      "example": {
+        "win_rate": 0.55,
+        "avg_win_ratio": 2.0,
+        "avg_loss_ratio": 1.0,
+        "kelly_fraction": 0.10,
+        "recommended_fraction": 0.025,
+        "reasoning": "Use f/4 for safety margin"
+      },
+      "safety": "NEVER use full Kelly criterion - use f/4 or f/2",
+      "advantage": "Mathematically optimal for long-term growth",
+      "risk": "Full Kelly can blow up account"
+    }
+  },
+  "stop_loss_strategies": {
+    "atr_based": {
+      "description": "Stop loss set at N times ATR",
+      "formula": "Stop = Entry ± (N × ATR)",
+      "parameters": {
+        "n_multiplier": "1 to 3 (typical 2)",
+        "atr_period": "14"
+      },
+      "advantages": [
+        "Accounts for volatility",
+        "Avoids tight stops in volatile markets",
+        "Fewer whipsaws"
+      ],
+      "best_for": ["Trend following", "Volatile markets"]
+    },
+    "support_resistance_based": {
+      "description": "Stop placed below support (long) or above resistance (short)",
+      "implementation": "Place stop 1-2% beyond level",
+      "advantages": [
+        "Natural stop location",
+        "Based on technical structure",
+        "Buyers/sellers protect levels"
+      ],
+      "best_for": ["Mean reversion", "Established levels"]
+    },
+    "time_based": {
+      "description": "Exit if no profit after N candles",
+      "parameters": {
+        "patience": "3-5 candles",
+        "exit": "Reverse or close with small loss"
+      },
+      "advantages": [
+        "Limits capital tied up",
+        "Forces discipline"
+      ],
+      "best_for": ["Short-term strategies", "Timing dependent setups"]
+    },
+    "trailing_stop": {
+      "description": "Stop follows price at fixed distance",
+      "formula": "Stop = Current Price - (N × ATR)",
+      "advantages": [
+        "Protects profits",
+        "Lets winners run",
+        "Dynamic adjustment"
+      ],
+      "best_for": ["Trending markets", "Large winners"]
+    }
+  },
+  "risk_limits": {
+    "per_trade": {
+      "recommended": "1-2% of account",
+      "aggressive": "3% of account",
+      "conservative": "0.5% of account"
+    },
+    "daily": {
+      "recommended": "3% max daily loss",
+      "action": "Stop trading if reached",
+      "daily_gain_target": "5% (switch to trailing stops)"
+    },
+    "weekly": {
+      "recommended": "8% max weekly loss",
+      "action": "Review strategy and adjust parameters"
+    },
+    "monthly": {
+      "recommended": "15-20% max monthly loss",
+      "action": "Stop trading, deep review"
+    },
+    "account_drawdown": {
+      "acceptable_max": "25-30%",
+      "action_at_20": "Reduce position size 50%",
+      "action_at_30": "Reduce size 75% or flat",
+      "action_at_40": "Stop all trading"
+    }
+  },
+  "leverage_limits": {
+    "no_leverage": {
+      "recommended_for": ["New traders", "Most automated strategies"],
+      "risk": "Lowest"
+    },
+    "2x_leverage": {
+      "recommended_for": ["Experienced traders", "Conservative strategies"],
+      "risk": "Low-moderate"
+    },
+    "5x_leverage": {
+      "risk": "High",
+      "requirement": "Frequent profitable trades"
+    },
+    "above_5x": {
+      "recommendation": "Avoid - expect account blow-up",
+      "exception": "Only professionals with extreme risk controls"
+    }
+  },
+  "correlation_management": {
+    "high_correlation": {
+      "threshold": "> 0.7",
+      "impact": "Same risk",
+      "action": "Don't hold multiple highly correlated positions"
+    },
+    "moderate_correlation": {
+      "threshold": "0.3 - 0.7",
+      "impact": "Some risk overlap",
+      "action": "Monitor combined exposure"
+    },
+    "low_correlation": {
+      "threshold": "< 0.3",
+      "impact": "Good diversification",
+      "action": "Combine for portfolio resilience"
+    }
+  },
+  "portfolio_construction": {
+    "optimal_setup": {
+      "num_strategies": "3-5 uncorrelated",
+      "allocation_per_strategy": "20-25%",
+      "cash_reserve": "10-20%",
+      "max_correlated_exposure": "< 0.6"
+    },
+    "currency_allocation": {
+      "single_currency": "< 30%",
+      "major_currencies": "< 25% each",
+      "diversification": "3+ currencies"
+    },
+    "sector_allocation": {
+      "single_sector": "< 20%",
+      "highly_correlated_sectors": "< 30% combined"
+    }
+  },
+  "black_swan_mitigation": {
+    "tail_risk_hedging": {
+      "allocation": "5% of capital to hedges",
+      "hedge_types": ["Long volatility", "Long puts", "Long bonds"],
+      "annual_cost": "0.5-1%",
+      "protection": "Protects against 5-10% rare events"
+    },
+    "position_limit_rules": {
+      "max_position": "< 50% of portfolio",
+      "max_leverage": "< 2x account"
+    },
+    "diversification_requirements": {
+      "markets": "Stocks, crypto, forex, bonds",
+      "geographies": "US, Europe, Asia, emerging",
+      "correlation": "Avg correlation < 0.4"
+    }
+  },
+  "drawdown_recovery": {
+    "drawdown_impact": {
+      "20_percent_loss": "Need 25% gain to recover",
+      "30_percent_loss": "Need 43% gain to recover",
+      "40_percent_loss": "Need 67% gain to recover",
+      "50_percent_loss": "Need 100% gain to recover"
+    },
+    "recovery_strategy": {
+      "prevention": "Keep drawdowns < 30%",
+      "action_plan": "Reduce size after 20% loss",
+      "time_to_recover": "Doubles with larger losses"
+    }
+  },
+  "monitoring_checklist": {
+    "daily": [
+      "Portfolio value and daily change %",
+      "Largest position",
+      "Unrealized P&L",
+      "Correlation between holdings"
+    ],
+    "weekly": [
+      "Win rate tracking",
+      "Average win vs loss",
+      "Sharpe ratio",
+      "Sector exposure",
+      "Leverage usage"
+    ],
+    "monthly": [
+      "Strategy performance",
+      "Adjustment needs",
+      "Rebalancing",
+      "Parameter optimization",
+      "Risk metric review"
+    ]
+  },
+  "decision_rules": {
+    "when_winning": {
+      "action": "Stay disciplined, maintain position size",
+      "avoid": "Increasing size greedily",
+      "benefit": "Consistent growth over time"
+    },
+    "when_losing": {
+      "20_percent_loss": "Reduce size 50%, review strategy",
+      "30_percent_loss": "Reduce size 75% or go flat",
+      "40_percent_loss": "Stop trading, deep analysis required"
+    },
+    "emergency_stops": {
+      "software_error": "Manual override, check positions",
+      "extreme_market_move": "Liquidity crisis - reduce positions",
+      "exchange_issue": "Wait for normal operations"
+    }
+  }
+}

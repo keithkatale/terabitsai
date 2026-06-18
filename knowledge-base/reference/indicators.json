@@ -1,0 +1,167 @@
+{
+  "indicators": {
+    "moving_averages": {
+      "simple_ma": {
+        "description": "Simple Moving Average - arithmetic mean of closing prices",
+        "calculation": "SUM(close, n) / n",
+        "parameters": {
+          "period": "Number of candles (typical: 20, 50, 200)"
+        },
+        "signals": {
+          "bullish": "Price above MA and MA slope up",
+          "bearish": "Price below MA and MA slope down",
+          "crossover_bullish": "Fast MA crosses above slow MA",
+          "crossover_bearish": "Fast MA crosses below slow MA"
+        },
+        "best_for": ["Trend identification", "Support/resistance", "Trend following"],
+        "false_signals": "In choppy markets, MA crossovers create many whipsaws",
+        "optimal_timeframe": ["1H", "4H", "Daily"],
+        "confidence": 0.65,
+        "combinations": ["RSI", "Volume", "Candlestick patterns"]
+      },
+      "exponential_ma": {
+        "description": "Exponential Moving Average - recent prices weighted more heavily",
+        "calculation": "Current price weighted more than older prices",
+        "parameters": {
+          "period": "Number of periods (typical: 12, 26)",
+          "smoothing": "Typically 2"
+        },
+        "signals": {
+          "faster_response": "EMA responds faster to price changes than SMA",
+          "crossover": "EMA12/EMA26 base of MACD indicator"
+        },
+        "best_for": ["Momentum trading", "Trend following", "Faster entries"],
+        "false_signals": "Can whipsaw in ranging markets",
+        "optimal_timeframe": ["4H", "Daily"],
+        "confidence": 0.68,
+        "combinations": ["MACD", "RSI"]
+      }
+    },
+    "momentum_indicators": {
+      "rsi": {
+        "name": "Relative Strength Index",
+        "formula": "RSI = 100 - (100 / (1 + RS)) where RS = Avg Gain / Avg Loss",
+        "parameters": {
+          "period": "Typically 14"
+        },
+        "levels": {
+          "overbought": "> 70 (potential sell)",
+          "oversold": "< 30 (potential buy)",
+          "neutral": "40-60 (no extreme)"
+        },
+        "signals": {
+          "oversold_bounce": "RSI < 30 + Support level = Strong buy",
+          "overbought_reversal": "RSI > 70 + Resistance = Strong sell",
+          "divergence_bullish": "Price makes lower low but RSI makes higher low = Reversal up",
+          "divergence_bearish": "Price makes higher high but RSI makes lower high = Reversal down"
+        },
+        "best_for": ["Identifying extremes", "Mean reversion", "Divergence analysis"],
+        "false_signals": "Can stay overbought/oversold in strong trends",
+        "win_rate": 0.62,
+        "optimal_timeframe": ["1H", "4H", "Daily"],
+        "combinations": ["Support/Resistance", "Volume", "Candlesticks"]
+      },
+      "macd": {
+        "name": "Moving Average Convergence Divergence",
+        "components": {
+          "macd_line": "12-period EMA - 26-period EMA",
+          "signal_line": "9-period EMA of MACD",
+          "histogram": "MACD line - Signal line"
+        },
+        "signals": {
+          "bullish_crossover": "MACD crosses above signal line",
+          "bearish_crossover": "MACD crosses below signal line",
+          "divergence_bullish": "Price lower low but MACD higher low = Upside",
+          "divergence_bearish": "Price higher high but MACD lower high = Downside",
+          "zero_crossover": "MACD crosses zero = Trend change"
+        },
+        "histogram_interpretation": {
+          "expanding": "Momentum increasing in current direction",
+          "contracting": "Momentum decreasing, reversal possible"
+        },
+        "best_for": ["Trend identification", "Momentum confirmation", "Divergences"],
+        "false_signals": "Slow in choppy markets, many false crossovers",
+        "win_rate": 0.63,
+        "optimal_timeframe": ["4H", "Daily", "Weekly"],
+        "combinations": ["Support/Resistance", "Volume", "Moving Averages"]
+      }
+    },
+    "volatility_indicators": {
+      "bollinger_bands": {
+        "name": "Bollinger Bands",
+        "components": {
+          "middle": "20-period SMA",
+          "upper": "SMA + (2 × Standard Deviation)",
+          "lower": "SMA - (2 × Standard Deviation)"
+        },
+        "signals": {
+          "reversal_at_upper": "Price touches/exceeds upper band at resistance",
+          "reversal_at_lower": "Price touches/exceeds lower band at support",
+          "squeeze": "Bands narrow = Low volatility, breakout likely",
+          "expansion": "Bands widen = Increasing volatility"
+        },
+        "best_for": ["Volatility trading", "Support/resistance", "Mean reversion"],
+        "squeeze_strategy": "When bands squeeze, expect large move in either direction",
+        "win_rate": 0.64,
+        "optimal_timeframe": ["1H", "4H", "Daily"],
+        "combinations": ["RSI", "Volume", "MACD"]
+      },
+      "atr": {
+        "name": "Average True Range",
+        "description": "Measures market volatility",
+        "calculation": "ATR = SUM(TrueRange, 14) / 14",
+        "uses": {
+          "position_sizing": "Position size = Risk / (ATR × multiplier)",
+          "stop_loss": "Stop = Entry - (2 × ATR)",
+          "profit_targets": "Target = Entry + (2-3 × ATR)",
+          "breakout_threshold": "Breakout size > ATR indicates strength"
+        },
+        "interpretation": {
+          "high_atr": "High volatility = wider stops, larger moves",
+          "low_atr": "Low volatility = tighter stops, smaller moves"
+        },
+        "best_for": ["Position sizing", "Stop loss placement", "Volatility adjustment"],
+        "optimal_timeframe": ["4H", "Daily"],
+        "combinations": ["Moving Averages", "Support/Resistance"]
+      }
+    }
+  },
+  "indicator_combinations": {
+    "trend_confirmation": {
+      "indicators": ["EMA50", "MACD", "ADX"],
+      "rules": "EMA slope up AND MACD > signal AND ADX > 25",
+      "accuracy": 0.72,
+      "best_for": "Strong trend following"
+    },
+    "mean_reversion": {
+      "indicators": ["RSI", "Bollinger Bands", "Support/Resistance"],
+      "rules": "RSI < 30 AND price at lower BB AND near support",
+      "accuracy": 0.68,
+      "best_for": "Range-bound markets"
+    },
+    "momentum_trade": {
+      "indicators": ["MACD", "RSI", "Volume"],
+      "rules": "MACD crossover + RSI > 50 + volume confirmation",
+      "accuracy": 0.65,
+      "best_for": "Trend following with momentum"
+    }
+  },
+  "indicator_reliability": {
+    "single_indicator": {
+      "accuracy": "40-50%",
+      "recommendation": "Not reliable alone"
+    },
+    "two_indicators": {
+      "accuracy": "55-65%",
+      "recommendation": "Better, still risky"
+    },
+    "three_plus_indicators": {
+      "accuracy": "70-80%",
+      "recommendation": "Good confidence level"
+    },
+    "with_support_resistance": {
+      "accuracy": "75-85%",
+      "recommendation": "Highest confidence"
+    }
+  }
+}

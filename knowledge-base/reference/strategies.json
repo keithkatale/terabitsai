@@ -1,0 +1,177 @@
+{
+  "strategies": {
+    "trend_following": {
+      "momentum_trading": {
+        "description": "Enter in direction of established trend",
+        "entry": {
+          "indicators": ["MACD crossover", "ADX > 25", "MA slope up"],
+          "confirmation": "Price > 50-MA > 200-MA",
+          "timing": "Wait for pullback to 20-MA, then continue"
+        },
+        "exit": {
+          "stops": "Below key support (1-2% ATR)",
+          "targets": "1:2.5 risk-reward minimum",
+          "time_based": "Exit if signal fails after 3-5 candles"
+        },
+        "win_rate": 0.48,
+        "reward_ratio": "1:2.5 - 1:3",
+        "best_markets": ["Trending markets", "Strong momentum"],
+        "timeframe": "4H+",
+        "markets": ["Stocks", "Crypto", "Forex"],
+        "annual_return": "20-40%",
+        "sharpe_ratio": 1.5
+      },
+      "ma_crossover": {
+        "description": "Buy when fast MA crosses above slow MA",
+        "parameters": {
+          "fast_ma": "20-50 periods",
+          "slow_ma": "50-200 periods"
+        },
+        "entry": "Close above crossover",
+        "exit": "Crossover back down",
+        "win_rate": 0.52,
+        "best_in": "Trending markets",
+        "avoid": "Choppy, range-bound markets",
+        "false_signal_rate": 0.35,
+        "timeframe": "4H+"
+      }
+    },
+    "mean_reversion": {
+      "range_trading": {
+        "description": "Buy at support, sell at resistance",
+        "entry": {
+          "buy": "Price bounces from support level",
+          "sell": "Price rejects from resistance level"
+        },
+        "confirmation": ["RSI < 30 for buy", "RSI > 70 for sell"],
+        "stops": "Beyond support/resistance level",
+        "targets": "Next resistance/support level",
+        "win_rate": 0.60,
+        "best_in": ["Range-bound markets", "65% of all trading days"],
+        "avoid": "Strong breakouts",
+        "timeframe": "1H - Daily"
+      },
+      "pairs_trading": {
+        "description": "Long undervalued asset, short overvalued correlated asset",
+        "market_neutral": true,
+        "beta": 0,
+        "correlation": "> 0.75",
+        "entry": "When divergence > 2 standard deviations",
+        "exit": "When prices reconverge",
+        "win_rate": 0.65,
+        "holding_period": "1-30 days",
+        "risk": "Correlation breakdown",
+        "best_markets": ["Stocks", "Crypto"]
+      },
+      "fade_extreme_rsi": {
+        "description": "Buy when RSI < 30, sell when RSI > 70",
+        "entry": {
+          "buy": "RSI < 30 + at support",
+          "sell": "RSI > 70 + at resistance"
+        },
+        "exit": "RSI crosses 50 or opposite extreme hit",
+        "win_rate": 0.63,
+        "holding_period": "1-5 candles",
+        "best_in": "Range-bound markets",
+        "timeframe": "1H+"
+      }
+    },
+    "arbitrage": {
+      "index_arbitrage": {
+        "description": "Buy undervalued index components, short overvalued futures",
+        "market_neutral": true,
+        "execution": "High-frequency trading required",
+        "profit_margin": "0.1-0.5%",
+        "best_markets": ["Stock indices"],
+        "risk": "Execution risk, slippage"
+      },
+      "cross_exchange_arbitrage": {
+        "description": "Buy on exchange A, sell on exchange B",
+        "profit_per_trade": "0.5-2%",
+        "modern_challenge": "Tight spreads make this difficult",
+        "best_markets": ["Crypto (24/7)"],
+        "friction": ["Transfer fees", "Withdrawal delays"],
+        "execution_time": "Minutes to hours"
+      },
+      "statistical_arbitrage": {
+        "description": "Exploit pricing inefficiencies between correlated securities",
+        "divergence_threshold": "> 2 standard deviations",
+        "holding_period": "1-30 days",
+        "win_rate": 0.70,
+        "profit_per_trade": "0.5-3%",
+        "diversification": "Multiple pairs reduce drawdown",
+        "edge": "Mean reversion over medium term"
+      }
+    },
+    "volatility": {
+      "volatility_mean_reversion": {
+        "description": "Buy when volatility elevated, sell when it contracts",
+        "entry": "VIX > 25 or IV high",
+        "exit": "VIX < 15 or IV contracts",
+        "win_rate": 0.68,
+        "best_in": "Post-crash or high uncertainty",
+        "holding_period": "Days to weeks"
+      },
+      "volatility_breakout": {
+        "description": "Set tight stops, let winners run with trailing stop",
+        "stop_distance": "2 × ATR",
+        "entry": "Breakout above resistance or below support",
+        "exit": "Stop loss hit or trend reversal",
+        "win_rate": 0.42,
+        "large_winners": "Compensate for losses",
+        "best_in": "Volatile markets"
+      }
+    },
+    "event_driven": {
+      "earnings_play": {
+        "description": "Trade earnings surprises and volatility",
+        "entry": "Before earnings (position based on volatility view)",
+        "exit": "Post-earnings or target hit",
+        "win_rate": 0.45,
+        "volatility_play": "Better than directional betting",
+        "risk": "Gap risk on earnings"
+      },
+      "news_based": {
+        "description": "Trade on regulatory news, upgrades, events",
+        "strategy": "Fade initial spike (news already priced in)",
+        "entry": "15-30 min after news release",
+        "win_rate": 0.55,
+        "execution": "Wait for spreads to normalize"
+      }
+    }
+  },
+  "strategy_comparison": {
+    "by_win_rate": [
+      {"strategy": "Pairs trading", "win_rate": 0.70},
+      {"strategy": "Volatility mean reversion", "win_rate": 0.68},
+      {"strategy": "Range trading", "win_rate": 0.60},
+      {"strategy": "Momentum trading", "win_rate": 0.48}
+    ],
+    "by_profit_potential": [
+      {"strategy": "Momentum trading", "avg_profit": "2-5%"},
+      {"strategy": "Range trading", "avg_profit": "0.5-2%"},
+      {"strategy": "Arbitrage", "avg_profit": "0.1-0.5%"},
+      {"strategy": "Pairs trading", "avg_profit": "0.5-1.5%"}
+    ],
+    "by_holding_period": {
+      "scalping": {"period": "Minutes", "difficulty": "Very high"},
+      "intraday": {"period": "Hours", "difficulty": "High"},
+      "swing": {"period": "Days", "difficulty": "Medium"},
+      "position": {"period": "Weeks/months", "difficulty": "Low"}
+    }
+  },
+  "strategy_selection": {
+    "by_market_condition": {
+      "strong_uptrend": ["Momentum trading", "Trend following"],
+      "strong_downtrend": ["Momentum trading", "Trend following"],
+      "range_bound": ["Range trading", "Mean reversion", "Volatility trading"],
+      "high_volatility": ["Volatility strategies", "Wider stop losses"],
+      "low_volatility": ["Tighter ranges", "Smaller moves"]
+    },
+    "by_account_size": {
+      "small": ["Momentum", "Mean reversion (lower slippage impact)"],
+      "medium": ["Pairs trading", "Trend following"],
+      "large": ["Arbitrage", "Index trading"]
+    }
+  }
+}

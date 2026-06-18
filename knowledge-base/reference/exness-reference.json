@@ -1,0 +1,377 @@
+{
+  "exness_platform": {
+    "website": {
+      "main": "https://www.exness.com",
+      "login": "https://www.exness.com/accounts",
+      "trading_terminal": "https://trader.exness.com",
+      "dashboard": "https://app.exness.com"
+    },
+    "supported_markets": {
+      "forex": {
+        "description": "Currency pairs",
+        "examples": ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD"],
+        "spread_typical": "0.3-1.5 pips",
+        "trading_hours": "24/5 (Sunday 5 PM - Friday 5 PM EST)"
+      },
+      "metals": {
+        "description": "Precious metals",
+        "examples": ["GOLD", "SILVER", "PLATINUM", "PALLADIUM"],
+        "spread_typical": "0.3-0.5 pips",
+        "trading_hours": "Almost 24/5 (limited gaps)"
+      },
+      "crypto": {
+        "description": "Cryptocurrencies",
+        "examples": ["BTCUSD", "ETHUSD", "LTCUSD"],
+        "spread_typical": "1-5 pips",
+        "trading_hours": "24/7 (always open)"
+      },
+      "stocks": {
+        "description": "Equities",
+        "examples": ["AAPL", "MSFT", "TSLA", "GOOGL"],
+        "spread_typical": "0.5-2 pips",
+        "trading_hours": "9:30 AM - 4:00 PM EST (US market hours)"
+      },
+      "indices": {
+        "description": "Stock indices",
+        "examples": ["SPX500", "DAX40", "FTSE100"],
+        "spread_typical": "0.5-2 pips",
+        "trading_hours": "24/5 (24-hour index futures)"
+      },
+      "commodities": {
+        "description": "Oil, gas, etc.",
+        "examples": ["CRUDE", "BRENT", "NATGAS"],
+        "spread_typical": "0.5-1.5 pips",
+        "trading_hours": "24/5 (commodity trading hours)"
+      }
+    },
+    "account_types": {
+      "standard": {
+        "leverage_max": "1:500",
+        "spreads": "Fixed or variable",
+        "min_deposit": "$1-100 (varies by country)",
+        "commissions": "No commissions (spread only)",
+        "ideal_for": "Beginners, retail traders"
+      },
+      "professional": {
+        "leverage_max": "1:500",
+        "spreads": "Variable (can be tight)",
+        "min_deposit": "$1,000+",
+        "commissions": "Optional (cheaper spreads vs commission)",
+        "ideal_for": "Active traders, institutions"
+      },
+      "professional_with_1000": {
+        "leverage_max": "1:1000",
+        "spreads": "Variable",
+        "min_deposit": "$10,000+",
+        "commissions": "Optional",
+        "ideal_for": "Expert traders only"
+      }
+    },
+    "order_types": {
+      "market": {
+        "description": "Immediate execution at market price",
+        "uses": ["Quick entry at key level", "When signal sudden"],
+        "execution": "Instant (seconds)",
+        "slippage_risk": "High in volatile markets",
+        "best_for": "Trend following, momentum"
+      },
+      "pending": {
+        "description": "Conditional order (triggers at price)",
+        "types": ["Buy Limit", "Sell Limit", "Buy Stop", "Sell Stop"],
+        "execution": "When price reaches level",
+        "slippage_risk": "Low (pre-set price)",
+        "best_for": "Support/resistance trading, mean reversion"
+      }
+    },
+    "position_limits": {
+      "min_lot": "0.01 (micro lot, 1,000 units)",
+      "max_lot": "100+ (depends on account equity)",
+      "micro_lot_units": 1000,
+      "mini_lot_units": 10000,
+      "standard_lot_units": 100000,
+      "leverage_multiplier": "1:1 to 1:1000",
+      "position_sizing_recommendation": "0.01-0.1 lots for beginners"
+    },
+    "spreads_by_instrument": {
+      "eurusd": "0.3-0.5 pips",
+      "gbpusd": "0.4-0.6 pips",
+      "usdjpy": "0.3-0.5 pips",
+      "audusd": "0.5-1 pips",
+      "gold": "0.3-0.5 pips",
+      "silver": "1-2 pips",
+      "btcusd": "1-3 pips",
+      "ethusd": "1-3 pips",
+      "aapl": "1-2 pips",
+      "spx500": "0.5-1 pip"
+    },
+    "trading_sessions": {
+      "sydney": {
+        "time_est": "Sunday 5 PM - Monday 1 AM EST",
+        "instruments": "FOREX, some metals",
+        "volume": "Moderate",
+        "recommended": "No, low volume"
+      },
+      "tokyo": {
+        "time_est": "Sunday 7 PM - Monday 3 AM EST",
+        "instruments": "FOREX (JPY pairs), metals",
+        "volume": "Moderate",
+        "recommended": "Only USDJPY"
+      },
+      "london": {
+        "time_est": "Monday 3 AM - Friday 12 PM EST",
+        "instruments": "ALL (highest volume)",
+        "volume": "Very High",
+        "recommended": "YES (best trading)"
+      },
+      "new_york": {
+        "time_est": "Monday 8 AM - Friday 5 PM EST",
+        "instruments": "FOREX, stocks, indices",
+        "volume": "Very High",
+        "recommended": "YES (best trading)"
+      },
+      "london_ny_overlap": {
+        "time_est": "Monday 8 AM - Friday 12 PM EST",
+        "instruments": "ALL",
+        "volume": "Maximum",
+        "recommended": "OPTIMAL - trade this window"
+      },
+      "stocks_us": {
+        "time_est": "9:30 AM - 4:00 PM EST (M-F)",
+        "pre_market": "4:00 AM - 9:30 AM (low volume, wide spreads)",
+        "after_hours": "4:00 PM - 8:00 PM (low volume, wide spreads)",
+        "recommended": "10 AM - 3 PM EST (peak volume)"
+      },
+      "crypto": {
+        "time_est": "24/7 (always open)",
+        "best_liquidity": "8 AM - 6 PM EST (US hours)",
+        "weekend_volume": "Lower than weekdays",
+        "recommended": "Weekday trading during US hours"
+      }
+    },
+    "deposit_methods": {
+      "bank_transfer": {
+        "time": "1-3 business days",
+        "min_amount": "$1-100",
+        "max_amount": "Unlimited",
+        "fees": "Usually none",
+        "currency_support": "All major currencies",
+        "best_for": "Large deposits"
+      },
+      "credit_debit_card": {
+        "time": "Instant",
+        "min_amount": "$1-10",
+        "max_amount": "$10,000-50,000",
+        "fees": "1-3%",
+        "currency_support": "USD, EUR, GBP",
+        "best_for": "Quick deposits"
+      },
+      "cryptocurrency": {
+        "time": "10-60 minutes",
+        "min_amount": "0.0001 BTC equivalent",
+        "max_amount": "Unlimited",
+        "fees": "Network fee only (usually < $1)",
+        "supported": ["Bitcoin", "Ethereum", "USDT", "USDC"],
+        "best_for": "Borderless, quick transfers"
+      },
+      "ewallet": {
+        "providers": ["Skrill", "Neteller", "Perfect Money"],
+        "time": "Instant - 2 hours",
+        "min_amount": "$1-10",
+        "max_amount": "$10,000-100,000",
+        "fees": "1-2%",
+        "best_for": "Frequent deposits"
+      },
+      "local_methods": {
+        "description": "Varies by country",
+        "examples": ["PIX (Brazil)", "Knect (South Africa)", "etc"],
+        "check_for": "On Exness deposit page for your country"
+      }
+    },
+    "withdrawal_methods": {
+      "same_as_deposit": "Must withdraw to same method as deposit",
+      "processing_times": {
+        "crypto": "10-60 minutes",
+        "ewallet": "1-24 hours",
+        "bank_transfer": "2-5 business days",
+        "card": "3-7 business days"
+      },
+      "fees": {
+        "crypto": "Network fee only",
+        "bank": "Usually free from Exness",
+        "ewallet": "Usually free from Exness",
+        "card": "May vary by card issuer"
+      }
+    },
+    "key_metrics": {
+      "balance": {
+        "definition": "Total account funds",
+        "updates": "When trades closed or deposits arrive",
+        "formula": "Previous balance + Deposits - Withdrawals + Closed trades P/L",
+        "importance": "Reference point for equity and margin"
+      },
+      "equity": {
+        "definition": "Current account value (balance + unrealized P&L)",
+        "updates": "Real-time as prices move",
+        "formula": "Balance + Open positions unrealized P&L",
+        "importance": "Critical for margin level calculation"
+      },
+      "used_margin": {
+        "definition": "Capital tied up in open positions",
+        "updates": "Real-time",
+        "formula": "Sum of all open position values",
+        "target": "Keep < 30-40% of balance"
+      },
+      "free_margin": {
+        "definition": "Available capital for new trades",
+        "updates": "Real-time",
+        "formula": "Equity - Used Margin",
+        "requirement": "Must be > 0 to open position"
+      },
+      "margin_level": {
+        "definition": "Health indicator (Equity / Used Margin %)",
+        "updates": "Real-time",
+        "formula": "(Equity / Used Margin) × 100",
+        "critical_threshold": {
+          "above_150": "Safe, normal trading",
+          "100_150": "Caution, reduce position size",
+          "below_100": "MARGIN CALL, positions closing",
+          "agent_target": "Keep above 200% for comfort"
+        }
+      }
+    },
+    "risk_parameters": {
+      "max_risk_per_trade": "1-2% of account",
+      "max_daily_loss": "3% of account",
+      "max_weekly_loss": "8% of account",
+      "max_drawdown_acceptable": "25-30%",
+      "min_risk_reward_ratio": "1:2 (prefer 1:2.5)",
+      "min_margin_level": "150% (warning at 100%)",
+      "margin_call_level": "100% (positions close)",
+      "position_size_formula": "(Account risk %) / (Stop loss distance in pips)",
+      "leverage_recommendation": "1:1 (no leverage - size position instead)"
+    },
+    "common_ui_elements": {
+      "buttons_locations": {
+        "deposit": "Top of dashboard, green button",
+        "withdraw": "Top of dashboard, red button",
+        "trade_now": "Dashboard, opens terminal",
+        "settings": "Top-right, gear icon",
+        "logout": "Top-right menu"
+      },
+      "panels": {
+        "open_positions": "Bottom of terminal, shows live trades",
+        "pending_orders": "Bottom of terminal, shows conditional orders",
+        "chart": "Center of terminal",
+        "order_entry": "Right side or bottom of terminal"
+      },
+      "keyboard_shortcuts": {
+        "open_terminal": "Often: T or Ctrl+T (varies)",
+        "place_order": "Often: Ctrl+Enter",
+        "cancel_order": "Often: Escape",
+        "close_all": "Often: Ctrl+Shift+C"
+      }
+    },
+    "api_access": {
+      "requirement": "Professional account with API enabled",
+      "setup": "Settings → API Keys → Generate",
+      "security": {
+        "ip_whitelist": "Enable and add your IP",
+        "key_rotation": "Change keys monthly",
+        "backup": "Store API key securely",
+        "never_expose": "Don't commit to GitHub, use env vars"
+      },
+      "endpoints": {
+        "base_url": "https://api.exness.com",
+        "account": "/api/account (GET account details)",
+        "orders": "/api/orders (GET/POST orders)",
+        "positions": "/api/positions (GET open positions)",
+        "history": "/api/history (GET closed trades)",
+        "balance": "/api/balance (GET account balance)"
+      },
+      "rate_limits": {
+        "standard": "100 requests/minute",
+        "professional": "1000 requests/minute",
+        "burst": "Up to 10 requests/second"
+      }
+    },
+    "error_codes": {
+      "margin_insufficient": {
+        "code": 1001,
+        "message": "Insufficient margin",
+        "solution": "Close position or deposit funds"
+      },
+      "order_rejected": {
+        "code": 1002,
+        "message": "Order rejected",
+        "solution": "Check price, volume, and parameters"
+      },
+      "market_closed": {
+        "code": 1003,
+        "message": "Market is closed",
+        "solution": "Wait for market open, check session times"
+      },
+      "connection_error": {
+        "code": 1004,
+        "message": "Connection timeout",
+        "solution": "Retry connection, check internet"
+      },
+      "invalid_parameters": {
+        "code": 1005,
+        "message": "Invalid order parameters",
+        "solution": "Verify: symbol, volume, SL, TP are valid"
+      }
+    },
+    "best_practices": {
+      "security": [
+        "Enable 2FA immediately",
+        "Use strong, unique password",
+        "Whitelist IP addresses (if using API)",
+        "Never share login credentials",
+        "Enable withdrawal address confirmation"
+      ],
+      "trading": [
+        "Always use stop losses",
+        "Never use excessive leverage",
+        "Risk max 2% per trade",
+        "Confirm signals with 2+ indicators",
+        "Trade during peak liquidity hours"
+      ],
+      "account_management": [
+        "Monitor margin level hourly",
+        "Close positions if margin < 150%",
+        "Review trades daily",
+        "Analyze win rate weekly",
+        "Rebalance monthly"
+      ],
+      "automation": [
+        "Test bot on demo first",
+        "Use small position sizes initially",
+        "Monitor performance daily",
+        "Set maximum loss limits",
+        "Have manual override capability"
+      ]
+    },
+    "troubleshooting": {
+      "cant_login": {
+        "cause": "Wrong credentials or account locked",
+        "solution": "Use 'Forgot Password', check email, enable 2FA"
+      },
+      "cant_withdraw": {
+        "cause": "Account not verified or verification pending",
+        "solution": "Complete ID/address verification, contact support"
+      },
+      "spreads_too_wide": {
+        "cause": "Market volatility or off-peak hours",
+        "solution": "Trade during peak hours (London-NY overlap)"
+      },
+      "order_not_executing": {
+        "cause": "Price moved, insufficient margin, market closed",
+        "solution": "Check each condition, adjust entry level, try again"
+      },
+      "delayed_execution": {
+        "cause": "Network lag or server load",
+        "solution": "Retry, check internet, reduce frequency of trades"
+      }
+    }
+  }
+}
