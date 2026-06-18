@@ -487,13 +487,8 @@ export default function Home() {
     const handleMouseMove = (e: MouseEvent) => {
       if (isResizing === "left") {
         const newWidth = e.clientX;
-        if (newWidth >= 200 && newWidth <= 450) {
+        if (newWidth >= 280 && newWidth <= 600) {
           setLeftWidth(newWidth);
-        }
-      } else if (isResizing === "right") {
-        const newWidth = window.innerWidth - e.clientX;
-        if (newWidth >= 250 && newWidth <= 550) {
-          setRightWidth(newWidth);
         }
       }
     };
@@ -1133,6 +1128,39 @@ export default function Home() {
     setMessages((prev) => [...prev, receiptMessage]);
   };
 
+  // Listen to standard "execute-simulated-trade" custom window events dispatched by Approach B widgets
+  useEffect(() => {
+    const handleSimulatedTrade = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const { symbol, direction, size, price } = customEvent.detail;
+      
+      const leverage = 5;
+      const margin = (size * price) / leverage;
+      
+      handleTradeExecute({
+        id: "sim_" + Math.random().toString(36).substring(2, 11),
+        symbol,
+        direction,
+        price,
+        size,
+        leverage,
+        margin,
+        tp: null,
+        sl: null,
+        timestamp: Date.now()
+      });
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("execute-simulated-trade", handleSimulatedTrade);
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("execute-simulated-trade", handleSimulatedTrade);
+      }
+    };
+  }, [handleTradeExecute]);
+
   const closePosition = async (id: string) => {
     const pos = positions.find((p) => p.id === id);
     if (!pos) return;
@@ -1544,6 +1572,7 @@ Provide:
                     ? (currentSpot - pos.entryPrice) * pos.size
                     : (pos.entryPrice - currentSpot) * pos.size;
                   const isProfit = pnl >= 0;
+                  const pnlPct = pos.margin > 0 ? (pnl / pos.margin) * 100 : 0;
 
                   return (
                     <div
@@ -1564,17 +1593,57 @@ Provide:
                             </span>
                           </div>
                         </div>
-                        <div className="text-right">
-                          <span className={cn("font-mono font-extrabold text-xs block", isProfit ? "text-emerald-400" : "text-red-400")}>
-                            {isProfit ? "+" : ""}${pnl.toFixed(2)}
+
+                        <span className={cn(
+                          "px-2 py-0.5 rounded text-[8px] font-extrabold uppercase tracking-wider scale-90 border",
+                          pos.direction === "BUY"
+                            ? "bg-emerald-500/10 border-emerald-500/25 text-emerald-400"
+                            : "bg-red-500/10 border-red-500/25 text-red-400"
+                        )}>
+                          {pos.direction === "BUY" ? "LONG / BUY" : "SHORT / SELL"}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-x-2 gap-y-1.5 text-[10px] font-mono border-t border-b border-zinc-900/40 py-2">
+                        <div className="flex justify-between">
+                          <span className="text-zinc-500">Size</span>
+                          <span className="font-bold text-zinc-300">{pos.size} units</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-zinc-500">Entry</span>
+                          <span className="font-bold text-zinc-300">${pos.entryPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-zinc-500">Current</span>
+                          <span className="font-bold text-zinc-300">${currentSpot.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-zinc-500">Margin</span>
+                          <span className="font-bold text-indigo-400">${pos.margin.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between bg-zinc-950/20 p-2 rounded-lg border border-zinc-900">
+                        <span className="text-[9px] font-extrabold text-zinc-500 uppercase tracking-wide">PnL Summary</span>
+                        <div className="text-right flex flex-col">
+                          <span className={cn(
+                            "text-xs font-mono font-bold tracking-tight leading-none",
+                            pnl >= 0 ? "text-emerald-400" : "text-red-400"
+                          )}>
+                            {pnl >= 0 ? "+" : ""}${pnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </span>
-                          <span className="text-[9px] text-zinc-500 font-mono">Spot: ${currentSpot >= 1000 ? currentSpot.toLocaleString(undefined, { maximumFractionDigits: 2 }) : currentSpot.toFixed(3)}</span>
+                          <span className={cn(
+                            "text-[8px] font-mono font-extrabold leading-none mt-1",
+                            pnl >= 0 ? "text-emerald-500" : "text-red-500"
+                          )}>
+                            ({pnl >= 0 ? "+" : ""}{pnlPct.toFixed(2)}%)
+                          </span>
                         </div>
                       </div>
 
                       <button
                         onClick={() => closePosition(pos.id)}
-                        className="w-full py-1 bg-red-500/5 hover:bg-red-500/10 border border-red-500/15 hover:border-red-500/30 rounded-lg text-[9px] font-extrabold uppercase tracking-wider text-red-400 hover:text-white transition-all duration-300 cursor-pointer"
+                        className="w-full py-1.5 bg-red-500/5 hover:bg-red-500/10 border border-red-500/15 hover:border-red-500/30 rounded-lg text-[9px] font-extrabold uppercase tracking-wider text-red-400 hover:text-white transition-all duration-300 cursor-pointer"
                       >
                         Close CFD Position
                       </button>
@@ -1593,7 +1662,8 @@ Provide:
         )}
       </aside>
 
-      {leftOpen && messages.length > 0 && (
+      {/* --- RESIZER BAR --- */}
+      {leftOpen && (
         <div
           onMouseDown={(e) => startResize("left", e)}
           className={cn(
@@ -1605,9 +1675,12 @@ Provide:
         />
       )}
 
-      {/* --- MIDDLE AI CHAT COLUMN (Exactly in Center) --- */}
-      <div className="flex-1 flex flex-col relative h-full min-w-0">
+      {/* --- CONVERSATIONAL AI WORKSPACE (Right Panel) --- */}
+      <div className="flex-1 flex flex-col relative h-full min-w-0 bg-[#050508]">
         
+        {/* Mesh Background */}
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-[350px] bg-gradient-to-b from-indigo-950/5 via-transparent to-transparent blur-3xl pointer-events-none -z-10" />
+
         {/* Top Minimal Header */}
         <header className="flex items-center justify-between px-6 py-4 border-b border-zinc-900/60 bg-zinc-950/40 backdrop-blur-xl sticky top-0 z-40 shrink-0 select-none">
           <div className="flex items-center gap-3">
@@ -1615,25 +1688,17 @@ Provide:
             <button
               onClick={() => setLeftOpen(!leftOpen)}
               className="p-1.5 rounded-lg border border-zinc-900/60 bg-zinc-950/20 text-zinc-400 hover:text-white hover:bg-zinc-900 transition-all cursor-pointer"
-              title="Toggle Markets Explorer"
+              title="Toggle Trading Station"
             >
               <Menu className="size-4" />
             </button>
             <div className="flex items-center gap-1.5">
               <SparklesIcon className="size-4 text-indigo-400" />
-              <span className="font-bold tracking-tight text-white text-sm uppercase">Quant AI Terminal</span>
+              <span className="font-bold tracking-tight text-white text-sm uppercase">Quant AI Workspace</span>
             </div>
           </div>
           
           <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-2">
-              <div className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-              </div>
-              <span className="text-[10px] font-extrabold tracking-wide text-zinc-500 uppercase">Local paper-engine connected</span>
-            </div>
-
             {/* Wallet Widget */}
             {balance && (
               <div className="flex items-center gap-2.5 bg-zinc-950/80 border border-zinc-900 rounded-xl px-3 py-1.5 shadow-md">
@@ -1649,15 +1714,6 @@ Provide:
                 </button>
               </div>
             )}
-
-            {/* Toggle Right Sidebar */}
-            <button
-              onClick={() => setRightOpen(!rightOpen)}
-              className="p-1.5 rounded-lg border border-zinc-900/60 bg-zinc-950/20 text-zinc-400 hover:text-white hover:bg-zinc-900 transition-all cursor-pointer ml-1"
-              title="Toggle Analytics Panel"
-            >
-              <Activity className="size-4" />
-            </button>
           </div>
         </header>
 
@@ -1665,7 +1721,7 @@ Provide:
         <main className="flex-1 flex flex-col w-full max-w-5xl mx-auto px-4 sm:px-6 pb-6 pt-4 min-h-0 relative h-full self-center">
           {messages.length === 0 ? (
             /* Centered Welcome Screen */
-            <div className="flex-1 flex flex-col items-center justify-center space-y-10 w-full py-16">
+            <div className="flex-1 flex flex-col items-center justify-center space-y-8 w-full py-10">
               <div className="flex flex-col items-center space-y-4 text-center">
                 <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-indigo-400 flex items-center justify-center shadow-[0_0_20px_rgba(99,102,241,0.3)]">
                   <SparklesIcon className="size-5 text-white" />
@@ -1674,7 +1730,7 @@ Provide:
                   Quant Trading AI
                 </h1>
                 <p className="text-zinc-500 text-sm max-w-md select-none font-medium leading-relaxed">
-                  Welcome to Quant. Explore asset categories on the left, check live interactive smooth SVG charts on the right, or request a deep quant analysis below.
+                  Welcome to Quant. Explore assets on the Left Trading Station, analyze live trends, and request deep comparative analysis using natural language.
                 </p>
               </div>
 
@@ -1688,76 +1744,12 @@ Provide:
                   status={loading ? "streaming" : "ready"}
                   placeholder={`Ask Quant about ${activeSymbol} or any other asset...`}
                   onAttach={() => {}}
-                  leftActions={
-                    <button
-                      type="button"
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold text-zinc-400 border border-zinc-800 bg-zinc-900/10 hover:border-zinc-700 hover:bg-zinc-900 transition-all flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <PlusIcon className="w-3.5 h-3.5" />
-                      Project
-                    </button>
-                  }
                 />
-              </div>
-
-              {/* 3-Row Alternating Infinite Scrolling Marquees */}
-              <div className="w-full max-w-5xl space-y-5 overflow-hidden relative select-none mt-2">
-                {/* Edge fade gradients */}
-                <div className="absolute left-0 top-0 bottom-0 w-28 bg-gradient-to-r from-[#050508] via-[#050508]/40 to-transparent z-10 pointer-events-none" />
-                <div className="absolute right-0 top-0 bottom-0 w-28 bg-gradient-to-l from-[#050508] via-[#050508]/40 to-transparent z-10 pointer-events-none" />
-
-                {/* Marquee Row 1: Crypto (Moves Left) */}
-                <div className="marquee-container w-full overflow-hidden relative py-1">
-                  <div className="animate-marquee-left flex">
-                    <div className="flex">
-                      {cryptoSignals.map((sig) => (
-                        <SignalCard key={`${sig.id}-c1`} sig={sig} sidebarQuotes={sidebarQuotes} flashingSignalId={flashingSignalId} onClick={handleSignalClick} />
-                      ))}
-                    </div>
-                    <div className="flex">
-                      {cryptoSignals.map((sig) => (
-                        <SignalCard key={`${sig.id}-c2`} sig={sig} sidebarQuotes={sidebarQuotes} flashingSignalId={flashingSignalId} onClick={handleSignalClick} />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Marquee Row 2: Stocks (Moves Right) */}
-                <div className="marquee-container w-full overflow-hidden relative py-1">
-                  <div className="animate-marquee-right flex">
-                    <div className="flex">
-                      {stockSignals.map((sig) => (
-                        <SignalCard key={`${sig.id}-s1`} sig={sig} sidebarQuotes={sidebarQuotes} flashingSignalId={flashingSignalId} onClick={handleSignalClick} />
-                      ))}
-                    </div>
-                    <div className="flex">
-                      {stockSignals.map((sig) => (
-                        <SignalCard key={`${sig.id}-s2`} sig={sig} sidebarQuotes={sidebarQuotes} flashingSignalId={flashingSignalId} onClick={handleSignalClick} />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Marquee Row 3: Forex & Commodities (Moves Left) */}
-                <div className="marquee-container w-full overflow-hidden relative py-1">
-                  <div className="animate-marquee-left flex">
-                    <div className="flex">
-                      {forexSignals.map((sig) => (
-                        <SignalCard key={`${sig.id}-f1`} sig={sig} sidebarQuotes={sidebarQuotes} flashingSignalId={flashingSignalId} onClick={handleSignalClick} />
-                      ))}
-                    </div>
-                    <div className="flex">
-                      {forexSignals.map((sig) => (
-                        <SignalCard key={`${sig.id}-f2`} sig={sig} sidebarQuotes={sidebarQuotes} flashingSignalId={flashingSignalId} onClick={handleSignalClick} />
-                      ))}
-                    </div>
-                  </div>
-                </div>
               </div>
             </div>
           ) : (
             /* Active Conversational Thread */
-            <div className="flex-1 flex flex-col w-full min-h-0 space-y-4">
+            <div className="flex-1 flex flex-col w-full min-h-0 space-y-4 relative">
               <Conversation>
                 <ConversationContent className="p-1 pb-32 space-y-6 bg-transparent">
                   {messages.map((message, messageIndex) => {
@@ -1812,220 +1804,12 @@ Provide:
                   status={loading ? "streaming" : "ready"}
                   placeholder={`Ask Quant about ${activeSymbol} or any other asset...`}
                   onAttach={() => {}}
-                  leftActions={
-                    <button
-                      type="button"
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold text-zinc-400 border border-zinc-800 bg-zinc-900/10 hover:border-zinc-700 hover:bg-zinc-900 transition-all flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <PlusIcon className="w-3.5 h-3.5" />
-                      Project
-                    </button>
-                  }
                 />
               </div>
             </div>
           )}
         </main>
       </div>
-
-      {rightOpen && messages.length > 0 && (
-        <div
-          onMouseDown={(e) => startResize("right", e)}
-          className={cn(
-            "w-[5px] hover:w-[6px] cursor-col-resize h-full relative z-40 transition-all select-none border-l border-zinc-950 shrink-0",
-            isResizing === "right"
-              ? "bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.5)]"
-              : "bg-zinc-900/30 hover:bg-indigo-500/30"
-          )}
-        />
-      )}
-
-      {/* --- RIGHT SIDEBAR (Collapsible SVG Charting & Market Stats) --- */}
-      <aside
-        style={{ width: rightOpen ? `${rightWidth}px` : "0px" }}
-        className={cn(
-          "shrink-0 bg-zinc-950/20 backdrop-blur-xl flex flex-col h-full relative z-30",
-          !isResizing && "transition-all duration-300",
-          rightOpen ? "border-l border-zinc-900/60 opacity-100" : "w-0 opacity-0 overflow-hidden pointer-events-none border-l-0"
-        )}
-      >
-        {messages.length === 0 ? (
-          <>
-            {/* Landing Page: Attract cards */}
-            <div className="p-4 border-b border-zinc-900/60 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-2">
-                <Activity className="size-4 text-indigo-400 animate-pulse" />
-                <h2 className="text-sm font-extrabold text-white tracking-wider uppercase">Active Quotes</h2>
-              </div>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 uppercase tracking-wider scale-90">Realtime</span>
-            </div>
-
-            <div className="flex-1 flex flex-col p-4 gap-4 overflow-y-auto scrollbar-none">
-              {rightSlots.map((slot, index) => {
-                const activeAsset = slot.activeSide === "front" ? slot.front : slot.back;
-
-                return (
-                  <div
-                    key={index}
-                    onClick={() => handleCardClick(activeAsset.symbol, activeAsset.asset_class, activeAsset.sector)}
-                    className="relative w-full h-[270px] perspective-1000 cursor-pointer group shrink-0"
-                  >
-                    <div
-                      className={cn(
-                        "w-full h-full relative transform-style-3d transition-transform duration-700",
-                        slot.isFlipped ? "rotate-y-180" : ""
-                      )}
-                    >
-                      {/* Front Face */}
-                      <div className="absolute inset-0 w-full h-full backface-hidden rounded-2xl bg-zinc-950/45 border border-zinc-900/60 group-hover:border-zinc-800/80 p-4 flex flex-col justify-between overflow-hidden shadow-lg shadow-black/20">
-                        {renderCardFace(slot.front)}
-                      </div>
-
-                      {/* Back Face */}
-                      <div className="absolute inset-0 w-full h-full backface-hidden rounded-2xl bg-zinc-950/45 border border-zinc-900/60 group-hover:border-zinc-800/80 p-4 flex flex-col justify-between overflow-hidden shadow-lg shadow-black/20 rotate-y-180">
-                        {renderCardFace(slot.back)}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </>
-        ) : (
-          <div className="flex-1 overflow-y-auto flex flex-col h-full">
-            {/* Header Asset Profiler */}
-            <div className="p-5 border-b border-zinc-900/60 space-y-2">
-              <span className="text-[10px] font-extrabold text-indigo-400 tracking-wider uppercase">{activeCategory} Asset Class</span>
-              <div className="flex items-center gap-2.5">
-                <AssetLogoIcon symbol={activeSymbol} assetClass={activeCategory} size="sm" className="rounded-lg shadow-md border border-zinc-900/40" />
-                <div>
-                  <h2 className="text-xl font-extrabold text-white tracking-tight leading-none flex items-center gap-1.5">
-                    {activeSymbol}
-                    <span className="text-xs text-zinc-500 font-mono font-medium">Spot CFD</span>
-                  </h2>
-                </div>
-              </div>
-              <div className="flex items-baseline gap-2.5 pt-1.5">
-                <span className="text-2xl font-mono font-bold text-white tracking-tight">
-                  ${activeQuoteSpot >= 1000 ? activeQuoteSpot.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : activeQuoteSpot.toFixed(4)}
-                </span>
-                <span className={cn(
-                  "text-xs font-extrabold tracking-wide uppercase flex items-center gap-1",
-                  activeQuoteChange >= 0 ? "text-emerald-400" : "text-red-400"
-                )}>
-                  {activeQuoteChange >= 0 ? <TrendingUp className="size-3.5" /> : <TrendingDown className="size-3.5" />}
-                  {activeQuoteChange >= 0 ? "+" : ""}{activeQuoteChange.toFixed(2)}%
-                </span>
-              </div>
-            </div>
-
-            {/* Catmull-Rom SVG Chart Component */}
-            <div className="p-4 space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-zinc-400">Market Trend</span>
-                
-                {/* Range Filters */}
-                <div className="bg-zinc-950 p-0.5 rounded-lg border border-zinc-900 flex gap-0.5">
-                  {["1D", "1W", "1M", "1Y"].map((range) => (
-                    <button
-                      key={range}
-                      onClick={() => setSelectedTimeframe(range)}
-                      className={cn(
-                        "px-2 py-1 rounded text-[10px] font-extrabold tracking-wider transition-all cursor-pointer",
-                        selectedTimeframe === range
-                          ? "bg-indigo-500/10 border border-indigo-500/20 text-indigo-400"
-                          : "bg-transparent border border-transparent text-zinc-500 hover:text-zinc-300"
-                      )}
-                    >
-                      {range}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Custom Smooth Area Chart */}
-              <div className="rounded-xl border border-zinc-900/60 bg-zinc-950/40 p-1 relative overflow-hidden">
-                <SmoothAreaChart
-                  points={candlePoints}
-                  height={165}
-                  accent={activeQuoteChange >= 0 ? "bullish" : "bearish"}
-                />
-              </div>
-            </div>
-
-            {/* Quick Metrics Statistics grid */}
-            <div className="p-5 border-t border-zinc-900/40 space-y-4 flex-1">
-              <h3 className="text-xs font-extrabold text-white uppercase tracking-wider">Trading Statistics</h3>
-              <div className="grid grid-cols-2 gap-3.5 text-xs font-mono">
-                <div className="bg-zinc-950/50 p-3 rounded-xl border border-zinc-900/60 flex flex-col gap-1">
-                  <span className="text-[10px] font-bold text-zinc-500 uppercase leading-none">BID PRICE</span>
-                  <span className="text-zinc-200 font-bold tracking-tight">
-                    ${activeQuoteBid >= 1000 ? activeQuoteBid.toLocaleString(undefined, { minimumFractionDigits: 2 }) : activeQuoteBid.toFixed(4)}
-                  </span>
-                </div>
-                <div className="bg-zinc-950/50 p-3 rounded-xl border border-zinc-900/60 flex flex-col gap-1">
-                  <span className="text-[10px] font-bold text-zinc-500 uppercase leading-none">ASK PRICE</span>
-                  <span className="text-zinc-200 font-bold tracking-tight">
-                    ${activeQuoteAsk >= 1000 ? activeQuoteAsk.toLocaleString(undefined, { minimumFractionDigits: 2 }) : activeQuoteAsk.toFixed(4)}
-                  </span>
-                </div>
-                <div className="bg-zinc-950/50 p-3 rounded-xl border border-zinc-900/60 flex flex-col gap-1">
-                  <span className="text-[10px] font-bold text-zinc-500 uppercase leading-none">SPREAD</span>
-                  <span className="text-indigo-400 font-bold tracking-tight">
-                    ${activeQuoteSpread.toFixed(4)}
-                  </span>
-                </div>
-                <div className="bg-zinc-950/50 p-3 rounded-xl border border-zinc-900/60 flex flex-col gap-1">
-                  <span className="text-[10px] font-bold text-zinc-500 uppercase leading-none">SPREAD %</span>
-                  <span className="text-indigo-400 font-bold tracking-tight">
-                    {activeQuoteSpreadPct.toFixed(3)}%
-                  </span>
-                </div>
-                <div className="bg-zinc-950/50 p-3 rounded-xl border border-zinc-900/60 flex flex-col gap-1 col-span-2 flex-row justify-between items-center py-2.5">
-                  <span className="text-[10px] font-bold text-zinc-500 uppercase leading-none">MARKET STATUS</span>
-                  <span className="text-emerald-400 font-extrabold text-[10px] tracking-wider uppercase flex items-center gap-1 bg-emerald-500/5 px-2 py-0.5 rounded border border-emerald-500/10">
-                    <ShieldCheck className="size-3.5" />
-                    {activeQuote?.marketStatus || "TRADEABLE"}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* CTA & CFD Simulation execution buttons */}
-            <div className="p-5 border-t border-zinc-900/40 space-y-3 shrink-0">
-              <h3 className="text-xs font-extrabold text-white uppercase tracking-wider">Execute Simulation</h3>
-              
-              {/* Quick Order Panel buttons */}
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => setIsTradeOpen(true)}
-                  className="py-3 bg-emerald-500 text-black hover:bg-emerald-400 font-extrabold text-xs uppercase tracking-wider rounded-xl transition-all duration-300 shadow-md shadow-emerald-500/5 flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <TrendingUp className="size-4" />
-                  Buy / Long
-                </button>
-                <button
-                  onClick={() => setIsTradeOpen(true)}
-                  className="py-3 bg-red-500 text-white hover:bg-red-400 font-extrabold text-xs uppercase tracking-wider rounded-xl transition-all duration-300 shadow-md shadow-red-500/5 flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <TrendingDown className="size-4" />
-                  Sell / Short
-                </button>
-              </div>
-
-              {/* Direct Analyze CTA */}
-              <button
-                onClick={triggerAiAnalysis}
-                disabled={loading}
-                className="w-full py-3.5 bg-gradient-to-r from-indigo-600 via-indigo-500 to-indigo-600 hover:opacity-95 text-white font-extrabold text-xs uppercase tracking-widest rounded-xl transition-all duration-300 shadow-lg shadow-indigo-500/10 flex items-center justify-center gap-2 border border-indigo-400/20 disabled:opacity-40 disabled:cursor-not-allowed mt-1 cursor-pointer"
-              >
-                <SparklesIcon className="size-4 animate-pulse" />
-                Analyze with Quant AI
-              </button>
-            </div>
-          </div>
-        )}
-      </aside>
 
       {/* --- QUICK TRADE DIALOG COMPONENT --- */}
       <QuickTradeDialog

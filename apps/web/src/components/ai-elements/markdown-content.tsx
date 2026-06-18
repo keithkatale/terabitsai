@@ -5,6 +5,8 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Check, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ArtifactSandboxCard } from "@/components/generative-ui/artifact-sandbox-card";
+import { GenerativeUiRegistry } from "@/components/generative-ui/registry";
 
 interface CodeBlockProps {
   language?: string;
@@ -48,7 +50,7 @@ function CodeBlock({ language, code }: CodeBlockProps) {
         </button>
       </div>
       <pre className="p-4 overflow-x-auto text-[13px] font-mono text-zinc-200 leading-normal bg-zinc-950">
-        <code>{code}</code>
+         <code>{code}</code>
       </pre>
     </div>
   );
@@ -84,6 +86,39 @@ export function MarkdownContent({ markdown }: { markdown: string }) {
                   {children}
                 </code>
               );
+            }
+
+            const lang = match ? match[1] : "";
+
+            // Approach A: Sandboxed custom visualizations
+            if (lang === "html" || lang === "svg" || (lang === "xml" && codeString.includes("<svg"))) {
+              return (
+                <ArtifactSandboxCard 
+                  code={codeString} 
+                  language={lang} 
+                  title={lang === "svg" ? "Custom Vector Visualisation" : "Interactive Dashboard Frame"}
+                />
+              );
+            }
+
+            // Approach B: Branded Component Registry (Structured JSON)
+            if (lang === "json") {
+              try {
+                const parsed = JSON.parse(codeString);
+                if (parsed && typeof parsed === "object" && ("component" in parsed || "name" in parsed)) {
+                  const compName = parsed.component || parsed.name;
+                  if (compName) {
+                    return (
+                      <GenerativeUiRegistry
+                        name={compName}
+                        props={parsed.props || parsed}
+                      />
+                    );
+                  }
+                }
+              } catch (e) {
+                // Ignore parse errors, rendering standard JSON CodeBlock
+              }
             }
 
             return (

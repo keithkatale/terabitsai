@@ -409,6 +409,269 @@ async function simulateStreamingResponse(
 ) {
   const normalizedPrompt = prompt.toLowerCase();
 
+  // 1. Compare AAPL and MSFT
+  if (normalizedPrompt.includes("compare aapl and msft") || normalizedPrompt === "compare" || (normalizedPrompt.includes("compare") && (normalizedPrompt.includes("aapl") || normalizedPrompt.includes("msft") || normalizedPrompt.includes("apple") || normalizedPrompt.includes("microsoft")))) {
+    const simulatedThoughts = [
+      "Analyzing user request to compare Apple (AAPL) and Microsoft (MSFT)...\n",
+      "Scanning dual pricing vectors across historical daily candles...\n",
+      "Calculating rolling beta correlation and momentum indicators...\n",
+      "Synthesizing comparative performance vectors...\n"
+    ];
+
+    for (const thought of simulatedThoughts) {
+      const words = thought.split(" ");
+      for (const word of words) {
+        sendEvent({ type: "reasoning", text: word + " " });
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    const mainText = `${prefixText}### 📊 Apple (AAPL) vs Microsoft (MSFT) Comparative Analysis
+
+I have completed a high-fidelity comparative analysis between **Apple Inc. (AAPL)** and **Microsoft Corp. (MSFT)** covering the active 6-month momentum index. 
+
+Both assets represent leading market caps in the tech sector, but they show diverging short-term momentum. Below is an interactive comparative chart that you can toggle across **1M**, **6M**, and **1Y** timeframes to inspect rolling price developments:
+
+\`\`\`json
+{
+  "component": "AssetComparativeChart",
+  "props": {
+    "ticker1": "AAPL",
+    "ticker2": "MSFT"
+  }
+}
+\`\`\`
+
+#### Key Quantitative Takeaways:
+* **AAPL Momentum (Indigo)**: Shows strong bullish retention supported by solid services revenue and high-conviction institutional inflows.
+* **MSFT Momentum (Emerald)**: Demonstrates steady growth backed by cloud expansion and deep integration of enterprise AI pipelines.
+* **Correlation Metric**: The 30-day rolling correlation sits at **0.78**, reflecting macro-economic alignment with slight asset-specific divergence.
+
+How would you like to balance your tactical exposure between these two blue-chips today?`;
+
+    const textChunks = mainText.split(" ");
+    for (const chunk of textChunks) {
+      sendEvent({ type: "text", text: chunk + " " });
+      await new Promise((resolve) => setTimeout(resolve, 15));
+    }
+    return;
+  }
+
+  // 2. Portfolio Breakdown / Allocation
+  if (normalizedPrompt.includes("asset allocation") || normalizedPrompt.includes("portfolio") || normalizedPrompt.includes("allocation")) {
+    const simulatedThoughts = [
+      "Accessing user ledger balances and simulated positions database...\n",
+      "Aggregating total values and computing weighted asset class ratios...\n",
+      "Formatting allocation percentages (Equities, Crypto, Fixed Income, Cash)...\n"
+    ];
+
+    for (const thought of simulatedThoughts) {
+      const words = thought.split(" ");
+      for (const word of words) {
+        sendEvent({ type: "reasoning", text: word + " " });
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    const mainText = `${prefixText}### 💼 Simulated Portfolio Allocation Breakdown
+
+Your current simulated portfolio is valued at **$24,500**. Here is an interactive, high-fidelity breakdown of your capital allocation.
+
+You can click or hover on any segment of the donut chart below to inspect detailed descriptions, risk boundaries, and underlying assets:
+
+\`\`\`json
+{
+  "component": "PortfolioBreakdown",
+  "props": {
+    "totalValue": 24500
+  }
+}
+\`\`\`
+
+#### Asset Class Distribution:
+1. **Equities (50.0%)**: Core high-growth tech positions (AAPL, NVDA, TSLA) to capture structural stock market gains.
+2. **Cryptocurrencies (25.0%)**: High-alpha, high-volatility sleeve (BTCUSD, ETHUSD) taking calculated directional leverage.
+3. **Fixed Income Bonds (15.0%)**: Short-duration defensive treasuries serving as stability anchors.
+4. **Liquid Cash Reserves (10.0%)**: Kept ready in the margin pool to instantly capitalize on intraday dips.
+
+Would you like to rebalance any portion of this allocation or execute new CFD positions?`;
+
+    const textChunks = mainText.split(" ");
+    for (const chunk of textChunks) {
+      sendEvent({ type: "text", text: chunk + " " });
+      await new Promise((resolve) => setTimeout(resolve, 15));
+    }
+    return;
+  }
+
+  // 3. Spending / Transactions
+  if (normalizedPrompt.includes("spending") || normalizedPrompt.includes("transactions")) {
+    const simulatedThoughts = [
+      "Querying quantitative billing history and API subscription ledgers...\n",
+      "Grouping expenditure vectors by category (Commissions, Data, Compute, Research)...\n",
+      "Generating monthly expense visualization nodes...\n"
+    ];
+
+    for (const thought of simulatedThoughts) {
+      const words = thought.split(" ");
+      for (const word of words) {
+        sendEvent({ type: "reasoning", text: word + " " });
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    const mainText = `${prefixText}### 💳 Monthly Expense & Transaction Summary
+
+I have compiled and categorized your operational costs and transaction fees for the current cycle. Your total expenses stand at **$4,850**.
+
+Review the interactive bar chart below to inspect category allocations, or hover over individual bars to view precise dollar metrics:
+
+\`\`\`json
+{
+  "component": "TransactionSummary",
+  "props": {
+    "totalAmount": 4850,
+    "title": "Strategy & Operational Outlays"
+  }
+}
+\`\`\`
+
+#### Operational Expense Highlights:
+* **Trading Commissions (38.0%)**: Rollover financing rates, contract execution spreads, and overnight CFD margins.
+* **Market Data Feeds (24.0%)**: Real-time Level 2 order book API streams and historical tick feeds.
+* **SaaS & AI Infrastructure (22.0%)**: LLM reasoning token usage and cloud strategy backtesting workers.
+* **Advisory & Research (16.0%)**: Premium quantitative newsletter memberships and auditing logs.
+
+Would you like to view your transaction invoice list or export these metrics?`;
+
+    const textChunks = mainText.split(" ");
+    for (const chunk of textChunks) {
+      sendEvent({ type: "text", text: chunk + " " });
+      await new Promise((resolve) => setTimeout(resolve, 15));
+    }
+    return;
+  }
+
+  // 4. Buy / Sell Trade Confirmation
+  if (normalizedPrompt.includes("buy btc") || normalizedPrompt.includes("buy") || normalizedPrompt.includes("sell")) {
+    const simulatedThoughts = [
+      "Parsing order parameters and validating tick sizes...\n",
+      "Scanning available CFD order books for optimal execution price...\n",
+      "Calculating margin requirements and transaction commissions...\n",
+      "Drafting interactive trade confirmation ticket...\n"
+    ];
+
+    for (const thought of simulatedThoughts) {
+      const words = thought.split(" ");
+      for (const word of words) {
+        sendEvent({ type: "reasoning", text: word + " " });
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    const isSell = normalizedPrompt.includes("sell");
+    const symbol = normalizedPrompt.includes("btc") ? "BTCUSD" : (normalizedPrompt.includes("aapl") ? "AAPL" : "BTCUSD");
+    const price = symbol === "BTCUSD" ? 67250 : 185;
+    const direction = isSell ? "SELL" : "BUY";
+    const size = symbol === "BTCUSD" ? 0.5 : 10;
+    const fee = symbol === "BTCUSD" ? 12.50 : 5.00;
+
+    const mainText = `${prefixText}### 🛡️ Secure Trade Execution Card
+
+I have prepared an interactive trade execution ticket for your confirmation. 
+
+Please review the contract details below. To submit the order to our simulated paper ledger, **Swipe to Confirm** (or click the slider). Confirmed trades instantly update your cash balance and open a new CFD position in the Left Panel explorer tab!
+
+\`\`\`json
+{
+  "component": "TradeConfirmationWidget",
+  "props": {
+    "symbol": "${symbol}",
+    "direction": "${direction}",
+    "size": ${size},
+    "estimatedPrice": ${price},
+    "leverage": 5,
+    "fee": ${fee}
+  }
+}
+\`\`\`
+
+> [!WARNING]
+> Trading financial CFDs carries significant risk. Please ensure your total leverage exposure remains in alignment with your risk tolerance guidelines.`;
+
+    const textChunks = mainText.split(" ");
+    for (const chunk of textChunks) {
+      sendEvent({ type: "text", text: chunk + " " });
+      await new Promise((resolve) => setTimeout(resolve, 15));
+    }
+    return;
+  }
+
+  // 5. Sandbox / SVG Approach A
+  if (normalizedPrompt.includes("sandbox") || normalizedPrompt.includes("svg")) {
+    const simulatedThoughts = [
+      "Generating isolated HTML/SVG canvas visualization package...\n",
+      "Embedding custom responsive styles and glassmorphism elements...\n",
+      "Packaging sandboxed iframe container for secured execution...\n"
+    ];
+
+    for (const thought of simulatedThoughts) {
+      const words = thought.split(" ");
+      for (const word of words) {
+        sendEvent({ type: "reasoning", text: word + " " });
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    const mainText = `${prefixText}### 🎨 Custom Sandboxed Visualisation (Approach A)
+
+Here is a bespoke sandboxed HTML/SVG status widget, representing real-time system metrics. It runs inside an isolated \`<iframe>\` to guarantee complete security.
+
+You can inspect the live layout in the "Preview" tab, or view/copy the raw source code in the "Code" tab:
+
+\`\`\`html
+<div style="background: linear-gradient(135deg, #09090b, #18181b); border: 1px solid #27272a; border-radius: 16px; padding: 24px; color: #f4f4f5; font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5); text-align: left;">
+  <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #27272a; padding-bottom: 12px; margin-bottom: 16px;">
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <span style="font-size: 20px;">⚡</span>
+      <span style="font-weight: 800; font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em; color: #10b981;">Quant Terminal Spark Node</span>
+    </div>
+    <span style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); color: #10b981; font-size: 11px; padding: 4px 8px; border-radius: 9999px; font-weight: 600;">ONLINE</span>
+  </div>
+  
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+    <div>
+      <p style="color: #a1a1aa; font-size: 12px; margin: 0 0 4px 0;">Total Volume (24h)</p>
+      <p style="font-size: 20px; font-weight: 700; margin: 0; color: #fff;">$1.24B</p>
+    </div>
+    <div>
+      <p style="color: #a1a1aa; font-size: 12px; margin: 0 0 4px 0;">Volatility Index (VIX)</p>
+      <p style="font-size: 20px; font-weight: 700; margin: 0; color: #ef4444;">18.42%</p>
+    </div>
+  </div>
+
+  <div style="margin-top: 16px; border-top: 1px solid #27272a; padding-top: 12px; display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: #a1a1aa;">
+    <span>System Sandbox Node: #042</span>
+    <span style="color: #6366f1; font-weight: 500;">Secure Sandboxed Context</span>
+  </div>
+</div>
+\`\`\`
+
+Feel free to customize the HTML code directly inside your request and watch me compile it dynamically!`;
+
+    const textChunks = mainText.split(" ");
+    for (const chunk of textChunks) {
+      sendEvent({ type: "text", text: chunk + " " });
+      await new Promise((resolve) => setTimeout(resolve, 15));
+    }
+    return;
+  }
+
   // CASE 1: Query to list or pull assets
   if (normalizedPrompt.includes("list") || normalizedPrompt.includes("assets") || normalizedPrompt.includes("catalog") || normalizedPrompt.includes("pull")) {
     const simulatedThoughts = [
