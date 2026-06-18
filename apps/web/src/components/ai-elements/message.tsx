@@ -843,7 +843,12 @@ export function ChatMessage({
           />
         ) : null}
 
-        {message.parts.map((part, idx) => {
+        {(() => {
+          let lastTextIdx = -1;
+          message.parts.forEach((p, i) => {
+            if (p.type === "text" && p.text.trim()) lastTextIdx = i;
+          });
+          return message.parts.map((part, idx) => {
           if (part.type === "trade-execution") {
             try {
               const trade = typeof part.text === "string" ? JSON.parse(part.text) : part.text;
@@ -864,12 +869,17 @@ export function ChatMessage({
           
           if (part.type === "text" && part.text.trim()) {
             return (
-              <MarkdownContent key={`${message.id}-${idx}`} markdown={part.text} />
+              <MarkdownContent
+                key={`${message.id}-${idx}`}
+                markdown={part.text}
+                isStreaming={!!isAssistantStreaming && idx === lastTextIdx}
+              />
             );
           }
-          
+
           return null;
-        })}
+          });
+        })()}
       </div>
     </div>
   );
