@@ -11,5 +11,15 @@
   },
   "devDependencies": {
     "typescript": "^5.3.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@google/genai",
+      "@prisma/client",
+      "@prisma/engines",
+      "prisma",
+      "protobufjs",
+      "sharp"
+    ]
   }
 }
