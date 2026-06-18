@@ -1,7 +1,11 @@
-import { getAgentGeminiModelId, getVertexGeminiClient, isGeminiRuntimeConfigured } from "@/lib/gemini/vertex-client";
+import { getAgentGeminiModelId, getVertexGeminiClient, isGeminiRuntimeConfigured, geminiIncludeThoughts } from "@/lib/gemini/vertex-client";
 import { parseVertexErrorMessage } from "@/lib/gemini/vertex-error-parser";
 import { getCapitalAssetCatalog } from "@/lib/catalog/capital-assets";
 import { generateVertexTextCompletion } from "@/lib/gemini/vertex-text-completion";
+import { fetchAssetMarketData, fetchMarketOverview } from "@/lib/chat/market-data-tool";
+import type { ChatStreamEvent } from "@/lib/chat/stream-types";
+import { extractToolGenui } from "@/lib/chat/stream-types";
+import { historyContextBlob, parseClientHistory, toGeminiContents, type ChatHistoryTurn } from "@/lib/chat/conversation-history";
 import { Type } from "@google/genai";
 
 export const dynamic = "force-dynamic";
@@ -9,7 +13,7 @@ export const dynamic = "force-dynamic";
 // Define Gemini tool schemas matching the approved technical specifications
 const getAllAssetsDeclaration = {
   name: "get_all_assets",
-  description: "Retrieve all assets available in the Quant catalog, grouped by asset class (crypto, stock, etf, index, commodity, etc.)",
+  description: "Retrieve all assets available in the Terabits AI catalog, grouped by asset class (crypto, stock, etf, index, commodity, etc.)",
   parameters: {
     type: Type.OBJECT,
     properties: {
@@ -35,6 +39,45 @@ const getAssetDetailsDeclaration = {
     },
     required: ["symbol"]
   }
+};
+
+const getAssetMarketDataDeclaration = {
+  name: "get_asset_market_data",
+  description:
+    "Fetch live quote and historical OHLCV candles for any catalog asset. Use for charts, price checks, and technical context. Resolves names like Bitcoin → BTCUSD.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      symbol: {
+        type: Type.STRING,
+        description: "Ticker or name, e.g. BTCUSD, Bitcoin, AAPL, GOLD"
+      },
+      query: {
+        type: Type.STRING,
+        description: "Alternative to symbol — natural language asset name"
+      },
+      range: {
+        type: Type.STRING,
+        description: "History window: 1D, 1W, 1M, 3M, 6M, 1Y (default 1M)"
+      }
+    }
+  }
+};
+
+const getMarketOverviewDeclaration = {
+  name: "get_market_overview",
+  description:
+    "Build a ready-to-render market overview dashboard (multiple assets). Returns a complete `genui` object — paste it verbatim into a ```genui block.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      symbols: {
+        type: Type.ARRAY,
+        description: "Optional tickers, e.g. [\"BTCUSD\",\"ETHUSD\",\"US100\"]. Defaults to top markets.",
+        items: { type: Type.STRING },
+      },
+    },
+  },
 };
 
 const spawnSubagentsDeclaration = {
@@ -72,7 +115,7 @@ const spawnSubagentsDeclaration = {
 
 export async function POST(req: Request) {
   try {
-    const { message } = await req.json();
+    const { message, history: rawHistory } = await req.json();
 
     if (!message || typeof message !== "string") {
       return new Response(JSON.stringify({ success: false, error: "Prompt message is required" }), {
@@ -81,13 +124,20 @@ export async function POST(req: Request) {
       });
     }
 
-    const systemInstruction = `You are Quant, a highly capable, neutral, and unbiased financial AI assistant.
+    const conversationHistory = parseClientHistory(rawHistory);
+
+    const systemInstruction = `You are Terabits AI, a highly capable, neutral, and unbiased financial AI assistant.
 Your goal is to provide clear, helpful, accurate, and objective answers to any technical, financial, or general prompt.
 You maintain a professional, objective, and polite tone. Provide structured replies using markdown formatting beautifully.
 
 You are equipped with advanced MCP tools to:
 - Retrieve the asset catalog and detailed assets data.
+- Pull live quotes and historical OHLCV via get_asset_market_data (use this for ANY chart or price request).
 - Spin up specialized agent teams (parallel subagents) to perform granular technical, fundamental, risk, or sentiment analyses.
+
+When the user asks for a chart, price, market overview, or market view:
+1. Call get_market_overview (multi-asset) or get_asset_market_data (single asset).
+2. The client renders the tool's \`genui\` payload automatically — write **one short intro sentence only**. Do NOT output a \`\`\`genui block for market data (the server injects the dashboard).
 
 When requested to analyze assets or run deep research, aggressively use the 'spawn_subagents' tool to form a team of subagents, and then synthesize their findings beautifully in your final response.
 
@@ -105,16 +155,12 @@ Node vocabulary (every node has a \`type\`):
 - Bridge to prebuilt widgets: component{name,props} where name is AssetComparativeChart | PortfolioBreakdown | TransactionSummary | TradeConfirmationWidget
 accent is one of cyan|violet|emerald|rose|amber|sky|zinc. icon is any lucide icon name (e.g. "trending-up").
 
-Example for "How is Bitcoin doing?" — output a \`genui\` fenced block whose body is:
-{ "view": [
-  { "type": "grid", "columns": 3, "children": [
-    { "type": "metricCard", "label": "BTC / USD", "value": 67250, "delta": "+2.4%", "trend": "up", "accent": "amber", "sparkline": [64100,65600,65000,66100,67250] },
-    { "type": "stat", "label": "24h High", "value": 67980, "accent": "emerald", "icon": "trending-up" },
-    { "type": "gauge", "value": 62, "label": "RSI", "caption": "Neutral-bullish", "accent": "violet" }
-  ]},
-  { "type": "chart", "variant": "area", "title": "7-day price", "labels": ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"], "series": [{ "name": "BTC", "data": [62100,63400,64200,63100,65000,66100,67250], "color": "amber" }] },
-  { "type": "callout", "variant": "info", "title": "Context", "text": "Momentum positive but RSI nearing overbought; use a stop." }
-]}
+Example for "How is Bitcoin doing?" — call get_asset_market_data, then paste the returned \`genui\` object:
+\`\`\`genui
+{ paste tool.genui here exactly }
+\`\`\`
+
+PREFER FLAT layouts: \`{ "view": [ metricCard, metricCard, chart ] }\`. Avoid deep nesting (section>grid>children). Max 8 sparkline points. Never truncate JSON — if short on space, omit sparkline rather than cutting mid-object.
 For a trade ticket, use a component node: { "type": "component", "name": "TradeConfirmationWidget", "props": { "symbol": "BTCUSD", "direction": "BUY", "size": 0.5, "estimatedPrice": 67250, "leverage": 5, "fee": 12.5 } }.
 
 2) HTML / SVG ARTIFACT — bespoke fully-custom interactive visuals ONLY.
@@ -126,14 +172,20 @@ RULES:
 - Whenever the user asks about a specific financial asset, coin, token, or stock ticker (e.g. Bitcoin, BTC, Ethereum, Apple, AAPL, gold, etc.) or requests to view charts, metrics, or perform analysis, you MUST output a \`\`\`genui block containing structured charts, metrics, and cards, or a \`\`\`html block containing a custom interactive SVG card. Raw text alone is NOT allowed for asset-specific requests.
 - Default to genui for anything quantitative or comparative; reach for HTML artifacts sparingly.
 - Put exactly ONE complete, valid JSON object inside each genui block and finish it (the renderer waits for the block to close before mounting — never leave it half-written).
+- GenUI JSON must be strict valid JSON: no ellipsis (...), no comments, no trailing commas. Include every sparkline number explicitly (max 12 points) or omit sparkline entirely.
+- When get_asset_market_data returns sparkline/labels, copy those arrays exactly into your chart/metricCard nodes.
 - Never claim you "cannot display graphics" — choose a generative-UI path instead.
+
+CONVERSATION MEMORY:
+- You receive the full conversation history for this chat. Use it to answer follow-ups, recall assets already discussed, and build on prior answers.
+- When the user says "that", "it", "the same", "what about…", or asks a shorter follow-up, resolve references from earlier turns before calling tools again.
 `;
 
     const encoder = new TextEncoder();
 
     const customStream = new ReadableStream({
       async start(controller) {
-        const sendEvent = (data: { type: "reasoning" | "text"; text: string }) => {
+        const sendEvent = (data: ChatStreamEvent) => {
           controller.enqueue(encoder.encode(JSON.stringify(data) + "\n"));
         };
 
@@ -142,23 +194,26 @@ RULES:
             const ai = getVertexGeminiClient();
             const model = getAgentGeminiModelId();
 
-            const contents: any[] = [{ role: "user", parts: [{ text: message }] }];
+            const contents: any[] = toGeminiContents(conversationHistory, message);
             let loopCount = 0;
             const maxLoops = 5;
-            let finalStreamNeeded = true;
+            let pendingGenui: unknown = null;
 
             const toolConfig = {
               systemInstruction,
               temperature: 0.3,
-              maxOutputTokens: 2500,
+              maxOutputTokens: 8192,
               thinkingConfig: {
                 thinkingBudget: 2048,
+                includeThoughts: geminiIncludeThoughts(),
               },
               tools: [
                 {
                   functionDeclarations: [
                     getAllAssetsDeclaration,
                     getAssetDetailsDeclaration,
+                    getAssetMarketDataDeclaration,
+                    getMarketOverviewDeclaration,
                     spawnSubagentsDeclaration
                   ]
                 }
@@ -168,32 +223,30 @@ RULES:
             while (loopCount < maxLoops) {
               loopCount++;
 
-              // Call generateContent (non-streaming) to check for tool calls
-              const response = await ai.models.generateContent({
+              const responseStream = await ai.models.generateContentStream({
                 model,
                 contents,
-                config: toolConfig
+                config: toolConfig,
               });
 
-              const candidate = response.candidates?.[0];
-              const parts = candidate?.content?.parts || [];
+              const parts: any[] = [];
 
-              // Capture and stream any thinking (reasoning) text produced during this turn
-              for (const part of parts) {
-                if (part.thought && part.text) {
-                  sendEvent({ type: "reasoning", text: part.text });
+              for await (const chunk of responseStream) {
+                const chunkParts = chunk.candidates?.[0]?.content?.parts || [];
+                for (const part of chunkParts) {
+                  parts.push(part);
+                  if (part.thought && part.text) {
+                    sendEvent({ type: "reasoning", text: part.text });
+                  } else if (part.text && !part.functionCall) {
+                    sendEvent({ type: "text", text: part.text });
+                  }
                 }
               }
 
-              // Check if there are function calls
-              const functionCalls = parts.filter(p => p.functionCall);
+              const functionCalls = parts.filter((p) => p.functionCall);
 
               if (functionCalls.length > 0) {
-                // Append the model's function call turn to the conversation history
-                contents.push({
-                  role: "model",
-                  parts: parts
-                });
+                contents.push({ role: "model", parts });
 
                 const toolResponseParts: any[] = [];
 
@@ -201,159 +254,131 @@ RULES:
                   const call = callPart.functionCall;
                   if (!call) continue;
 
-                  const name = call.name;
-                  const args = call.args as any;
-                  
-                  // Stream reasoning to the user that we are executing the tool
-                  sendEvent({
-                    type: "reasoning",
-                    text: `\n\nExecuting System Tool: \`${name}\`...\n`
-                  });
+                  const name = call.name as string;
+                  const args = (call.args ?? {}) as Record<string, unknown>;
+                  const toolUseId = `${name}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+                  const started = Date.now();
 
-                  let toolResult: any;
+                  sendEvent({ type: "status", label: name.replace(/_/g, " "), detail: "Running" });
+                  sendEvent({ type: "tool_start", toolUseId, name, args });
+
+                  let toolResult: unknown;
 
                   if (name === "get_all_assets") {
-                    const filter = args?.asset_class;
+                    const filter = args?.asset_class as string | undefined;
                     const allAssets = getCapitalAssetCatalog();
-                    const filtered = filter 
-                      ? allAssets.filter(a => a.asset_class === filter)
+                    const filtered = filter
+                      ? allAssets.filter((a) => a.asset_class === filter)
                       : allAssets;
-                    // Summarize to avoid massive token overhead
-                    const summarized = filtered.map(a => ({
+                    const summarized = filtered.map((a) => ({
                       id: a.id,
                       symbol: a.symbol,
                       display_name: a.display_name,
                       asset_class: a.asset_class,
-                      sector: a.sector
+                      sector: a.sector,
                     }));
                     toolResult = { success: true, count: summarized.length, assets: summarized };
-
-                    sendEvent({
-                      type: "reasoning",
-                      text: `Loaded **${summarized.length}** assets from catalog.\n`
-                    });
-
                   } else if (name === "get_asset_details") {
                     const symbol = args?.symbol as string | undefined;
                     const allAssets = getCapitalAssetCatalog();
-                    const asset = symbol 
-                      ? allAssets.find(a => a.symbol?.toLowerCase() === symbol.toLowerCase())
+                    const asset = symbol
+                      ? allAssets.find((a) => a.symbol?.toLowerCase() === symbol.toLowerCase())
                       : undefined;
-                    if (asset) {
-                      toolResult = { success: true, asset };
-                      sendEvent({
-                        type: "reasoning",
-                        text: `Retrieved detailed properties for asset **${symbol}**.\n`
-                      });
-                    } else {
-                      toolResult = { success: false, error: `Asset with symbol '${symbol || "unknown"}' not found in catalog.` };
-                      sendEvent({
-                        type: "reasoning",
-                        text: `Asset **${symbol || "unknown"}** was not found in catalog.\n`
-                      });
-                    }
-
+                    toolResult = asset
+                      ? { success: true, asset }
+                      : { success: false, error: `Asset '${symbol || "unknown"}' not found.` };
+                  } else if (name === "get_asset_market_data") {
+                    toolResult = await fetchAssetMarketData({
+                      symbol: args?.symbol as string | undefined,
+                      query: args?.query as string | undefined,
+                      range: (args?.range as string | undefined) ?? "1M",
+                    });
+                  } else if (name === "get_market_overview") {
+                    const symbols = Array.isArray(args?.symbols)
+                      ? (args.symbols as string[])
+                      : undefined;
+                    toolResult = await fetchMarketOverview(symbols);
                   } else if (name === "spawn_subagents") {
-                    const subagentsList = (args?.subagents || []) as any[];
-                    
-                    // Stream structured metadata of all subagents
-                    sendEvent({
-                      type: "reasoning",
-                      text: `[SUBAGENTS_DETAILS: ${JSON.stringify(subagentsList)}]\n`
-                    });
+                    const subagentsList = (args?.subagents || []) as Array<{
+                      role: string;
+                      asset_symbol: string;
+                      instruction: string;
+                    }>;
 
                     sendEvent({
-                      type: "reasoning",
-                      text: `Spawning Subagent Team (${subagentsList.length} members) in Parallel:\n`
+                      type: "status",
+                      label: "Subagent team",
+                      detail: `${subagentsList.length} analysts running`,
                     });
 
-                    // Log initial spinner states
-                    for (const sub of subagentsList) {
-                      sendEvent({
-                        type: "reasoning",
-                        text: `Spun up subagent **${sub.role}** for **${sub.asset_symbol}**.\n`
-                      });
-                    }
-
-                    // Execute subagents in parallel!
-                    const subagentPromises = subagentsList.map(async (sub: any) => {
-                      const asset = getCapitalAssetCatalog().find(a => a.symbol?.toLowerCase() === sub.asset_symbol?.toLowerCase());
-                      const assetContext = asset 
-                        ? `Asset Context: Name is "${asset.display_name}", Sector is "${asset.sector}", Class is "${asset.asset_class}", Max Leverage is ${asset.max_leverage_x}x.`
-                        : `Asset Context: Symbol ${sub.asset_symbol}.`;
-
-                      const subagentSystemInstruction = `You are a highly specialized financial subagent.
-Your role in this elite quantitative team is: ${sub.role}.
-${assetContext}
-Perform your analysis on the asset "${sub.asset_symbol}" strictly adhering to the user instructions.
-Be precise, mathematical, analytical, and objective. Keep your tone neutral and professional. Format your response beautifully in structured markdown. Do NOT repeat intro greetings.`;
+                    const subagentPromises = subagentsList.map(async (sub) => {
+                      const asset = getCapitalAssetCatalog().find(
+                        (a) => a.symbol?.toLowerCase() === sub.asset_symbol?.toLowerCase()
+                      );
+                      const assetContext = asset
+                        ? `Asset: "${asset.display_name}", sector ${asset.sector}, class ${asset.asset_class}.`
+                        : `Asset: ${sub.asset_symbol}.`;
 
                       sendEvent({
-                        type: "reasoning",
-                        text: `${sub.role} is analyzing **${sub.asset_symbol}**...\n`
+                        type: "status",
+                        label: sub.role,
+                        detail: `Analyzing ${sub.asset_symbol}`,
                       });
 
                       try {
                         const analysis = await generateVertexTextCompletion({
                           userPrompt: sub.instruction,
-                          systemInstruction: subagentSystemInstruction,
+                          systemInstruction: `You are a specialized ${sub.role}. ${assetContext} Be concise and analytical.`,
                           temperature: 0.2,
-                          maxTokens: 1500
+                          maxTokens: 1200,
                         });
-
-                        // Stream subagent completed report to client parser
-                        sendEvent({
-                          type: "reasoning",
-                          text: `[SUBAGENT_REPORT: ${JSON.stringify({ role: sub.role, asset: sub.asset_symbol, status: "success", report: analysis })}]\n`
-                        });
-
-                        sendEvent({
-                          type: "reasoning",
-                          text: `${sub.role} finished analysis and submitted report!\n`
-                        });
-
                         return {
                           role: sub.role,
                           asset: sub.asset_symbol,
                           status: "success",
-                          report: analysis
+                          report: analysis,
                         };
-                      } catch (subErr: any) {
-                        // Stream subagent failure to client parser
-                        sendEvent({
-                          type: "reasoning",
-                          text: `[SUBAGENT_REPORT: ${JSON.stringify({ role: sub.role, asset: sub.asset_symbol, status: "failed", error: subErr.message || String(subErr) })}]\n`
-                        });
-
-                        sendEvent({
-                          type: "reasoning",
-                          text: `${sub.role} failed: ${subErr.message || subErr}\n`
-                        });
+                      } catch (subErr: unknown) {
+                        const errMsg = subErr instanceof Error ? subErr.message : String(subErr);
                         return {
                           role: sub.role,
                           asset: sub.asset_symbol,
                           status: "failed",
-                          error: subErr.message || String(subErr)
+                          error: errMsg,
                         };
                       }
                     });
 
                     const subagentResults = await Promise.all(subagentPromises);
                     toolResult = { success: true, team_results: subagentResults };
-
-                    sendEvent({
-                      type: "reasoning",
-                      text: `All subagent analyses received successfully. Synthesizing reports...\n`
-                    });
                   } else {
                     toolResult = { success: false, error: "Unknown tool name" };
                   }
 
+                  const ok =
+                    toolResult != null &&
+                    typeof toolResult === "object" &&
+                    (toolResult as { success?: boolean }).success !== false;
+
+                  sendEvent({
+                    type: "tool_end",
+                    toolUseId,
+                    name,
+                    ok,
+                    args,
+                    output: toolResult,
+                    error: ok ? undefined : String((toolResult as { error?: string })?.error ?? "Tool failed"),
+                    durationMs: Date.now() - started,
+                  });
+
+                  const toolGenui = ok ? extractToolGenui(toolResult) : null;
+                  if (toolGenui) pendingGenui = toolGenui;
+
                   toolResponseParts.push({
                     functionResponse: {
-                      name: name,
-                      response: toolResult
-                    }
+                      name,
+                      response: toolResult,
+                    },
                   });
                 }
 
@@ -364,55 +389,27 @@ Be precise, mathematical, analytical, and objective. Keep your tone neutral and 
                 });
 
               } else {
-                // No more function calls, we have the final content!
-                const finalPart = parts.find(p => p.text && !p.thought);
-                if (finalPart?.text) {
-                  sendEvent({ type: "text", text: finalPart.text });
-                }
-                finalStreamNeeded = false;
                 break;
               }
             }
 
-            // Stream final synthesis candidate token-by-token if needed
-            if (finalStreamNeeded) {
-              const responseStream = await ai.models.generateContentStream({
-                model,
-                contents,
-                config: {
-                  systemInstruction,
-                  temperature: 0.3,
-                  maxOutputTokens: 2500,
-                  thinkingConfig: {
-                    thinkingBudget: 2048,
-                  },
-                },
-              });
-
-              for await (const chunk of responseStream) {
-                const parts = chunk.candidates?.[0]?.content?.parts || [];
-                for (const part of parts) {
-                  if (part.thought && part.text) {
-                    sendEvent({ type: "reasoning", text: part.text });
-                  } else if (part.text) {
-                    sendEvent({ type: "text", text: part.text });
-                  }
-                }
-              }
+            if (pendingGenui) {
+              sendEvent({ type: "genui", payload: pendingGenui, source: "tool" });
             }
-          } catch (err: any) {
+          } catch (err: unknown) {
+            const errMsg = err instanceof Error ? err.message : String(err);
             console.warn(
               "[POST /api/chat] Vertex AI streaming / tool calls failed, falling back to simulated high-fidelity token streaming:",
-              err.message || err
+              errMsg
             );
-            const errMsg = parseVertexErrorMessage(err);
-            await simulateStreamingResponse(message, sendEvent, `(Note: Vertex Gemini encountered an issue: ${errMsg}. Running local model fallbacks...)\n\n`);
+            const parsed = parseVertexErrorMessage(err);
+            await simulateStreamingResponse(message, sendEvent, `(Note: Vertex Gemini encountered an issue: ${parsed}. Running local model fallbacks...)\n\n`, conversationHistory);
           }
         } else {
           console.info(
             "[POST /api/chat] Gemini is not configured, running standard high-fidelity neutral simulated token stream."
           );
-          await simulateStreamingResponse(message, sendEvent);
+          await simulateStreamingResponse(message, sendEvent, "", conversationHistory);
         }
 
         controller.close();
@@ -442,10 +439,14 @@ Be precise, mathematical, analytical, and objective. Keep your tone neutral and 
  */
 async function simulateStreamingResponse(
   prompt: string,
-  sendEvent: (data: { type: "reasoning" | "text"; text: string }) => void,
-  prefixText = ""
+  sendEvent: (data: ChatStreamEvent) => void,
+  prefixText = "",
+  conversationHistory: ChatHistoryTurn[] = []
 ) {
-  const normalizedPrompt = prompt.toLowerCase();
+  const contextBlob = conversationHistory.length
+    ? `${historyContextBlob(conversationHistory)}\nUser: ${prompt}`
+    : prompt;
+  const normalizedPrompt = contextBlob.toLowerCase();
 
   // 1. Compare AAPL and MSFT
   if (normalizedPrompt.includes("compare aapl and msft") || normalizedPrompt === "compare" || (normalizedPrompt.includes("compare") && (normalizedPrompt.includes("aapl") || normalizedPrompt.includes("msft") || normalizedPrompt.includes("apple") || normalizedPrompt.includes("microsoft")))) {
@@ -496,185 +497,118 @@ How would you like to balance your tactical exposure between these two blue-chip
     return;
   }
 
-  // 1.1 Bitcoin / Single Asset Candlestick Chart (Approach A Sandbox)
-  if (normalizedPrompt.includes("bitcoin") || normalizedPrompt.includes("btc") || normalizedPrompt.includes("chart") || normalizedPrompt.includes("graph") || normalizedPrompt.includes("visualize")) {
-    const simulatedThoughts = [
-      "Interpreting request for single-asset technical charts / visualizations...\n",
-      "Retrieving historical prices and trading volume for BTCUSD...\n",
-      "Calculating moving averages (EMA 20, SMA 50) and RSI indicators...\n",
-      "Drafting dynamic, sandboxed SVG charting interface...\n"
-    ];
-
-    for (const thought of simulatedThoughts) {
-      const words = thought.split(" ");
-      for (const word of words) {
-        sendEvent({ type: "reasoning", text: word + " " });
-        await new Promise((resolve) => setTimeout(resolve, 25));
-      }
-      await new Promise((resolve) => setTimeout(resolve, 100));
+  // Market overview — server-built genui dashboard
+  if (
+    normalizedPrompt.includes("market overview") ||
+    normalizedPrompt.includes("market snapshot") ||
+    normalizedPrompt.includes("quick market")
+  ) {
+    const overview = await fetchMarketOverview();
+    if (overview.success === false) {
+      sendEvent({ type: "text", text: overview.error ?? "Market overview failed." });
+      return;
     }
-
-    const mainText = `${prefixText}### 🪙 Live Bitcoin (BTCUSD) Interactive Terminal Chart
-
-I have generated a high-fidelity interactive terminal chart for **Bitcoin (BTCUSD)** using an isolated and secured HTML sandboxed container. 
-
-You can toggle the timeframe tabs directly inside the card below (**1D**, **1W**, **1M**) to instantly recalculate and plot the SVG price paths, rolling high/low values, and 14-period RSI metrics:
-
-\`\`\`html
-<div class="card">
-  <div class="header">
-    <div class="title-section">
-      <img src="https://assets.coincap.io/assets/icons/btc@2x.png" class="logo" />
-      <div>
-        <h3>Bitcoin / USD CFD</h3>
-        <span class="symbol">BTCUSD</span>
-      </div>
-    </div>
-    <div class="price-section">
-      <h2 id="price">$67,250.00</h2>
-      <span class="change positive" id="change">+2.45%</span>
-    </div>
-  </div>
-  
-  <div class="timeframes">
-    <button class="tf-btn active" onclick="updateTimeframe('1D')">1D</button>
-    <button class="tf-btn" onclick="updateTimeframe('1W')">1W</button>
-    <button class="tf-btn" onclick="updateTimeframe('1M')">1M</button>
-  </div>
-
-  <div class="chart-container">
-    <svg id="svg-chart" viewBox="0 0 500 200">
-      <defs>
-        <linearGradient id="gradient" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#34d399" stop-opacity="0.2"/>
-          <stop offset="100%" stop-color="#34d399" stop-opacity="0"/>
-        </linearGradient>
-      </defs>
-      <path id="area-path" fill="url(#gradient)" stroke="none" />
-      <path id="line-path" fill="none" stroke="#34d399" stroke-width="2.5" />
-    </svg>
-  </div>
-
-  <div class="stats-row">
-    <div class="stat-item">
-      <span>RSI (14)</span>
-      <strong id="rsi-val">63.4</strong>
-    </div>
-    <div class="stat-item">
-      <span>24h High</span>
-      <strong id="high-val">$67,820.00</strong>
-    </div>
-    <div class="stat-item">
-      <span>24h Low</span>
-      <strong id="low-val">$65,110.00</strong>
-    </div>
-  </div>
-</div>
-
-<style>
-  body { background-color: #050508; margin: 0; padding: 12px; font-family: system-ui, -apple-system, sans-serif; color: #f1f3f9; }
-  .card { background: rgba(18, 23, 44, 0.45); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 20px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
-  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-  .title-section { display: flex; align-items: center; gap: 12px; }
-  .logo { width: 36px; height: 36px; border-radius: 50%; }
-  h3 { margin: 0; font-size: 16px; font-weight: 700; color: #fff; }
-  .symbol { font-size: 11px; color: #8e96aa; font-weight: 600; text-transform: uppercase; }
-  .price-section { text-align: right; }
-  h2 { margin: 0; font-size: 22px; font-weight: 800; color: #34d399; }
-  .change { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 6px; }
-  .change.positive { background: rgba(52, 211, 153, 0.1); color: #34d399; }
-  .timeframes { display: flex; gap: 8px; margin-bottom: 16px; }
-  .tf-btn { background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); color: #8e96aa; padding: 6px 12px; border-radius: 8px; font-size: 11px; font-weight: 700; cursor: pointer; transition: all 0.3s; }
-  .tf-btn:hover { color: #fff; background: rgba(255, 255, 255, 0.05); }
-  .tf-btn.active { background: rgba(56, 189, 248, 0.1); border-color: rgba(56, 189, 248, 0.2); color: #38bdf8; }
-  .chart-container { position: relative; width: 100%; height: 160px; margin-bottom: 16px; }
-  svg { width: 100%; height: 100%; overflow: visible; }
-  .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 16px; }
-  .stat-item { display: flex; flex-direction: column; gap: 4px; }
-  .stat-item span { font-size: 10px; color: #8e96aa; font-weight: 500; }
-  .stat-item strong { font-size: 13px; color: #fff; font-weight: 700; }
-</style>
-
-<script>
-  const data = {
-    '1D': [65500, 66100, 65800, 66700, 67250],
-    '1W': [62100, 63400, 64200, 63100, 65000, 66100, 67250],
-    '1M': [59000, 61200, 60500, 62800, 64100, 65600, 67250]
-  };
-  const stats = {
-    '1D': { price: '$67,250.00', change: '+2.45%', rsi: '63.4', high: '$67,820.00', low: '$65,110.00', color: '#34d399', bg: 'rgba(52, 211, 153, 0.1)' },
-    '1W': { price: '$67,250.00', change: '+8.29%', rsi: '68.1', high: '$68,100.00', low: '$61,850.00', color: '#34d399', bg: 'rgba(52, 211, 153, 0.1)' },
-    '1M': { price: '$67,250.00', change: '+13.98%', rsi: '72.5', high: '$69,450.00', low: '$58,300.00', color: '#34d399', bg: 'rgba(52, 211, 153, 0.1)' }
-  };
-
-  function updateTimeframe(tf) {
-    document.querySelectorAll('.tf-btn').forEach(btn => btn.classList.remove('active'));
-    
-    // Find button based on content if click target isn't the button
-    const target = event ? event.currentTarget || event.target : null;
-    if (target && target.classList) {
-      target.classList.add('active');
-    } else {
-      // Fallback
-      const btns = document.querySelectorAll('.tf-btn');
-      if (tf === '1D') btns[0].classList.add('active');
-      if (tf === '1W') btns[1].classList.add('active');
-      if (tf === '1M') btns[2].classList.add('active');
+    const intro = `${prefixText}Here's a quick market overview:`;
+    for (const chunk of intro.split(" ")) {
+      sendEvent({ type: "text", text: chunk + " " });
+      await new Promise((r) => setTimeout(r, 12));
     }
-
-    const tfData = data[tf];
-    const tfStats = stats[tf];
-
-    document.getElementById('price').innerText = tfStats.price;
-    document.getElementById('change').innerText = tfStats.change;
-    document.getElementById('rsi-val').innerText = tfStats.rsi;
-    document.getElementById('high-val').innerText = tfStats.high;
-    document.getElementById('low-val').innerText = tfStats.low;
-
-    // Draw SVG path
-    const svgWidth = 500;
-    const svgHeight = 160;
-    const padding = 10;
-    const points = tfData.map((val, idx) => {
-      const min = Math.min(...tfData);
-      const max = Math.max(...tfData);
-      const range = max - min || 1;
-      const x = padding + (idx / (tfData.length - 1)) * (svgWidth - 2 * padding);
-      const y = svgHeight - padding - ((val - min) / range) * (svgHeight - 2 * padding);
-      return { x, y };
-    });
-
-    let pathStr = "M " + points[0].x + " " + points[0].y;
-    for (let i = 0; i < points.length - 1; i++) {
-      const cpX1 = points[i].x + (points[i+1].x - points[i].x) / 3;
-      const cpY1 = points[i].y;
-      const cpX2 = points[i].x + (2 * (points[i+1].x - points[i].x)) / 3;
-      const cpY2 = points[i+1].y;
-      pathStr += " C " + cpX1 + " " + cpY1 + ", " + cpX2 + " " + cpY2 + ", " + points[i+1].x + " " + points[i+1].y;
-    }
-
-    document.getElementById('line-path').setAttribute('d', pathStr);
-    document.getElementById('line-path').setAttribute('stroke', tfStats.color);
-
-    const areaStr = pathStr + " L " + points[points.length-1].x + " " + svgHeight + " L " + points[0].x + " " + svgHeight + " Z";
-    document.getElementById('area-path').setAttribute('d', areaStr);
-    
-    const grad = document.getElementById('gradient');
-    grad.innerHTML = '<stop offset="0%" stop-color="' + tfStats.color + '" stop-opacity="0.2"/><stop offset="100%" stop-color="' + tfStats.color + '" stop-opacity="0"/>';
+    sendEvent({ type: "genui", payload: overview.genui, source: "get_market_overview" });
+    return;
   }
 
-  // Initial Draw
-  updateTimeframe('1D');
-</script>
-\`\`\`
+  // Chart / single-asset requests — use real market data tool + compact genui
+  if (
+    normalizedPrompt.includes("bitcoin") ||
+    normalizedPrompt.includes("btc") ||
+    normalizedPrompt.includes("chart") ||
+    normalizedPrompt.includes("graph") ||
+    normalizedPrompt.includes("visualize") ||
+    normalizedPrompt.includes("price of")
+  ) {
+    const query = normalizedPrompt.includes("btc") || normalizedPrompt.includes("bitcoin") ? "Bitcoin" : prompt;
+    const toolUseId = `get_asset_market_data-${Date.now()}`;
+    const started = Date.now();
 
-Would you like to analyze support zones, run a parallel multi-agent evaluation on BTCUSD, or draft an interactive trade ticket to initiate a position?`;
+    sendEvent({ type: "status", label: "get asset market data", detail: "Fetching candles" });
+    sendEvent({ type: "tool_start", toolUseId, name: "get_asset_market_data", args: { query, range: "1M" } });
 
-    const textChunks = mainText.split(" ");
-    for (const chunk of textChunks) {
-      sendEvent({ type: "text", text: chunk + " " });
-      await new Promise((resolve) => setTimeout(resolve, 15));
+    const market = await fetchAssetMarketData({ query, range: "1M" });
+
+    sendEvent({
+      type: "tool_end",
+      toolUseId,
+      name: "get_asset_market_data",
+      ok: market.success !== false,
+      args: { query, range: "1M" },
+      output: market,
+      error: market.success === false ? market.error : undefined,
+      durationMs: Date.now() - started,
+    });
+
+    if (market.success === false) {
+      const errText = `${prefixText}I couldn't load market data for that asset: ${market.error}\n\nTry a catalog symbol like **BTCUSD**, **AAPL**, or **GOLD**.`;
+      for (const chunk of errText.split(" ")) {
+        sendEvent({ type: "text", text: chunk + " " });
+        await new Promise((r) => setTimeout(r, 12));
+      }
+      return;
     }
+
+    const quote = market.quote!;
+    const stats = market.stats!;
+    const change =
+      quote.change24hPct != null
+        ? `${quote.change24hPct >= 0 ? "+" : ""}${quote.change24hPct.toFixed(2)}%`
+        : undefined;
+    const trend =
+      quote.change24hPct == null ? "flat" : quote.change24hPct >= 0 ? "up" : "down";
+
+    const genui = market.genui ?? {
+      view: [
+        {
+          type: "grid",
+          columns: 2,
+          children: [
+            {
+              type: "metricCard",
+              label: market.symbol,
+              value: quote.spot,
+              delta: change,
+              trend,
+              accent: "amber",
+              sparkline: (() => {
+                const s = market.sparkline as number[] | undefined;
+                return Array.isArray(s) ? s.slice(-8) : undefined;
+              })(),
+            },
+            {
+              type: "keyValue",
+              items: [
+                { label: "24h High", value: stats.high },
+                { label: "24h Low", value: stats.low },
+                { label: "Points", value: stats.points },
+              ],
+            },
+          ],
+        },
+        {
+          type: "chart",
+          variant: "area",
+          title: `${market.display_name} · 1M`,
+          labels: market.labels,
+          series: [{ name: market.symbol, data: market.sparkline, color: "amber" }],
+        },
+      ],
+    };
+
+    const mainText = `${prefixText}Here's **${market.display_name}** with live quote and 1-month history. Spot **${quote.spot.toLocaleString()}**${change ? ` (${change} 24h)` : ""}. Want a different range or a trade ticket?`;
+
+    for (const chunk of mainText.split(" ")) {
+      sendEvent({ type: "text", text: chunk + " " });
+      await new Promise((r) => setTimeout(r, 12));
+    }
+    sendEvent({ type: "genui", payload: genui, source: "get_asset_market_data" });
     return;
   }
 

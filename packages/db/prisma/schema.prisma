@@ -94,3 +94,60 @@ model ExplainabilityLog {
 
   @@map("explainability_logs")
 }
+
+model AgentRun {
+  id          String            @id @default(uuid())
+  symbol      String
+  status      String            @default("PENDING") // PENDING, RUNNING, COMPLETED, FAILED
+  startedAt   DateTime          @default(now()) @map("started_at")
+  completedAt DateTime?         @map("completed_at")
+  proposals   Proposal[]
+  riskEvals   RiskEvaluation[]
+  orders      Order[]
+
+  @@map("agent_runs")
+}
+
+model Proposal {
+  id          String   @id @default(uuid())
+  agentRunId  String   @map("agent_run_id")
+  symbol      String
+  side        String
+  confidence  Float
+  timeHorizon String   @map("time_horizon")
+  rationale   String
+  payload     Json
+  createdAt   DateTime @default(now()) @map("created_at")
+  agentRun    AgentRun @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
+
+  @@map("proposals")
+}
+
+model RiskEvaluation {
+  id         String   @id @default(uuid())
+  agentRunId String   @map("agent_run_id")
+  approved   Boolean
+  reasons    String[]
+  sizedOrder Json?    @map("sized_order")
+  createdAt  DateTime @default(now()) @map("created_at")
+  agentRun   AgentRun @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
+
+  @@map("risk_evaluations")
+}
+
+model Order {
+  id          String   @id @default(uuid())
+  agentRunId  String   @map("agent_run_id")
+  symbol      String
+  side        String
+  volume      Float
+  stopLoss    Float    @map("stop_loss")
+  takeProfit  Float    @map("take_profit")
+  status      String   @default("PENDING")
+  dealId      String?  @map("deal_id")
+  filledPrice Float?   @map("filled_price")
+  createdAt   DateTime @default(now()) @map("created_at")
+  agentRun    AgentRun @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
+
+  @@map("orders")
+}

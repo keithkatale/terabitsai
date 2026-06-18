@@ -6,20 +6,14 @@ import { cn } from "@/lib/utils";
 import { SmoothAreaChart } from "@/components/ui/smooth-area-chart";
 import { capitalAdapter } from "@/lib/execution/capital-adapter";
 import QuickTradeDialog from "@/components/ui/quick-trade-dialog";
+import { useAccount } from "@/hooks/use-account";
+import { postTradeLedger } from "@/lib/account/api";
+import { DepositModal } from "@/components/account/deposit-modal";
+import { WithdrawModal } from "@/components/account/withdraw-modal";
+import { AccountPanel } from "@/components/account/account-panel";
 
 import { getCapitalAssetCatalog } from "@/lib/catalog/capital-assets";
 import { AssetLogoIcon } from "@/components/ui/asset-logo";
-import {
-  ensurePlatformAccount,
-  getAccountBalance,
-  postDeposit,
-  postTradeAdjustment,
-  postTradeReserve,
-  postTradeRelease,
-  type PlatformAccount,
-  type BalanceSummary
-} from "@/lib/ledger";
-
 import {
   ImageIcon,
   FileUp,
@@ -47,6 +41,8 @@ import {
 } from "lucide-react";
 
 import { ChatMessage as ChatMessageBubble } from "@/components/ai-elements/message";
+import type { ChatStreamEvent, ChatToolPod } from "@/lib/chat/stream-types";
+import { buildHistoryFromMessages } from "@/lib/chat/conversation-history";
 
 import {
   Conversation,
@@ -65,19 +61,21 @@ const Figma = ({ className }: { className?: string }) => (
   </svg>
 );
 
-// --- Message Parts Structural Model ---
 interface MessagePart {
-  type: "reasoning" | "text" | "trade-execution";
-  text: string;
+  type: "reasoning" | "text" | "trade-execution" | "genui";
+  text?: string;
+  payload?: unknown;
 }
 
 interface ChatMessage {
   id: string;
   role: "user" | "assistant" | "system";
   parts: MessagePart[];
+  toolPods?: ChatToolPod[];
+  liveStatus?: string;
+  liveStatusDetail?: string;
 }
 
-// --- Trade Execution Card (Wow Factor!) ---
 interface TradeData {
   id: string;
   symbol: string;
@@ -819,71 +817,59 @@ export default function Home() {
   const [tradeSize, setTradeSize] = useState<number>(1);
   const [tradeLeverage, setTradeLeverage] = useState<number>(5);
 
-  // Platform account and Ledger balance states
-  const [account, setAccount] = useState<PlatformAccount | null>(null);
-  const [balance, setBalance] = useState<BalanceSummary | null>(null);
+  const {
+    user,
+    summary,
+    loading: accountLoading,
+    refresh: refreshAccount,
+    signOut,
+    accountId,
+    balance,
+  } = useAccount();
+
   const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
-  const [depositAmount, setDepositAmount] = useState("5000");
-  const [depositGateway, setDepositGateway] = useState("ACH");
-  const [isDepositing, setIsDepositing] = useState(false);
+  const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
+  const [isAccountPanelOpen, setIsAccountPanelOpen] = useState(false);
 
-  // 0. Automatic Account & Ledger Setup on mount
-  useEffect(() => {
-    async function initAccount() {
-      try {
-        let userId = localStorage.getItem("quant_user_id");
-        if (!userId) {
-          try {
-            userId = crypto.randomUUID();
-          } catch (e) {
-            userId = "usr_" + Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
-          }
-          localStorage.setItem("quant_user_id", userId);
-        }
-
-        const acc = await ensurePlatformAccount(userId);
-        setAccount(acc);
-
-        const bal = await getAccountBalance(acc.id);
-        setBalance(bal);
-      } catch (err) {
-        console.error("Failed to initialize Quant platform account:", err);
-      }
-    }
-
-    initAccount();
-  }, []);
-
-  const handleDepositSubmit = async () => {
-    const amt = parseFloat(depositAmount);
-    if (!account || isNaN(amt) || amt <= 0) return;
-
-    setIsDepositing(true);
-    try {
-      await postDeposit(account.id, amt, depositGateway);
-      const newBal = await getAccountBalance(account.id);
-      setBalance(newBal);
-      setIsDepositModalOpen(false);
-
-      // Append confirmation receipt to chat history
-      const receiptId = Date.now().toString();
+  const handleDepositSuccess = useCallback(
+    async (amt: number, gateway: string) => {
+      const updated = await fetch("/api/ledger/summary?mode=demo", {
+        credentials: "include",
+      }).then((r) => r.json());
+      await refreshAccount();
+      const available = updated?.balance?.wallet_available ?? 0;
       const receiptMessage: ChatMessage = {
-        id: receiptId,
+        id: Date.now().toString(),
         role: "assistant",
         parts: [
           {
             type: "text",
-            text: `✅ **Demo Wallet Funded Successfully!**\n\nWe have credited your paper margin account (**${account.id.substring(0, 8)}...**) with **$${amt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}** via simulated **${depositGateway}** gateway transfer.\n\n* Your available margin cash is now **$${newBal.available.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}**.\n* This transaction has been permanently recorded in the Supabase ledger entries table.`
-          }
-        ]
+            text: `✅ **Demo wallet funded**\n\nCredited **$${amt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}** via simulated **${gateway}**.\n\nAvailable margin: **$${available.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}**`,
+          },
+        ],
       };
       setMessages((prev) => [...prev, receiptMessage]);
-    } catch (err) {
-      console.error("Deposit simulation error:", err);
-    } finally {
-      setIsDepositing(false);
-    }
-  };
+    },
+    [refreshAccount]
+  );
+
+  const handleWithdrawSuccess = useCallback(
+    async (amt: number) => {
+      await refreshAccount();
+      const receiptMessage: ChatMessage = {
+        id: Date.now().toString(),
+        role: "assistant",
+        parts: [
+          {
+            type: "text",
+            text: `✅ **Withdrawal processed**\n\n**$${amt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}** was withdrawn from your demo wallet.`,
+          },
+        ],
+      };
+      setMessages((prev) => [...prev, receiptMessage]);
+    },
+    [refreshAccount]
+  );
 
   // --- Real-time Polling & Quote Sync ---
   
@@ -1057,7 +1043,7 @@ export default function Home() {
 
   // --- CFD Transaction Execution ---
 
-  const handleTradeExecute = async (trade: {
+  const handleTradeExecute = useCallback(async (trade: {
     id: string;
     symbol: string;
     direction: "BUY" | "SELL";
@@ -1069,20 +1055,20 @@ export default function Home() {
     sl: number | null;
     timestamp: number;
   }) => {
-    // Assert if margin can be covered
-    if (balance && balance.available < trade.margin) {
+    const walletAvailable = balance?.wallet_available ?? 0;
+    if (walletAvailable < trade.margin) {
       const errorMsg: ChatMessage = {
         id: Date.now().toString(),
         role: "assistant",
         parts: [
           {
             type: "text",
-            text: `⚠️ **Margin Check Failed:** Your required leverage margin for this trade (**$${trade.margin.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}**) exceeds your available account cash balance of **$${balance.available.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}**. Please deposit funds or adjust your trade parameters.`
-          }
-        ]
+            text: `⚠️ **Margin check failed:** Required margin **$${trade.margin.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}** exceeds available **$${walletAvailable.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}**. Deposit funds or reduce size.`,
+          },
+        ],
       };
       setMessages((prev) => [...prev, errorMsg]);
-      setIsDepositModalOpen(true); // Open Deposit Modal
+      setIsDepositModalOpen(true);
       return;
     }
 
@@ -1100,34 +1086,28 @@ export default function Home() {
       timestamp: trade.timestamp,
     };
 
-    // Add position to active positions portfolio
     setPositions((prev) => [position, ...prev]);
 
-    // Post reserve transaction to ledger
-    if (account) {
-      try {
-        await postTradeReserve(account.id, trade.margin, trade.symbol, trade.id, trade.direction.toLowerCase() as "buy" | "sell");
-        const newBal = await getAccountBalance(account.id);
-        setBalance(newBal);
-      } catch (err) {
-        console.error("Failed to post trade reserve ledger entry:", err);
-      }
+    try {
+      await postTradeLedger({
+        action: "reserve",
+        amount: trade.margin,
+        symbol: trade.symbol,
+        tradeId: trade.id,
+        side: trade.direction.toLowerCase() as "buy" | "sell",
+      });
+      await refreshAccount();
+    } catch (err) {
+      console.error("Failed to post trade reserve:", err);
     }
 
-    // Append beautiful execution receipt to Chat feed
-    const receiptId = Date.now().toString();
     const receiptMessage: ChatMessage = {
-      id: receiptId,
+      id: Date.now().toString(),
       role: "assistant",
-      parts: [
-        {
-          type: "trade-execution",
-          text: JSON.stringify(position),
-        },
-      ],
+      parts: [{ type: "trade-execution", text: JSON.stringify(position) }],
     };
     setMessages((prev) => [...prev, receiptMessage]);
-  };
+  }, [balance, refreshAccount]);
 
   // Listen to standard "execute-simulated-trade" custom window events dispatched by Approach B widgets
   useEffect(() => {
@@ -1162,36 +1142,42 @@ export default function Home() {
     };
   }, [handleTradeExecute]);
 
-  const closePosition = async (id: string) => {
+  const closePosition = useCallback(async (id: string) => {
     const pos = positions.find((p) => p.id === id);
     if (!pos) return;
 
     const currentSpot = sidebarQuotes[pos.symbol]?.spot || pos.entryPrice;
-    const finalPnl = pos.direction === "BUY"
-      ? (currentSpot - pos.entryPrice) * pos.size
-      : (pos.entryPrice - currentSpot) * pos.size;
+    const finalPnl =
+      pos.direction === "BUY"
+        ? (currentSpot - pos.entryPrice) * pos.size
+        : (pos.entryPrice - currentSpot) * pos.size;
 
-    // Filter out of portfolio
     setPositions((prev) => prev.filter((p) => p.id !== id));
 
-    // Post release and adjustment ledger entries in parallel
-    if (account) {
-      try {
-        await Promise.all([
-          postTradeRelease(account.id, pos.margin, pos.symbol, pos.id, pos.direction.toLowerCase() as "buy" | "sell"),
-          postTradeAdjustment(account.id, finalPnl, pos.symbol, pos.id, pos.direction.toLowerCase() as "buy" | "sell")
-        ]);
-        const newBal = await getAccountBalance(account.id);
-        setBalance(newBal);
-      } catch (err) {
-        console.error("Failed to post trade release / adjustment ledger entries:", err);
-      }
+    try {
+      await Promise.all([
+        postTradeLedger({
+          action: "release",
+          amount: pos.margin,
+          symbol: pos.symbol,
+          tradeId: pos.id,
+          side: pos.direction.toLowerCase() as "buy" | "sell",
+        }),
+        postTradeLedger({
+          action: "adjustment",
+          signedAmount: finalPnl,
+          symbol: pos.symbol,
+          tradeId: pos.id,
+          side: pos.direction.toLowerCase() as "buy" | "sell",
+        }),
+      ]);
+      await refreshAccount();
+    } catch (err) {
+      console.error("Failed to post trade release / adjustment:", err);
     }
 
-    // Append beautiful position closed confirmation card to chat feed
-    const receiptId = Date.now().toString();
     const receiptMessage: ChatMessage = {
-      id: receiptId,
+      id: Date.now().toString(),
       role: "assistant",
       parts: [
         {
@@ -1207,7 +1193,7 @@ export default function Home() {
       ],
     };
     setMessages((prev) => [...prev, receiptMessage]);
-  };
+  }, [positions, sidebarQuotes, refreshAccount]);
 
   // --- Core AI Streaming Logic ---
   const handleSend = async (textToSend: string) => {
@@ -1235,10 +1221,11 @@ export default function Home() {
     setLoading(true);
 
     try {
+      const history = buildHistoryFromMessages(messages);
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: prompt }),
+        body: JSON.stringify({ message: prompt, history }),
       });
 
       if (!response.body) {
@@ -1262,31 +1249,77 @@ export default function Home() {
           if (!trimmed) continue;
 
           try {
-            const event = JSON.parse(trimmed) as { type: "reasoning" | "text"; text: string };
-            
+            const event = JSON.parse(trimmed) as ChatStreamEvent;
+
             setMessages((prev) => {
               const updated = [...prev];
               const lastMsg = updated[updated.length - 1];
-              
-              if (lastMsg && lastMsg.id === assistantMsgId) {
+              if (!lastMsg || lastMsg.id !== assistantMsgId) return prev;
+
+              if (event.type === "text" || event.type === "reasoning") {
                 const parts = [...lastMsg.parts];
                 const lastPart = parts[parts.length - 1];
-
                 if (lastPart && lastPart.type === event.type) {
-                  parts[parts.length - 1] = {
-                    ...lastPart,
-                    text: lastPart.text + event.text,
-                  };
+                  parts[parts.length - 1] = { ...lastPart, text: (lastPart.text ?? "") + event.text };
                 } else {
                   parts.push({ type: event.type, text: event.text });
                 }
+                updated[updated.length - 1] = { ...lastMsg, parts, liveStatus: undefined, liveStatusDetail: undefined };
+                return updated;
+              }
 
+              if (event.type === "genui") {
+                const parts = [...lastMsg.parts, { type: "genui" as const, payload: event.payload }];
+                updated[updated.length - 1] = { ...lastMsg, parts, liveStatus: undefined, liveStatusDetail: undefined };
+                return updated;
+              }
+
+              if (event.type === "status") {
                 updated[updated.length - 1] = {
                   ...lastMsg,
-                  parts,
+                  liveStatus: event.label,
+                  liveStatusDetail: event.detail,
                 };
+                return updated;
               }
-              return updated;
+
+              if (event.type === "tool_start") {
+                const pods = [...(lastMsg.toolPods ?? [])];
+                const i = pods.findIndex((p) => p.toolUseId === event.toolUseId);
+                if (i >= 0) {
+                  pods[i] = { ...pods[i], name: event.name, status: "running", args: event.args };
+                } else {
+                  pods.push({ toolUseId: event.toolUseId, name: event.name, status: "running", args: event.args });
+                }
+                updated[updated.length - 1] = { ...lastMsg, toolPods: pods };
+                return updated;
+              }
+
+              if (event.type === "tool_end") {
+                const pods = [...(lastMsg.toolPods ?? [])];
+                const i = pods.findIndex((p) => p.toolUseId === event.toolUseId);
+                const done: ChatToolPod = {
+                  toolUseId: event.toolUseId,
+                  name: event.name,
+                  status: "done",
+                  ok: event.ok,
+                  args: event.args,
+                  output: event.output,
+                  error: event.error,
+                  durationMs: event.durationMs,
+                };
+                if (i >= 0) pods[i] = { ...pods[i], ...done };
+                else pods.push(done);
+                updated[updated.length - 1] = {
+                  ...lastMsg,
+                  toolPods: pods,
+                  liveStatus: event.ok ? event.name.replace(/_/g, " ") : "Tool failed",
+                  liveStatusDetail: event.ok ? "Done" : event.error,
+                };
+                return updated;
+              }
+
+              return prev;
             });
           } catch (e) {
             console.warn("Could not parse stream event line:", trimmed, e);
@@ -1401,25 +1434,37 @@ Provide:
             </button>
             <div className="flex items-center gap-1.5">
               <SparklesIcon className="size-4 text-indigo-400 animate-pulse" />
-              <span className="font-extrabold tracking-wider text-white text-xs uppercase">Quant AI Chat</span>
+              <span className="font-extrabold tracking-wider text-white text-xs uppercase">Terabits AI</span>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
             {balance && (
-              <div className="flex items-center gap-2 bg-zinc-950/60 border border-zinc-900/50 rounded-lg px-2 py-1 shadow-sm">
+              <button
+                type="button"
+                onClick={() => setIsAccountPanelOpen(true)}
+                className="flex items-center gap-2 bg-zinc-950/60 border border-zinc-900/50 rounded-lg px-2 py-1 shadow-sm hover:border-zinc-700 transition-all cursor-pointer"
+              >
                 <div className="flex flex-col text-right">
-                  <span className="text-[7px] text-zinc-500 font-extrabold tracking-wider uppercase leading-none">DEMO CASH</span>
-                  <span className="text-[10px] font-mono font-bold text-white mt-0.5">${balance.available.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  <span className="text-[7px] text-zinc-500 font-extrabold tracking-wider uppercase leading-none">
+                    Demo cash
+                  </span>
+                  <span className="text-[10px] font-mono font-bold text-white mt-0.5">
+                    ${balance.wallet_available.toLocaleString(undefined, {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
+                  </span>
                 </div>
-                <button
-                  onClick={() => setIsDepositModalOpen(true)}
-                  className="p-0.5 rounded bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 hover:bg-indigo-500 hover:text-white transition-all cursor-pointer text-[8px] font-extrabold uppercase px-1"
-                >
-                  +
-                </button>
-              </div>
+                <CircleUserRound className="size-4 text-indigo-400 shrink-0" />
+              </button>
             )}
+            <button
+              onClick={() => setIsDepositModalOpen(true)}
+              className="p-1 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 hover:bg-indigo-500 hover:text-white transition-all cursor-pointer text-[9px] font-extrabold uppercase px-2 py-1"
+            >
+              Fund
+            </button>
           </div>
         </header>
 
@@ -1433,10 +1478,10 @@ Provide:
               </div>
               <div className="space-y-2">
                 <h1 className="text-2xl font-extrabold text-white tracking-tight select-none">
-                  Quant AI Assistant
+                  Terabits AI
                 </h1>
                 <p className="text-zinc-500 text-xs max-w-[280px] mx-auto select-none font-medium leading-relaxed">
-                  Analyze live trends, execute simulated CFD transactions, and study market statistics on the right Asset Analysis Workspace.
+                  Analyze live trends, paper-trade CFDs with your demo wallet, and explore markets in the workspace.
                 </p>
               </div>
               <div className="w-full max-w-sm pt-4">
@@ -1480,7 +1525,7 @@ Provide:
                             </button>
                             <button
                               onClick={() => {
-                                const combinedText = message.parts.map((p) => p.text).join("");
+                                const combinedText = message.parts.map((p) => p.text ?? "").join("");
                                 navigator.clipboard.writeText(combinedText);
                               }}
                               className="px-2 py-1 rounded-md text-[10px] font-semibold border border-zinc-800 bg-zinc-900/10 hover:border-zinc-700 hover:bg-zinc-900 text-zinc-500 hover:text-white transition-all flex items-center gap-1 cursor-pointer"
@@ -1988,121 +2033,37 @@ Provide:
         onExecute={handleTradeExecute}
       />
 
-      {/* --- FUND DEPOSIT MODAL --- */}
-      {isDepositModalOpen && account && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-zinc-950/95 border border-zinc-900 rounded-2xl w-full max-w-md p-6 relative shadow-2xl flex flex-col gap-4 animate-in zoom-in-95 duration-200">
-            {/* Close Button */}
-            <button
-              onClick={() => setIsDepositModalOpen(false)}
-              className="absolute top-4 right-4 p-1.5 rounded-lg border border-zinc-900 bg-zinc-950 text-zinc-400 hover:text-white hover:bg-zinc-900 transition-all cursor-pointer"
-            >
-              <X className="size-4" />
-            </button>
+      <DepositModal
+        open={isDepositModalOpen}
+        onClose={() => setIsDepositModalOpen(false)}
+        accountId={accountId}
+        currentBalance={balance?.wallet_available ?? 0}
+        onSuccess={handleDepositSuccess}
+      />
 
-            {/* Header */}
-            <div className="space-y-1">
-              <span className="text-[10px] font-extrabold text-indigo-400 tracking-wider uppercase">PAPER TRADING WALLET</span>
-              <h2 className="text-xl font-extrabold text-white tracking-tight flex items-center gap-1.5">
-                <DollarSign className="size-5 text-indigo-400" />
-                Fund Demo Account
-              </h2>
-              <p className="text-xs text-zinc-500 font-medium">Add simulated capital to your paper margin account instantly.</p>
-            </div>
+      <WithdrawModal
+        open={isWithdrawModalOpen}
+        onClose={() => setIsWithdrawModalOpen(false)}
+        walletAvailable={balance?.wallet_available ?? 0}
+        onSuccess={handleWithdrawSuccess}
+      />
 
-            {/* Account Status Card */}
-            <div className="bg-zinc-900/40 border border-zinc-900 rounded-xl p-3.5 flex items-center justify-between text-xs font-mono">
-              <div className="space-y-1">
-                <span className="text-[10px] text-zinc-500 font-bold block leading-none">DEMO ACCOUNT</span>
-                <span className="text-zinc-300 font-bold">{account.id.substring(0, 16)}...</span>
-              </div>
-              <div className="text-right space-y-1">
-                <span className="text-[10px] text-zinc-500 font-bold block leading-none">CURRENT BALANCE</span>
-                <span className="text-emerald-400 font-bold">${balance ? balance.available.toLocaleString(undefined, { minimumFractionDigits: 2 }) : "0.00"}</span>
-              </div>
-            </div>
-
-            {/* Preset Amount buttons */}
-            <div className="space-y-2">
-              <span className="text-[10px] font-extrabold text-zinc-400 uppercase tracking-wide">Select Capital Amount</span>
-              <div className="grid grid-cols-4 gap-2">
-                {[1000, 5000, 10000, 50000].map((amt) => (
-                  <button
-                    key={amt}
-                    type="button"
-                    onClick={() => setDepositAmount(String(amt))}
-                    className={cn(
-                      "py-2.5 rounded-xl text-xs font-bold font-mono transition-all border cursor-pointer",
-                      depositAmount === String(amt)
-                        ? "bg-indigo-500/10 border-indigo-500/40 text-indigo-400"
-                        : "bg-zinc-950/60 border-zinc-900 text-zinc-400 hover:border-zinc-800 hover:text-zinc-200"
-                    )}
-                  >
-                    +${amt.toLocaleString()}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Custom Input */}
-            <div className="space-y-2">
-              <span className="text-[10px] font-extrabold text-zinc-400 uppercase tracking-wide">Custom Amount (USD)</span>
-              <div className="relative">
-                <DollarSign className="absolute left-3 top-3 size-4 text-zinc-500" />
-                <input
-                  type="number"
-                  min="1"
-                  placeholder="Enter amount..."
-                  value={depositAmount}
-                  onChange={(e) => setDepositAmount(e.target.value)}
-                  className="w-full bg-zinc-950/60 border border-zinc-900 focus:border-zinc-800 rounded-xl pl-9 pr-4 py-2.5 text-sm font-mono outline-none text-zinc-200 placeholder:text-zinc-600 font-bold"
-                />
-              </div>
-            </div>
-
-            {/* Gateway selectors */}
-            <div className="space-y-2">
-              <span className="text-[10px] font-extrabold text-zinc-400 uppercase tracking-wide">Payment Simulator Gateway</span>
-              <div className="grid grid-cols-3 gap-2">
-                {["ACH", "Crypto", "Card"].map((gw) => (
-                  <button
-                    key={gw}
-                    type="button"
-                    onClick={() => setDepositGateway(gw)}
-                    className={cn(
-                      "py-2.5 rounded-xl text-xs font-bold transition-all border cursor-pointer",
-                      depositGateway === gw
-                        ? "bg-indigo-500/10 border-indigo-500/40 text-indigo-400"
-                        : "bg-zinc-950/60 border-zinc-900 text-zinc-400 hover:border-zinc-800 hover:text-zinc-200"
-                    )}
-                  >
-                    {gw === "Crypto" ? "🌐 Crypto Sim" : gw === "ACH" ? "🏦 ACH Bank" : "💳 Credit Card"}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Submit Button */}
-            <button
-              onClick={handleDepositSubmit}
-              disabled={isDepositing || !depositAmount || Number(depositAmount) <= 0}
-              className="w-full py-3.5 bg-gradient-to-r from-indigo-600 via-indigo-500 to-indigo-600 hover:opacity-95 text-white font-extrabold text-xs uppercase tracking-widest rounded-xl transition-all duration-300 shadow-lg shadow-indigo-500/10 flex items-center justify-center gap-2 border border-indigo-400/20 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-            >
-              {isDepositing ? (
-                <>
-                  <RefreshCcwIcon className="size-3.5 animate-spin" />
-                  Simulating Transfer...
-                </>
-              ) : (
-                <>
-                  <Zap className="size-4" />
-                  Fund Demo Wallet
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-      )}
+      <AccountPanel
+        open={isAccountPanelOpen}
+        onClose={() => setIsAccountPanelOpen(false)}
+        summary={summary}
+        userEmail={user?.email}
+        onDeposit={() => {
+          setIsAccountPanelOpen(false);
+          setIsDepositModalOpen(true);
+        }}
+        onWithdraw={() => {
+          setIsAccountPanelOpen(false);
+          setIsWithdrawModalOpen(true);
+        }}
+        onSignOut={signOut}
+        loading={accountLoading}
+      />
     </div>
   );
 }

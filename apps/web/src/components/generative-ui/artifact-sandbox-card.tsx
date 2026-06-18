@@ -23,7 +23,7 @@ interface ArtifactSandboxCardProps {
 }
 
 type SizePreset = "compact" | "default" | "tall";
-const SIZE_PX: Record<SizePreset, number> = { compact: 320, default: 460, tall: 680 };
+const SIZE_PX: Record<SizePreset, number> = { compact: 240, default: 340, tall: 520 };
 
 export function ArtifactSandboxCard({ code, language = "html", title = "Interactive Artifact" }: ArtifactSandboxCardProps) {
   const [activeTab, setActiveTab] = useState<"preview" | "code">("preview");

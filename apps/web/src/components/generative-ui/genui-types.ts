@@ -118,27 +118,68 @@ export interface GenUiView {
 
 export type GenUiPayload = GenUiNode | GenUiView | GenUiNode[];
 
+const LEAF_TYPES = new Set([
+  "stat", "metricCard", "sparkline", "gauge", "progress", "callout",
+  "badge", "keyValue", "barlist", "table", "chart", "text", "divider", "component",
+]);
+
+const LAYOUT_TYPES = new Set(["section", "grid"]);
+
 /** Narrow an unknown parsed JSON value into a normalized node array. */
 export function normalizeGenUiPayload(payload: unknown): GenUiNode[] | null {
   if (!payload || typeof payload !== "object") return null;
 
   if (Array.isArray(payload)) {
-    return payload.filter(isGenUiNodeLike) as GenUiNode[];
+    const nodes = payload.map(sanitizeNode).filter(Boolean) as GenUiNode[];
+    return nodes.length > 0 ? nodes : null;
   }
 
   const obj = payload as Record<string, unknown>;
 
   if (Array.isArray(obj.view)) {
-    return (obj.view as unknown[]).filter(isGenUiNodeLike) as GenUiNode[];
+    const nodes = (obj.view as unknown[]).map(sanitizeNode).filter(Boolean) as GenUiNode[];
+    return nodes.length > 0 ? nodes : null;
   }
 
   if (typeof obj.type === "string") {
-    return [obj as unknown as GenUiNode];
+    const node = sanitizeNode(obj);
+    return node ? [node] : null;
   }
 
   return null;
 }
 
-function isGenUiNodeLike(v: unknown): boolean {
-  return !!v && typeof v === "object" && typeof (v as Record<string, unknown>).type === "string";
+function sanitizeNode(v: unknown): GenUiNode | null {
+  if (!v || typeof v !== "object") return null;
+  const node = v as Record<string, unknown>;
+  const type = node.type;
+  if (typeof type !== "string") return null;
+
+  if (type === "section" || type === "grid") {
+    const children = Array.isArray(node.children)
+      ? (node.children as unknown[]).map(sanitizeNode).filter(Boolean) as GenUiNode[]
+      : [];
+    if (children.length === 0 && type === "grid") return null;
+    if (children.length === 0 && type === "section" && !node.title && !node.subtitle) {
+      return null;
+    }
+    return { ...node, children } as GenUiNode;
+  }
+
+  if (type === "metricCard" || type === "stat") {
+    if (node.label == null && node.value == null) return null;
+    return node as GenUiNode;
+  }
+
+  if (type === "chart") {
+    const series = node.series;
+    if (!Array.isArray(series) || series.length === 0) return null;
+    return node as GenUiNode;
+  }
+
+  if (LEAF_TYPES.has(type) || LAYOUT_TYPES.has(type)) {
+    return node as GenUiNode;
+  }
+
+  return null;
 }

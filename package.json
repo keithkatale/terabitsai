@@ -1,5 +1,5 @@
 {
-  "name": "quant-in-a-box",
+  "name": "terabits-ai",
   "private": true,
   "engines": {
     "node": ">=20.0.0"
@@ -7,7 +7,9 @@
   "scripts": {
     "dev": "pnpm --recursive --parallel run dev",
     "build": "pnpm --recursive run build",
-    "test": "pnpm --recursive run test"
+    "test": "pnpm --recursive run test",
+    "engine:once": "pnpm --filter @quant/engine loop:once",
+    "engine:dev": "pnpm --filter @quant/engine dev"
   },
   "devDependencies": {
     "typescript": "^5.3.3"

@@ -18,26 +18,10 @@ export function Conversation({ className, children, ...props }: ConversationProp
 }
 
 export function ConversationContent({ className, children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  const containerRef = React.useRef<HTMLDivElement>(null);
-
-  // Automatically scroll to bottom when children update, but respect user manual scroll-up
-  React.useEffect(() => {
-    if (containerRef.current) {
-      const container = containerRef.current;
-      const threshold = 150; // pixels trigger threshold
-      const isNearBottom =
-        container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
-
-      if (isNearBottom || container.scrollTop === 0) {
-        container.scrollTop = container.scrollHeight;
-      }
-    }
-  }, [children]);
-
   return (
     <div
-      ref={containerRef}
-      className={cn("flex-1 overflow-y-auto space-y-4 pr-1 scroll-smooth", className)}
+      data-conversation-scroll
+      className={cn("flex-1 overflow-y-auto space-y-4 pr-1", className)}
       {...props}
     >
       {children}
@@ -81,29 +65,23 @@ export function ConversationScrollButton({ className, ...props }: ConversationSc
   const [visible, setVisible] = React.useState(false);
 
   React.useEffect(() => {
-    const handleScroll = (e: any) => {
-      const target = e.target;
-      if (target) {
-        const threshold = 200;
-        const isNearBottom = target.scrollHeight - target.scrollTop - target.clientHeight < threshold;
-        setVisible(!isNearBottom);
-      }
+    const scrollContainer = document.querySelector("[data-conversation-scroll]");
+    if (!scrollContainer) return;
+
+    const handleScroll = () => {
+      const el = scrollContainer as HTMLElement;
+      const threshold = 200;
+      const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+      setVisible(!isNearBottom);
     };
 
-    // Find first scrollable ancestor
-    const scrollContainer = document.querySelector(".overflow-y-auto");
-    if (scrollContainer) {
-      scrollContainer.addEventListener("scroll", handleScroll);
-    }
-    return () => {
-      if (scrollContainer) {
-        scrollContainer.removeEventListener("scroll", handleScroll);
-      }
-    };
+    scrollContainer.addEventListener("scroll", handleScroll);
+    handleScroll();
+    return () => scrollContainer.removeEventListener("scroll", handleScroll);
   }, []);
 
   const handleScrollToBottom = () => {
-    const scrollContainer = document.querySelector(".overflow-y-auto");
+    const scrollContainer = document.querySelector("[data-conversation-scroll]") as HTMLElement | null;
     if (scrollContainer) {
       scrollContainer.scrollTop = scrollContainer.scrollHeight;
     }
@@ -180,7 +158,7 @@ export function messagesToMarkdown(
 
   return messages
     .map((msg) => {
-      const roleName = msg.role === "user" ? "User" : "Quant";
+      const roleName = msg.role === "user" ? "User" : "Terabits";
       return `### ${roleName}\n\n${msg.text}`;
     })
     .join("\n\n");

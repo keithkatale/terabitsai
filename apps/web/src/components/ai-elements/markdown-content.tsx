@@ -10,6 +10,7 @@ import { ArtifactSkeleton } from "@/components/generative-ui/artifact-skeleton";
 import { GenerativeUiRegistry } from "@/components/generative-ui/registry";
 import { GenUiRenderer } from "@/components/generative-ui/genui-renderer";
 import { normalizeGenUiPayload } from "@/components/generative-ui/genui-types";
+import { parseGenUiPayload } from "@/lib/genui/parse-genui-json";
 
 interface CodeBlockProps {
   language?: string;
@@ -77,6 +78,29 @@ function looksLikeGenui(parsed: unknown): boolean {
   return typeof o.type === "string" && KNOWN_GENUI_TYPES.has(o.type);
 }
 
+function extractCodeString(children: React.ReactNode): string {
+  if (typeof children === "string") return children.replace(/\n$/, "");
+  if (Array.isArray(children)) {
+    return children
+      .map((c) => (typeof c === "string" ? c : ""))
+      .join("")
+      .replace(/\n$/, "");
+  }
+  return String(children).replace(/\n$/, "");
+}
+
+function GenUiParseError({ raw }: { raw: string }) {
+  return (
+    <div className="my-2 rounded-lg border border-amber-500/20 bg-amber-950/20 px-3 py-2 text-[11px] text-amber-300">
+      Could not render this interface — the model returned invalid JSON. Try asking again or request a simpler layout.
+      <details className="mt-1.5">
+        <summary className="cursor-pointer text-[10px] text-amber-400/80">Raw payload</summary>
+        <pre className="mt-1 max-h-32 overflow-auto font-mono text-[10px] text-zinc-500">{raw.slice(0, 800)}</pre>
+      </details>
+    </div>
+  );
+}
+
 /**
  * Try to render a structured block (genui DSL or legacy component JSON).
  * `strict` (used for plain ```json fences) requires the payload to clearly
@@ -84,23 +108,25 @@ function looksLikeGenui(parsed: unknown): boolean {
  * Returns null if the string isn't a recognizable structured payload.
  */
 function renderStructured(codeString: string, strict: boolean): React.ReactNode | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(codeString);
-  } catch {
-    return null;
-  }
-  if (!parsed || typeof parsed !== "object") return null;
-  if (strict && !looksLikeGenui(parsed)) return null;
+  const result = parseGenUiPayload(codeString);
+  if (!result) return null;
 
-  // New declarative GenUI DSL: { type }, { view: [...] }, or [ ...nodes ]
-  const nodes = normalizeGenUiPayload(parsed);
+  const { payload, salvaged } = result;
+  if (strict && !looksLikeGenui(payload)) return null;
+
+  const nodes = normalizeGenUiPayload(payload);
   if (nodes && nodes.length > 0) {
-    return <GenUiRenderer payload={parsed} />;
+    return (
+      <>
+        {salvaged ? (
+          <p className="mb-1 text-[10px] text-zinc-500">Partial layout recovered from model output.</p>
+        ) : null}
+        <GenUiRenderer payload={payload} />
+      </>
+    );
   }
 
-  // Legacy registry shape: { component | name, props }
-  const obj = parsed as Record<string, unknown>;
+  const obj = payload as Record<string, unknown>;
   const compName = (obj.component || obj.name) as string | undefined;
   if (compName) {
     return <GenerativeUiRegistry name={compName} props={(obj.props as Record<string, unknown>) || obj} />;
@@ -111,6 +137,68 @@ function renderStructured(codeString: string, strict: boolean): React.ReactNode 
 
 /** Languages whose blocks must NOT be rendered until fully streamed in. */
 const DEFERRED_LANGS = new Set(["html", "svg", "xml", "genui"]);
+
+/** Split markdown into alternating prose + fenced genui/html blocks. */
+const FENCE_RE = /```(genui|json|html|svg|xml)\s*\n?([\s\S]*?)```/gi;
+
+function renderGenuiFence(body: string, lang: string): React.ReactNode {
+  if (lang === "html" || lang === "svg" || (lang === "xml" && body.includes("<svg"))) {
+    return (
+      <ArtifactSandboxCard
+        code={body}
+        language={lang}
+        title={lang === "svg" ? "Vector Visualisation" : "Interactive Artifact"}
+      />
+    );
+  }
+
+  const structured = renderStructured(body, lang === "json");
+  if (structured) return structured;
+  if (lang === "genui" || lang === "json") {
+    return <GenUiParseError raw={body} />;
+  }
+  return <CodeBlock language={lang} code={body} />;
+}
+
+function MarkdownSegment({ markdown }: { markdown: string }) {
+  if (!markdown.trim()) return null;
+  return (
+    <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
+      {markdown}
+    </ReactMarkdown>
+  );
+}
+
+function renderMarkdownWithFences(markdown: string): React.ReactNode[] {
+  const nodes: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  FENCE_RE.lastIndex = 0;
+
+  while ((match = FENCE_RE.exec(markdown)) !== null) {
+    const [full, lang, body] = match;
+    const before = markdown.slice(lastIndex, match.index);
+    if (before.trim()) {
+      nodes.push(<MarkdownSegment key={`md-${lastIndex}`} markdown={before} />);
+    }
+
+    const langLower = lang.toLowerCase();
+
+    nodes.push(
+      <div key={`fence-${match.index}`} className="w-full">
+        {renderGenuiFence(body, langLower)}
+      </div>
+    );
+    lastIndex = match.index + full.length;
+  }
+
+  const tail = markdown.slice(lastIndex);
+  if (tail.trim()) {
+    nodes.push(<MarkdownSegment key={`md-tail-${lastIndex}`} markdown={tail} />);
+  }
+
+  return nodes;
+}
 
 /**
  * If the markdown ends with an unterminated fenced code block, split it off so
@@ -151,7 +239,7 @@ const MD_COMPONENTS = {
   code: ({ node: _n, className, children, ...props }: any) => {
     const match = /language-(\w+)/.exec(className || "");
     const inline = !className;
-    const codeString = String(children).replace(/\n$/, "");
+    const codeString = extractCodeString(children);
 
     if (inline) {
       return (
@@ -182,7 +270,7 @@ const MD_COMPONENTS = {
     if (lang === "genui" || lang === "json") {
       const structured = renderStructured(codeString, lang === "json");
       if (structured) return structured;
-      // genui that failed to parse → show code; json falls through to code too
+      if (lang === "genui") return <GenUiParseError raw={codeString} />;
     }
 
     return <CodeBlock language={match ? match[1] : undefined} code={codeString} />;
@@ -242,9 +330,7 @@ export function MarkdownContent({ markdown, isStreaming = false }: { markdown: s
 
   return (
     <div className="w-full space-y-3">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
-        {safeMarkdown}
-      </ReactMarkdown>
+      {renderMarkdownWithFences(safeMarkdown)}
       {pendingKind ? <ArtifactSkeleton kind={pendingKind === "artifact" ? "artifact" : "interface"} /> : null}
     </div>
   );

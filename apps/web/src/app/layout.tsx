@@ -2,8 +2,8 @@ import "./globals.css"
 import type { Metadata } from "next"
 
 export const metadata: Metadata = {
-  title: "Quant AI Workspace",
-  description: "AI-Powered Financial Intelligence & Asset Analysis Workspace",
+  title: "Terabits AI",
+  description: "AI-powered trading terminal with paper wallet, live market data, and generative analysis",
 }
 
 export default function RootLayout({

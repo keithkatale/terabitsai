@@ -1,0 +1,19 @@
+{
+  "name": "@quant/agents",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@quant/contracts": "workspace:*",
+    "@quant/indicators": "workspace:*",
+    "@quant/model-router": "workspace:*",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.16",
+    "typescript": "^5.3.3"
+  }
+}

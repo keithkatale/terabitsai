@@ -190,7 +190,7 @@ function MiniChart({
   series,
   labels,
   variant = "area",
-  height = 180,
+  height = 130,
   title,
 }: {
   series: { name: string; data: number[]; color?: string }[];
@@ -282,9 +282,9 @@ function NodeView({ node, animate }: { node: GenUiNode; animate: boolean }) {
   switch (node.type) {
     case "section":
       return (
-        <div className="w-full rounded-2xl border border-zinc-800/60 bg-zinc-950/30 p-4 sm:p-5">
-          {node.title ? <h3 className="text-base font-bold text-white">{node.title}</h3> : null}
-          {node.subtitle ? <p className="mb-3 mt-0.5 text-xs text-zinc-500">{node.subtitle}</p> : <div className="mb-3" />}
+        <div className="w-full rounded-lg border border-zinc-800/50 bg-zinc-950/20 p-3">
+          {node.title ? <h3 className="text-sm font-semibold text-white">{node.title}</h3> : null}
+          {node.subtitle ? <p className="mb-2 mt-0.5 text-[11px] text-zinc-500">{node.subtitle}</p> : <div className="mb-2" />}
           <NodeList nodes={node.children} animate={animate} />
         </div>
       );
@@ -294,7 +294,7 @@ function NodeView({ node, animate }: { node: GenUiNode; animate: boolean }) {
       const colClass =
         cols === 1 ? "grid-cols-1" : cols === 2 ? "grid-cols-1 sm:grid-cols-2" : cols === 3 ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-2 sm:grid-cols-4";
       return (
-        <div className={cn("grid gap-3", colClass)}>
+        <div className={cn("grid gap-2", colClass)}>
           {node.children.map((child, i) => (
             <NodeView key={i} node={child} animate={animate} />
           ))}
@@ -321,10 +321,10 @@ function NodeView({ node, animate }: { node: GenUiNode; animate: boolean }) {
       const tok = accent(node.accent);
       const Icon = resolveIcon(node.icon);
       return (
-        <div className={cn("flex items-center justify-between rounded-xl border bg-zinc-950/40 px-3.5 py-3", tok.border)}>
+        <div className={cn("flex items-center justify-between rounded-lg border bg-zinc-950/30 px-2.5 py-2", tok.border)}>
           <div>
-            <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">{node.label}</p>
-            <p className={cn("mt-0.5 text-xl font-bold", tok.text)}>
+            <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">{node.label}</p>
+            <p className={cn("mt-0.5 text-lg font-semibold", tok.text)}>
               <AnimatedNumber value={node.value} />
             </p>
           </div>
@@ -343,12 +343,12 @@ function NodeView({ node, animate }: { node: GenUiNode; animate: boolean }) {
     case "metricCard": {
       const tok = accent(node.accent);
       return (
-        <div className="flex flex-col justify-between rounded-xl border border-zinc-800/60 bg-zinc-950/40 p-4">
+        <div className="flex flex-col justify-between rounded-lg border border-zinc-800/50 bg-zinc-950/30 p-2.5">
           <div className="flex items-start justify-between">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">{node.label}</p>
+            <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">{node.label}</p>
             <TrendBadge trend={node.trend} delta={node.delta} />
           </div>
-          <p className={cn("mt-1 text-2xl font-bold tracking-tight", tok.text)}>
+          <p className={cn("mt-0.5 text-lg font-semibold tracking-tight", tok.text)}>
             <AnimatedNumber value={node.value} />
           </p>
           {node.sublabel ? <p className="text-[11px] text-zinc-500">{node.sublabel}</p> : null}
@@ -537,7 +537,7 @@ export function GenUiRenderer({ payload }: { payload: unknown }) {
   }
 
   return (
-    <div className="my-3 w-full text-left">
+    <div className="my-2 w-full text-left">
       <NodeList nodes={nodes} animate={animate} />
     </div>
   );
