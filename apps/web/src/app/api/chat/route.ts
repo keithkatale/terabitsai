@@ -81,7 +81,7 @@ export async function POST(req: Request) {
       });
     }
 
-    const systemInstruction = `You are Quant, a highly capable, neutral, and unbiased AI assistant.
+    const systemInstruction = `You are Quant, a highly capable, neutral, and unbiased financial AI assistant.
 Your goal is to provide clear, helpful, accurate, and objective answers to any technical, financial, or general prompt.
 You maintain a professional, objective, and polite tone. Provide structured replies using markdown formatting beautifully.
 
@@ -89,7 +89,70 @@ You are equipped with advanced MCP tools to:
 - Retrieve the asset catalog and detailed assets data.
 - Spin up specialized agent teams (parallel subagents) to perform granular technical, fundamental, risk, or sentiment analyses.
 
-When requested to analyze assets or run deep research, aggressively use the 'spawn_subagents' tool to form a team of subagents, and then synthesize their findings beautifully in your final response.`;
+When requested to analyze assets or run deep research, aggressively use the 'spawn_subagents' tool to form a team of subagents, and then synthesize their findings beautifully in your final response.
+
+### 🌟 STATE-OF-THE-ART GENERATIVE UI CAPABILITIES:
+To provide an elite user experience, you MUST avoid outputting massive walls of dry text. Instead, you are fully empowered to generate interactive visual components within the chat area using two distinct approaches.
+
+1. **Approach A: Custom HTML/SVG Sandboxed Dashboard/Chart Components (Single Asset Charts, Infographics)**
+   When asked for single asset price charts (e.g., "Bitcoin chart", "AAPL graph", "Ethereum price indicators"), custom performance layouts, indicators, or visual spreadsheets, you MUST output a standard HTML codeblock (\`\`\`html ... \`\`\`).
+   This block runs in a fully-styled, dark-matter themed, secured iframe sandbox. Use CSS, inline SVG, and embedded interactive JavaScript so the user can interact with it (e.g. timeframe toggle buttons):
+   - Style with deep dark backgrounds (\`#0b0d19\`, \`#050508\`), glowing cyan accents (\`#38bdf8\`), buy green values (\`#34d399\`), and sell red values (\`#f87171\`).
+   - Draw beautiful SVG paths representing the price line, candlestick nodes, support vectors, or indicators.
+   - Include interactive buttons (like "1D", "1W", "1M") and write clean inline Javascript to redraw the SVG paths, change text values, or show floating tooltips when hovered.
+   - Provide a clean typography (sans-serif) with high-fidelity glassmorphism styling (\`backdrop-filter: blur(12px); background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 16px;\`).
+
+2. **Approach B: Pre-built Branded React Widgets (Structured JSON Blocks)**
+   When asked for comparisons, expense analysis, portfolios, or order submissions, you MUST output a standard JSON block with a \`"component"\` signature. The markdown parser automatically renders the corresponding native React widget inside the message flow:
+   
+   - **Asset Comparative Chart**: Comparing two assets over time (e.g. "compare apple and microsoft", "BTC vs ETH comparison").
+     \`\`\`json
+     {
+       "component": "AssetComparativeChart",
+       "props": {
+         "ticker1": "AAPL",
+         "ticker2": "MSFT"
+       }
+     }
+     \`\`\`
+     
+   - **Portfolio Allocation & Breakdown**: Viewing capital allocation, asset weights, risk, and strategy metrics.
+     \`\`\`json
+     {
+       "component": "PortfolioBreakdown",
+       "props": {
+         "totalValue": 24500
+       }
+     }
+     \`\`\`
+     
+   - **Transaction Expenses Summary**: Visualizing fee distributions, cloud spend, API usage, or trading commissions.
+     \`\`\`json
+     {
+       "component": "TransactionSummary",
+       "props": {
+         "totalAmount": 4850,
+         "title": "Strategy & Computing Outlays"
+       }
+     }
+     \`\`\`
+     
+   - **Interactive Order Ticket (Swipe to Confirm)**: When user wants to trade (e.g., "buy 0.5 btc", "sell apple shares").
+     \`\`\`json
+     {
+       "component": "TradeConfirmationWidget",
+       "props": {
+         "symbol": "BTCUSD",
+         "direction": "BUY",
+         "size": 0.5,
+         "estimatedPrice": 67250,
+         "leverage": 5,
+         "fee": 12.50
+       }
+     }
+     \`\`\`
+
+Never decline requests for charts or visuals by saying you cannot display graphics. Always use one of these Generative UI approaches (Approach A html/svg blocks or Approach B JSON blocks) to represent information visually whenever the user asks for charts, balances, trades, or summaries.`;
 
     const encoder = new TextEncoder();
 
@@ -449,6 +512,188 @@ Both assets represent leading market caps in the tech sector, but they show dive
 * **Correlation Metric**: The 30-day rolling correlation sits at **0.78**, reflecting macro-economic alignment with slight asset-specific divergence.
 
 How would you like to balance your tactical exposure between these two blue-chips today?`;
+
+    const textChunks = mainText.split(" ");
+    for (const chunk of textChunks) {
+      sendEvent({ type: "text", text: chunk + " " });
+      await new Promise((resolve) => setTimeout(resolve, 15));
+    }
+    return;
+  }
+
+  // 1.1 Bitcoin / Single Asset Candlestick Chart (Approach A Sandbox)
+  if (normalizedPrompt.includes("bitcoin") || normalizedPrompt.includes("btc") || normalizedPrompt.includes("chart") || normalizedPrompt.includes("graph") || normalizedPrompt.includes("visualize")) {
+    const simulatedThoughts = [
+      "Interpreting request for single-asset technical charts / visualizations...\n",
+      "Retrieving historical prices and trading volume for BTCUSD...\n",
+      "Calculating moving averages (EMA 20, SMA 50) and RSI indicators...\n",
+      "Drafting dynamic, sandboxed SVG charting interface...\n"
+    ];
+
+    for (const thought of simulatedThoughts) {
+      const words = thought.split(" ");
+      for (const word of words) {
+        sendEvent({ type: "reasoning", text: word + " " });
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    const mainText = `${prefixText}### 🪙 Live Bitcoin (BTCUSD) Interactive Terminal Chart
+
+I have generated a high-fidelity interactive terminal chart for **Bitcoin (BTCUSD)** using an isolated and secured HTML sandboxed container. 
+
+You can toggle the timeframe tabs directly inside the card below (**1D**, **1W**, **1M**) to instantly recalculate and plot the SVG price paths, rolling high/low values, and 14-period RSI metrics:
+
+\`\`\`html
+<div class="card">
+  <div class="header">
+    <div class="title-section">
+      <img src="https://assets.coincap.io/assets/icons/btc@2x.png" class="logo" />
+      <div>
+        <h3>Bitcoin / USD CFD</h3>
+        <span class="symbol">BTCUSD</span>
+      </div>
+    </div>
+    <div class="price-section">
+      <h2 id="price">$67,250.00</h2>
+      <span class="change positive" id="change">+2.45%</span>
+    </div>
+  </div>
+  
+  <div class="timeframes">
+    <button class="tf-btn active" onclick="updateTimeframe('1D')">1D</button>
+    <button class="tf-btn" onclick="updateTimeframe('1W')">1W</button>
+    <button class="tf-btn" onclick="updateTimeframe('1M')">1M</button>
+  </div>
+
+  <div class="chart-container">
+    <svg id="svg-chart" viewBox="0 0 500 200">
+      <defs>
+        <linearGradient id="gradient" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#34d399" stop-opacity="0.2"/>
+          <stop offset="100%" stop-color="#34d399" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      <path id="area-path" fill="url(#gradient)" stroke="none" />
+      <path id="line-path" fill="none" stroke="#34d399" stroke-width="2.5" />
+    </svg>
+  </div>
+
+  <div class="stats-row">
+    <div class="stat-item">
+      <span>RSI (14)</span>
+      <strong id="rsi-val">63.4</strong>
+    </div>
+    <div class="stat-item">
+      <span>24h High</span>
+      <strong id="high-val">$67,820.00</strong>
+    </div>
+    <div class="stat-item">
+      <span>24h Low</span>
+      <strong id="low-val">$65,110.00</strong>
+    </div>
+  </div>
+</div>
+
+<style>
+  body { background-color: #050508; margin: 0; padding: 12px; font-family: system-ui, -apple-system, sans-serif; color: #f1f3f9; }
+  .card { background: rgba(18, 23, 44, 0.45); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 20px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  .title-section { display: flex; align-items: center; gap: 12px; }
+  .logo { width: 36px; height: 36px; border-radius: 50%; }
+  h3 { margin: 0; font-size: 16px; font-weight: 700; color: #fff; }
+  .symbol { font-size: 11px; color: #8e96aa; font-weight: 600; text-transform: uppercase; }
+  .price-section { text-align: right; }
+  h2 { margin: 0; font-size: 22px; font-weight: 800; color: #34d399; }
+  .change { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 6px; }
+  .change.positive { background: rgba(52, 211, 153, 0.1); color: #34d399; }
+  .timeframes { display: flex; gap: 8px; margin-bottom: 16px; }
+  .tf-btn { background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); color: #8e96aa; padding: 6px 12px; border-radius: 8px; font-size: 11px; font-weight: 700; cursor: pointer; transition: all 0.3s; }
+  .tf-btn:hover { color: #fff; background: rgba(255, 255, 255, 0.05); }
+  .tf-btn.active { background: rgba(56, 189, 248, 0.1); border-color: rgba(56, 189, 248, 0.2); color: #38bdf8; }
+  .chart-container { position: relative; width: 100%; height: 160px; margin-bottom: 16px; }
+  svg { width: 100%; height: 100%; overflow: visible; }
+  .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 16px; }
+  .stat-item { display: flex; flex-direction: column; gap: 4px; }
+  .stat-item span { font-size: 10px; color: #8e96aa; font-weight: 500; }
+  .stat-item strong { font-size: 13px; color: #fff; font-weight: 700; }
+</style>
+
+<script>
+  const data = {
+    '1D': [65500, 66100, 65800, 66700, 67250],
+    '1W': [62100, 63400, 64200, 63100, 65000, 66100, 67250],
+    '1M': [59000, 61200, 60500, 62800, 64100, 65600, 67250]
+  };
+  const stats = {
+    '1D': { price: '$67,250.00', change: '+2.45%', rsi: '63.4', high: '$67,820.00', low: '$65,110.00', color: '#34d399', bg: 'rgba(52, 211, 153, 0.1)' },
+    '1W': { price: '$67,250.00', change: '+8.29%', rsi: '68.1', high: '$68,100.00', low: '$61,850.00', color: '#34d399', bg: 'rgba(52, 211, 153, 0.1)' },
+    '1M': { price: '$67,250.00', change: '+13.98%', rsi: '72.5', high: '$69,450.00', low: '$58,300.00', color: '#34d399', bg: 'rgba(52, 211, 153, 0.1)' }
+  };
+
+  function updateTimeframe(tf) {
+    document.querySelectorAll('.tf-btn').forEach(btn => btn.classList.remove('active'));
+    
+    // Find button based on content if click target isn't the button
+    const target = event ? event.currentTarget || event.target : null;
+    if (target && target.classList) {
+      target.classList.add('active');
+    } else {
+      // Fallback
+      const btns = document.querySelectorAll('.tf-btn');
+      if (tf === '1D') btns[0].classList.add('active');
+      if (tf === '1W') btns[1].classList.add('active');
+      if (tf === '1M') btns[2].classList.add('active');
+    }
+
+    const tfData = data[tf];
+    const tfStats = stats[tf];
+
+    document.getElementById('price').innerText = tfStats.price;
+    document.getElementById('change').innerText = tfStats.change;
+    document.getElementById('rsi-val').innerText = tfStats.rsi;
+    document.getElementById('high-val').innerText = tfStats.high;
+    document.getElementById('low-val').innerText = tfStats.low;
+
+    // Draw SVG path
+    const svgWidth = 500;
+    const svgHeight = 160;
+    const padding = 10;
+    const points = tfData.map((val, idx) => {
+      const min = Math.min(...tfData);
+      const max = Math.max(...tfData);
+      const range = max - min || 1;
+      const x = padding + (idx / (tfData.length - 1)) * (svgWidth - 2 * padding);
+      const y = svgHeight - padding - ((val - min) / range) * (svgHeight - 2 * padding);
+      return { x, y };
+    });
+
+    let pathStr = "M " + points[0].x + " " + points[0].y;
+    for (let i = 0; i < points.length - 1; i++) {
+      const cpX1 = points[i].x + (points[i+1].x - points[i].x) / 3;
+      const cpY1 = points[i].y;
+      const cpX2 = points[i].x + (2 * (points[i+1].x - points[i].x)) / 3;
+      const cpY2 = points[i+1].y;
+      pathStr += " C " + cpX1 + " " + cpY1 + ", " + cpX2 + " " + cpY2 + ", " + points[i+1].x + " " + points[i+1].y;
+    }
+
+    document.getElementById('line-path').setAttribute('d', pathStr);
+    document.getElementById('line-path').setAttribute('stroke', tfStats.color);
+
+    const areaStr = pathStr + " L " + points[points.length-1].x + " " + svgHeight + " L " + points[0].x + " " + svgHeight + " Z";
+    document.getElementById('area-path').setAttribute('d', areaStr);
+    
+    const grad = document.getElementById('gradient');
+    grad.innerHTML = '<stop offset="0%" stop-color="' + tfStats.color + '" stop-opacity="0.2"/><stop offset="100%" stop-color="' + tfStats.color + '" stop-opacity="0"/>';
+  }
+
+  // Initial Draw
+  updateTimeframe('1D');
+</script>
+\`\`\`
+
+Would you like to analyze support zones, run a parallel multi-agent evaluation on BTCUSD, or draft an interactive trade ticket to initiate a position?`;
 
     const textChunks = mainText.split(" ");
     for (const chunk of textChunks) {

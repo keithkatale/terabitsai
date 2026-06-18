@@ -5,17 +5,17 @@
 @source "./**/*.{js,ts,jsx,tsx,mdx}";
 
 :root {
-  --background: #060913;
-  --panel-bg: rgba(13, 20, 38, 0.45);
-  --glass-border: rgba(255, 255, 255, 0.06);
-  --glass-highlight: rgba(255, 255, 255, 0.03);
-  --text-primary: #f3f4f6;
-  --text-secondary: #9ca3af;
-  --accent-cyan: #06b6d4;
-  --accent-purple: #8b5cf6;
-  --accent-green: #10b981;
-  --accent-red: #ef4444;
-  --glow-color: rgba(6, 182, 212, 0.25);
+  --background: #0b0d19;
+  --panel-bg: rgba(18, 23, 44, 0.35);
+  --glass-border: rgba(255, 255, 255, 0.04);
+  --glass-highlight: rgba(255, 255, 255, 0.015);
+  --text-primary: #f1f3f9;
+  --text-secondary: #8e96aa;
+  --accent-cyan: #38bdf8;
+  --accent-purple: #a78bfa;
+  --accent-green: #34d399;
+  --accent-red: #f87171;
+  --glow-color: rgba(56, 189, 248, 0.15);
   --font-sans: 'Outfit', sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 }
@@ -31,8 +31,9 @@ body {
   overflow-x: hidden;
   min-height: 100vh;
   background-image: 
-    radial-gradient(at 10% 10%, rgba(139, 92, 246, 0.08) 0px, transparent 50%),
-    radial-gradient(at 90% 80%, rgba(6, 182, 212, 0.08) 0px, transparent 50%);
+    radial-gradient(at 15% 15%, rgba(167, 139, 250, 0.04) 0px, transparent 55%),
+    radial-gradient(at 85% 85%, rgba(56, 189, 248, 0.04) 0px, transparent 55%),
+    radial-gradient(at 50% 50%, rgba(15, 23, 42, 0.85) 0px, transparent 100%);
 }
 
 /* Scrollbar styling */
@@ -68,8 +69,8 @@ body {
   align-items: center;
   padding: 0 40px;
   border-bottom: 1px solid var(--glass-border);
-  background: rgba(6, 9, 19, 0.7);
-  backdrop-filter: blur(12px);
+  background: rgba(11, 13, 25, 0.6);
+  backdrop-filter: blur(20px);
 }
 
 .logo {
@@ -87,9 +88,10 @@ body {
 .logo span {
   font-size: 14px;
   font-weight: 500;
-  border: 1px solid var(--accent-cyan);
-  padding: 2px 8px;
-  border-radius: 12px;
+  border: 1px solid var(--glass-border);
+  background: rgba(56, 189, 248, 0.08);
+  padding: 2px 10px;
+  border-radius: 9999px;
   margin-left: 8px;
   color: var(--accent-cyan);
   -webkit-text-fill-color: var(--accent-cyan);
@@ -121,18 +123,21 @@ body {
 
 .glass-panel {
   background: var(--panel-bg);
-  backdrop-filter: blur(16px);
+  backdrop-filter: blur(24px);
   border: 1px solid var(--glass-border);
-  border-radius: 16px;
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+  border-radius: 24px;
+  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.2);
   padding: 24px;
   overflow: hidden;
-  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+  transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .glass-panel:hover {
-  border-color: rgba(6, 182, 212, 0.25);
-  box-shadow: 0 12px 40px 0 rgba(6, 182, 212, 0.08);
+  border-color: rgba(56, 189, 248, 0.12);
+  box-shadow: 
+    0 20px 50px -12px rgba(56, 189, 248, 0.04), 
+    0 0 40px 0 rgba(56, 189, 248, 0.01);
+  transform: translateY(-2px);
 }
 
 /* Chat Assistant Panel */
@@ -156,33 +161,31 @@ body {
   display: flex;
   flex-direction: column;
   max-width: 85%;
-  padding: 14px 18px;
-  border-radius: 14px;
+  padding: 14px 20px;
+  border-radius: 20px;
   font-size: 14px;
-  line-height: 1.5;
+  line-height: 1.6;
 }
 
 .message-user {
   align-self: flex-end;
-  background: linear-gradient(135deg, rgba(6, 182, 212, 0.15), rgba(139, 92, 246, 0.15));
-  border: 1px solid rgba(139, 92, 246, 0.25);
-  border-bottom-right-radius: 2px;
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.1), rgba(167, 139, 250, 0.1));
+  border: 1px solid rgba(167, 139, 250, 0.15);
 }
 
 .message-ai {
   align-self: flex-start;
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(255, 255, 255, 0.015);
   border: 1px solid var(--glass-border);
-  border-bottom-left-radius: 2px;
 }
 
 .chat-input-wrapper {
   display: flex;
   gap: 10px;
   border: 1px solid var(--glass-border);
-  border-radius: 12px;
-  padding: 8px;
-  background: rgba(0, 0, 0, 0.2);
+  border-radius: 16px;
+  padding: 10px 14px;
+  background: rgba(0, 0, 0, 0.15);
 }
 
 .chat-input {
@@ -454,17 +457,17 @@ body {
   flex-direction: column;
   flex: 1;
   background: var(--panel-bg);
-  backdrop-filter: blur(20px);
+  backdrop-filter: blur(32px);
   border: 1px solid var(--glass-border);
-  border-radius: 20px;
+  border-radius: 28px;
   overflow: hidden;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.25);
 }
 
 .v0-chat-header {
   padding: 20px 24px;
   border-bottom: 1px solid var(--glass-border);
-  background: rgba(13, 20, 38, 0.2);
+  background: rgba(13, 20, 38, 0.15);
 }
 
 .v0-chat-title {
@@ -494,22 +497,22 @@ body {
 
 .v0-input-wrapper {
   padding: 16px 24px 24px 24px;
-  background: rgba(6, 9, 19, 0.4);
+  background: rgba(6, 9, 19, 0.3);
   border-top: 1px solid var(--glass-border);
 }
 
 .v0-input-box {
   position: relative;
-  background: #09090b;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  background: rgba(9, 9, 11, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 18px;
+  transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
 }
 
 .v0-input-box:focus-within {
-  border-color: var(--accent-cyan);
-  box-shadow: 0 0 15px rgba(6, 182, 212, 0.15), 0 4px 20px rgba(0, 0, 0, 0.5);
+  border-color: rgba(56, 189, 248, 0.3);
+  box-shadow: 0 0 25px rgba(56, 189, 248, 0.08), 0 8px 30px rgba(0, 0, 0, 0.2);
 }
 
 .v0-textarea {
@@ -632,22 +635,22 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 16px;
-  background: rgba(9, 9, 11, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 8px 18px;
+  background: rgba(18, 23, 44, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.03);
   border-radius: 9999px;
   color: var(--text-secondary);
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .v0-pill:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(56, 189, 248, 0.15);
   color: #ffffff;
-  transform: translateY(-1px);
+  transform: translateY(-2px);
 }
 
 /* Tabs and layout adjustments for Right Column */
@@ -655,8 +658,8 @@ body {
   display: flex;
   gap: 4px;
   padding: 4px;
-  background: rgba(0, 0, 0, 0.25);
-  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 12px;
   border: 1px solid var(--glass-border);
   margin-bottom: 8px;
 }
@@ -664,27 +667,27 @@ body {
 .tab-btn {
   flex: 1;
   padding: 8px 12px;
-  border-radius: 8px;
+  border-radius: 10px;
   border: none;
   background: transparent;
   color: var(--text-secondary);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   white-space: nowrap;
 }
 
 .tab-btn:hover {
   color: white;
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .tab-btn.active {
-  background: linear-gradient(135deg, rgba(6, 182, 212, 0.15), rgba(139, 92, 246, 0.15));
-  border: 1px solid rgba(6, 182, 212, 0.2);
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.08), rgba(167, 139, 250, 0.08));
+  border: 1px solid rgba(56, 189, 248, 0.15);
   color: #ffffff;
-  text-shadow: 0 0 8px rgba(6, 182, 212, 0.4);
+  text-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
 }
 
 /* Card Flip Animation Classes */
@@ -747,14 +750,14 @@ body {
   justify-content: space-between;
   width: 250px;
   height: 104px;
-  padding: 12px 14px;
+  padding: 12px 16px;
   margin-right: 16px;
-  background: rgba(13, 17, 30, 0.45);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 14px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  background: rgba(18, 23, 44, 0.35);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.03);
+  border-radius: 20px;
+  box-shadow: 0 6px 24px -6px rgba(0, 0, 0, 0.15);
+  transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
   cursor: pointer;
   position: relative;
   overflow: hidden;
@@ -764,9 +767,9 @@ body {
   content: '';
   position: absolute;
   inset: 0;
-  border-radius: 14px;
+  border-radius: 20px;
   padding: 1px;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.04), transparent 50%, rgba(255, 255, 255, 0.02));
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.03), transparent 50%, rgba(255, 255, 255, 0.01));
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
@@ -776,13 +779,13 @@ body {
 
 .signal-card:hover {
   transform: translateY(-2px);
-  background: rgba(17, 23, 41, 0.65);
-  border-color: rgba(99, 102, 241, 0.25);
-  box-shadow: 0 8px 30px rgba(99, 102, 241, 0.12), inset 0 0 12px rgba(255, 255, 255, 0.01);
+  background: rgba(18, 23, 44, 0.5);
+  border-color: rgba(56, 189, 248, 0.15);
+  box-shadow: 0 12px 40px rgba(56, 189, 248, 0.06), inset 0 0 12px rgba(255, 255, 255, 0.005);
 }
 
 .signal-card-glow-buy {
-  box-shadow: 0 0 15px rgba(16, 185, 129, 0.05), inset 0 0 8px rgba(16, 185, 129, 0.02);
+  box-shadow: 0 0 15px rgba(52, 211, 153, 0.03), inset 0 0 8px rgba(52, 211, 153, 0.01);
 }
 
 .signal-card:active {
