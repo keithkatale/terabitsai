@@ -1,9 +1,10 @@
-export function SupabaseConfigScript() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !anonKey) return null;
+import { readSupabasePublicEnv } from "@/lib/runtime-env";
 
-  const payload = JSON.stringify({ url, anonKey });
+export function SupabaseConfigScript() {
+  const config = readSupabasePublicEnv();
+  if (!config) return null;
+
+  const payload = JSON.stringify(config);
   return (
     <script
       dangerouslySetInnerHTML={{

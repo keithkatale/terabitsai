@@ -1,5 +1,6 @@
 import { cookies, headers } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
+import { readSupabasePublicEnv } from "@/lib/runtime-env";
 
 export async function createSupabaseServerClient() {
   const cookieStore = await cookies();
@@ -12,13 +13,12 @@ export async function createSupabaseServerClient() {
     // non-request context
   }
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !anon) {
+  const config = readSupabasePublicEnv();
+  if (!config) {
     throw new Error("Supabase env vars are not configured");
   }
 
-  return createServerClient(url, anon, {
+  return createServerClient(config.url, config.anonKey, {
     global: {
       headers: authHeader ? { Authorization: authHeader } : undefined,
     },

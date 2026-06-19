@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { readSupabasePublicEnv } from "@/lib/runtime-env";
 
 const AUTH_PATHS = new Set(["/login", "/signup"]);
 const PUBLIC_PATHS = new Set(["/pricing", "/auth/callback", "/api/webhooks/dodo"]);
@@ -51,11 +52,10 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const supabaseConfig = readSupabasePublicEnv();
 
   // Fail closed: never allow protected routes without Supabase configured
-  if (!supabaseUrl || !supabaseAnon) {
+  if (!supabaseConfig) {
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ error: "Auth not configured" }, { status: 503 });
     }
@@ -64,7 +64,7 @@ export async function middleware(request: NextRequest) {
 
   let response = NextResponse.next({ request });
 
-  const supabase = createServerClient(supabaseUrl, supabaseAnon, {
+  const supabase = createServerClient(supabaseConfig.url, supabaseConfig.anonKey, {
     cookies: {
       getAll() {
         return request.cookies.getAll();
