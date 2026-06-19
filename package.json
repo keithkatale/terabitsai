@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "pnpm --recursive --parallel run dev",
     "build": "pnpm --recursive run build",
+    "start": "node apps/web/.next/standalone/apps/web/server.js",
     "test": "pnpm --recursive run test",
     "engine:once": "pnpm --filter @quant/engine loop:once",
     "engine:dev": "pnpm --filter @quant/engine dev",

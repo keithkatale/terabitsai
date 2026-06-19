@@ -20,6 +20,8 @@ COPY packages/mcp-server/package.json ./packages/mcp-server/
 COPY packages/model-router/package.json ./packages/model-router/
 COPY packages/rag-engine/package.json ./packages/rag-engine/
 COPY packages/risk/package.json ./packages/risk/
+COPY packages/market-intel/package.json ./packages/market-intel/
+COPY apps/intel-worker/package.json ./apps/intel-worker/
 
 RUN pnpm install --frozen-lockfile
 
@@ -42,6 +44,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=8080
+ENV HOSTNAME=0.0.0.0
 
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
 
