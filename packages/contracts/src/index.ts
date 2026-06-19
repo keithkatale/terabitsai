@@ -154,3 +154,242 @@ export const ExecutionResultSchema = z.object({
 })
 
 export type ExecutionResult = z.infer<typeof ExecutionResultSchema>
+
+// ── Market intelligence contracts ───────────────────────────────────────────
+
+export const IntelScanTypeSchema = z.enum(["hot", "full", "sector"])
+export type IntelScanType = z.infer<typeof IntelScanTypeSchema>
+
+export const IntelScanStatusSchema = z.enum(["RUNNING", "COMPLETED", "FAILED"])
+export type IntelScanStatus = z.infer<typeof IntelScanStatusSchema>
+
+export const SignalActionSchema = z.enum(["BUY", "SELL", "WATCH"])
+export type SignalAction = z.infer<typeof SignalActionSchema>
+
+export const SignalSourceSchema = z.enum(["deterministic", "ai", "news"])
+export type SignalSource = z.infer<typeof SignalSourceSchema>
+
+export const IntelScanRunSchema = z.object({
+  id: z.string(),
+  scanType: IntelScanTypeSchema,
+  status: IntelScanStatusSchema,
+  symbolsScanned: z.number().int().nonnegative(),
+  signalsCreated: z.number().int().nonnegative(),
+  error: z.string().nullable().optional(),
+  startedAt: z.string().datetime(),
+  completedAt: z.string().datetime().nullable().optional()
+})
+
+export type IntelScanRun = z.infer<typeof IntelScanRunSchema>
+
+export const MarketSignalSchema = z.object({
+  id: z.string(),
+  symbol: z.string(),
+  strategy: z.string(),
+  action: SignalActionSchema,
+  timeframe: z.string(),
+  confidence: z.number().min(0).max(1),
+  reason: z.string(),
+  source: SignalSourceSchema,
+  payload: z.record(z.unknown()).nullable().optional(),
+  sector: z.string().nullable().optional(),
+  assetClass: z.string().nullable().optional(),
+  expiresAt: z.string().datetime().nullable().optional(),
+  scanRunId: z.string().nullable().optional(),
+  createdAt: z.string().datetime()
+})
+
+export type MarketSignal = z.infer<typeof MarketSignalSchema>
+
+export const MarketNewsItemSchema = z.object({
+  id: z.string(),
+  symbol: z.string().nullable().optional(),
+  headline: z.string(),
+  summary: z.string(),
+  sentiment: z.enum(["bullish", "bearish", "neutral"]),
+  source: z.string(),
+  url: z.string().nullable().optional(),
+  category: z.string().nullable().optional(),
+  publishedAt: z.string().datetime().nullable().optional(),
+  scanRunId: z.string().nullable().optional(),
+  createdAt: z.string().datetime()
+})
+
+export type MarketNewsItem = z.infer<typeof MarketNewsItemSchema>
+
+export const InvestOpportunitySchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  thesis: z.string(),
+  symbols: z.array(z.string()),
+  horizon: z.enum(["intraday", "swing", "position"]),
+  conviction: z.number().int().min(1).max(5),
+  style: z.enum(["growth", "value", "income", "thematic"]),
+  sector: z.string().nullable().optional(),
+  payload: z.record(z.unknown()).nullable().optional(),
+  expiresAt: z.string().datetime().nullable().optional(),
+  scanRunId: z.string().nullable().optional(),
+  createdAt: z.string().datetime()
+})
+
+export type InvestOpportunity = z.infer<typeof InvestOpportunitySchema>
+
+export const MarketPulseThemeSchema = z.object({
+  label: z.string(),
+  value: z.string()
+})
+
+export const MarketPulseSnapshotSchema = z.object({
+  id: z.string(),
+  themes: z.array(MarketPulseThemeSchema),
+  scanRunId: z.string().nullable().optional(),
+  createdAt: z.string().datetime()
+})
+
+export type MarketPulseSnapshot = z.infer<typeof MarketPulseSnapshotSchema>
+
+export const IntelFeedItemSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("signal"), item: MarketSignalSchema, at: z.string().datetime() }),
+  z.object({ kind: z.literal("news"), item: MarketNewsItemSchema, at: z.string().datetime() }),
+  z.object({ kind: z.literal("opportunity"), item: InvestOpportunitySchema, at: z.string().datetime() })
+])
+
+export type IntelFeedItem = z.infer<typeof IntelFeedItemSchema>
+
+export const IntelFeedResponseSchema = z.object({
+  success: z.boolean(),
+  items: z.array(IntelFeedItemSchema),
+  nextCursor: z.string().nullable().optional()
+})
+
+export type IntelFeedResponse = z.infer<typeof IntelFeedResponseSchema>
+
+// ── Market synthesis platform contracts ─────────────────────────────────────
+
+export const IntelDietSchema = z.enum([
+  "catalyst",
+  "fundamental",
+  "flow",
+  "macro",
+  "calendar",
+  "onchain"
+])
+export type IntelDiet = z.infer<typeof IntelDietSchema>
+
+export const SynthesisBriefTypeSchema = z.enum([
+  "catalyst",
+  "fundamental",
+  "flow",
+  "macro",
+  "morning",
+  "contradiction"
+])
+export type SynthesisBriefType = z.infer<typeof SynthesisBriefTypeSchema>
+
+export const ProvenanceItemSchema = z.object({
+  source: z.string(),
+  url: z.string().optional(),
+  excerpt: z.string().optional(),
+  title: z.string().optional()
+})
+
+export const IntelDocumentSchema = z.object({
+  id: z.string(),
+  diet: IntelDietSchema,
+  source: z.string(),
+  externalId: z.string().nullable().optional(),
+  symbol: z.string().nullable().optional(),
+  symbols: z.array(z.string()),
+  title: z.string(),
+  body: z.string(),
+  url: z.string().nullable().optional(),
+  sentiment: z.number().nullable().optional(),
+  eventType: z.string().nullable().optional(),
+  publishedAt: z.string().datetime().nullable().optional(),
+  createdAt: z.string().datetime()
+})
+
+export type IntelDocument = z.infer<typeof IntelDocumentSchema>
+
+export const SynthesisBriefSchema = z.object({
+  id: z.string(),
+  briefType: SynthesisBriefTypeSchema,
+  symbols: z.array(z.string()),
+  headline: z.string(),
+  thesis: z.string(),
+  bullets: z.object({
+    bullish: z.array(z.string()).optional(),
+    bearish: z.array(z.string()).optional(),
+    actionable: z.array(z.string()).optional()
+  }),
+  impactScore: z.number().int().min(1).max(10),
+  confidence: z.number().min(0).max(1),
+  provenance: z.array(ProvenanceItemSchema),
+  analogs: z.array(z.object({
+    summary: z.string(),
+    return1d: z.number().nullable().optional()
+  })).nullable().optional(),
+  regime: z.string().nullable().optional(),
+  expiresAt: z.string().datetime().nullable().optional(),
+  createdAt: z.string().datetime()
+})
+
+export type SynthesisBrief = z.infer<typeof SynthesisBriefSchema>
+
+export const CatalystRadarItemSchema = z.object({
+  symbol: z.string(),
+  heat: z.number().min(-1).max(1),
+  impactScore: z.number().int(),
+  headline: z.string(),
+  briefId: z.string().optional(),
+  sentiment: z.number().optional(),
+  change24h: z.number().optional()
+})
+
+export type CatalystRadarItem = z.infer<typeof CatalystRadarItemSchema>
+
+export const ContradictionAlertSchema = z.object({
+  id: z.string(),
+  symbol: z.string(),
+  newsBias: z.string(),
+  flowBias: z.string().nullable().optional(),
+  technicalBias: z.string().nullable().optional(),
+  summary: z.string(),
+  severity: z.number().int(),
+  createdAt: z.string().datetime()
+})
+
+export type ContradictionAlert = z.infer<typeof ContradictionAlertSchema>
+
+export const EntityGraphNodeSchema = z.object({
+  id: z.string(),
+  type: z.string(),
+  label: z.string(),
+  symbol: z.string().nullable().optional()
+})
+
+export const EntityGraphEdgeSchema = z.object({
+  id: z.string(),
+  fromId: z.string(),
+  toId: z.string(),
+  relation: z.string(),
+  weight: z.number()
+})
+
+export const RippleGraphSchema = z.object({
+  nodes: z.array(EntityGraphNodeSchema),
+  edges: z.array(EntityGraphEdgeSchema),
+  rootSymbol: z.string().optional()
+})
+
+export type RippleGraph = z.infer<typeof RippleGraphSchema>
+
+export const ConvictionDashboardSchema = z.object({
+  symbol: z.string(),
+  score: z.number().min(0).max(100),
+  diets: z.record(z.number()),
+  headline: z.string().optional(),
+  briefId: z.string().optional()
+})
+
+export type ConvictionDashboard = z.infer<typeof ConvictionDashboardSchema>

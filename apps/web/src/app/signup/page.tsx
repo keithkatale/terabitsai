@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { SparklesIcon } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { PageBackground } from "@/components/ui/page-background";
+import { BrandMark } from "@/components/ui/brand-mark";
 
 export default function SignupPage() {
   const [email, setEmail] = useState("");
@@ -45,18 +47,19 @@ export default function SignupPage() {
 
   if (checkEmail) {
     return (
-      <div className="min-h-screen bg-[#050508] text-zinc-200 flex items-center justify-center p-6">
-        <div className="w-full max-w-md bg-zinc-950/80 border border-zinc-900 rounded-2xl p-8 text-center">
+      <div className="relative min-h-screen text-zinc-200 flex items-center justify-center p-6">
+        <PageBackground overlay="medium" />
+        <div className="w-full max-w-md terminal-card rounded-2xl p-8 text-center relative">
           <h1 className="text-xl font-extrabold text-white mb-2">
             Check your email
           </h1>
-          <p className="text-sm text-zinc-500">
+          <p className="text-sm text-zinc-400">
             We sent a confirmation link to <strong className="text-zinc-300">{email}</strong>.
             Click it to activate your Terabits AI account.
           </p>
           <Link
             href="/login"
-            className="inline-block mt-6 text-sm text-indigo-400 font-semibold hover:text-indigo-300"
+            className="inline-block mt-6 text-sm text-blue-400 font-semibold hover:text-blue-300"
           >
             Back to sign in
           </Link>
@@ -66,20 +69,19 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#050508] text-zinc-200 flex items-center justify-center p-6">
-      <div className="w-full max-w-md">
-        <div className="flex items-center gap-2 justify-center mb-8">
-          <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-indigo-400 flex items-center justify-center">
-            <SparklesIcon className="size-5 text-white" />
-          </div>
-          <span className="text-xl font-extrabold text-white">Terabits AI</span>
+    <div className="relative min-h-screen text-zinc-200 flex items-center justify-center p-6">
+      <PageBackground overlay="medium" />
+
+      <div className="w-full max-w-md relative">
+        <div className="flex justify-center mb-8">
+          <BrandMark />
         </div>
 
-        <div className="bg-zinc-950/80 border border-zinc-900 rounded-2xl p-8">
+        <div className="terminal-card rounded-2xl p-8">
           <h1 className="text-2xl font-extrabold text-white mb-1">
             Create your account
           </h1>
-          <p className="text-sm text-zinc-500 mb-6">
+          <p className="text-sm text-zinc-400 mb-6">
             Get a demo wallet and start paper trading with AI-powered analysis.
           </p>
 
@@ -93,7 +95,7 @@ export default function SignupPage() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="mt-1.5 w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm outline-none text-white"
+                className="mt-1.5 w-full neo-input px-4 py-2.5 text-sm"
               />
             </div>
             <div>
@@ -106,7 +108,7 @@ export default function SignupPage() {
                 minLength={8}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="mt-1.5 w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm outline-none text-white"
+                className="mt-1.5 w-full neo-input px-4 py-2.5 text-sm"
               />
               <p className="mt-1 text-[10px] text-zinc-600">At least 8 characters</p>
             </div>
@@ -118,15 +120,19 @@ export default function SignupPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 bg-gradient-to-r from-indigo-600 to-indigo-500 text-white font-extrabold text-sm rounded-xl disabled:opacity-50 cursor-pointer"
+              className="terminal-btn terminal-btn-primary w-full py-3 text-sm disabled:opacity-70 flex items-center justify-center min-h-[44px]"
             >
-              {loading ? "Creating account…" : "Sign up"}
+              {loading ? (
+                <Loader2 className="size-4 animate-spin" aria-label="Creating account" />
+              ) : (
+                "Sign up"
+              )}
             </button>
           </form>
 
           <p className="mt-6 text-center text-sm text-zinc-500">
             Already have an account?{" "}
-            <Link href="/login" className="text-indigo-400 font-semibold">
+            <Link href="/login" className="text-blue-400 font-semibold hover:text-blue-300">
               Sign in
             </Link>
           </p>

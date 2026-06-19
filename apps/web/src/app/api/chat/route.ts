@@ -3,9 +3,11 @@ import { parseVertexErrorMessage } from "@/lib/gemini/vertex-error-parser";
 import { getCapitalAssetCatalog } from "@/lib/catalog/capital-assets";
 import { generateVertexTextCompletion } from "@/lib/gemini/vertex-text-completion";
 import { fetchAssetMarketData, fetchMarketOverview } from "@/lib/chat/market-data-tool";
+import { searchMarketIntel, getLatestCatalystBrief, getMacroRegime, findHistoricalAnalogs } from "@quant/market-intel";
 import type { ChatStreamEvent } from "@/lib/chat/stream-types";
 import { extractToolGenui } from "@/lib/chat/stream-types";
 import { historyContextBlob, parseClientHistory, toGeminiContents, type ChatHistoryTurn } from "@/lib/chat/conversation-history";
+import { augmentMessageWithPinnedAssets, parsePinnedAssets } from "@/lib/chat/pinned-assets";
 import { Type } from "@google/genai";
 
 export const dynamic = "force-dynamic";
@@ -113,9 +115,35 @@ const spawnSubagentsDeclaration = {
   }
 };
 
+const searchMarketIntelDeclaration = {
+  name: "search_market_intel",
+  description:
+    "Search ingested market intelligence (news, macro, flow) with verified sources. Use for 'why is X moving' questions before synthesizing an answer.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      query: { type: Type.STRING, description: "Search query" },
+      symbol: { type: Type.STRING, description: "Optional ticker filter e.g. NVDA" },
+    },
+    required: ["query"],
+  },
+};
+
+const getCatalystBriefDeclaration = {
+  name: "get_catalyst_brief",
+  description: "Get latest AI catalyst synthesis brief for a symbol with impact score and provenance URLs.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      symbol: { type: Type.STRING },
+    },
+    required: ["symbol"],
+  },
+};
+
 export async function POST(req: Request) {
   try {
-    const { message, history: rawHistory } = await req.json();
+    const { message, history: rawHistory, pinnedAssets: rawPinned } = await req.json();
 
     if (!message || typeof message !== "string") {
       return new Response(JSON.stringify({ success: false, error: "Prompt message is required" }), {
@@ -123,6 +151,9 @@ export async function POST(req: Request) {
         headers: { "Content-Type": "application/json" },
       });
     }
+
+    const pinnedAssets = parsePinnedAssets(rawPinned);
+    const effectiveMessage = augmentMessageWithPinnedAssets(message, pinnedAssets);
 
     const conversationHistory = parseClientHistory(rawHistory);
 
@@ -133,6 +164,7 @@ You maintain a professional, objective, and polite tone. Provide structured repl
 You are equipped with advanced MCP tools to:
 - Retrieve the asset catalog and detailed assets data.
 - Pull live quotes and historical OHLCV via get_asset_market_data (use this for ANY chart or price request).
+- Search verified market intelligence via search_market_intel for news/catalyst questions — cite provenance URLs, never invent headlines.
 - Spin up specialized agent teams (parallel subagents) to perform granular technical, fundamental, risk, or sentiment analyses.
 
 When the user asks for a chart, price, market overview, or market view:
@@ -179,6 +211,10 @@ RULES:
 CONVERSATION MEMORY:
 - You receive the full conversation history for this chat. Use it to answer follow-ups, recall assets already discussed, and build on prior answers.
 - When the user says "that", "it", "the same", "what about…", or asks a shorter follow-up, resolve references from earlier turns before calling tools again.
+
+PINNED ASSETS:
+- When a user message includes a <pinned_assets> block, those symbols are exact catalog tickers chosen in the UI — never substitute or guess alternatives.
+- Always call get_asset_details and get_asset_market_data for every pinned symbol before synthesizing your answer.
 `;
 
     const encoder = new TextEncoder();
@@ -194,7 +230,7 @@ CONVERSATION MEMORY:
             const ai = getVertexGeminiClient();
             const model = getAgentGeminiModelId();
 
-            const contents: any[] = toGeminiContents(conversationHistory, message);
+            const contents: any[] = toGeminiContents(conversationHistory, effectiveMessage);
             let loopCount = 0;
             const maxLoops = 5;
             let pendingGenui: unknown = null;
@@ -214,7 +250,9 @@ CONVERSATION MEMORY:
                     getAssetDetailsDeclaration,
                     getAssetMarketDataDeclaration,
                     getMarketOverviewDeclaration,
-                    spawnSubagentsDeclaration
+                    spawnSubagentsDeclaration,
+                    searchMarketIntelDeclaration,
+                    getCatalystBriefDeclaration
                   ]
                 }
               ]
@@ -298,6 +336,24 @@ CONVERSATION MEMORY:
                       ? (args.symbols as string[])
                       : undefined;
                     toolResult = await fetchMarketOverview(symbols);
+                  } else if (name === "search_market_intel") {
+                    toolResult = {
+                      success: true,
+                      results: await searchMarketIntel({
+                        query: String(args?.query ?? ""),
+                        symbol: args?.symbol ? String(args.symbol).toUpperCase() : undefined,
+                        limit: 8,
+                      }),
+                    };
+                  } else if (name === "get_catalyst_brief") {
+                    const sym = String(args?.symbol ?? "").toUpperCase();
+                    const brief = sym ? await getLatestCatalystBrief(sym) : null;
+                    const regime = await getMacroRegime();
+                    toolResult = {
+                      success: Boolean(brief),
+                      brief,
+                      macroRegime: regime?.regime ?? null,
+                    };
                   } else if (name === "spawn_subagents") {
                     const subagentsList = (args?.subagents || []) as Array<{
                       role: string;
@@ -403,13 +459,13 @@ CONVERSATION MEMORY:
               errMsg
             );
             const parsed = parseVertexErrorMessage(err);
-            await simulateStreamingResponse(message, sendEvent, `(Note: Vertex Gemini encountered an issue: ${parsed}. Running local model fallbacks...)\n\n`, conversationHistory);
+            await simulateStreamingResponse(effectiveMessage, sendEvent, `(Note: Vertex Gemini encountered an issue: ${parsed}. Running local model fallbacks...)\n\n`, conversationHistory);
           }
         } else {
           console.info(
             "[POST /api/chat] Gemini is not configured, running standard high-fidelity neutral simulated token stream."
           );
-          await simulateStreamingResponse(message, sendEvent, "", conversationHistory);
+          await simulateStreamingResponse(effectiveMessage, sendEvent, "", conversationHistory);
         }
 
         controller.close();

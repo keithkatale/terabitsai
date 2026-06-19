@@ -9,7 +9,9 @@
     "build": "pnpm --recursive run build",
     "test": "pnpm --recursive run test",
     "engine:once": "pnpm --filter @quant/engine loop:once",
-    "engine:dev": "pnpm --filter @quant/engine dev"
+    "engine:dev": "pnpm --filter @quant/engine dev",
+    "intel:once": "pnpm --filter @quant/intel-worker once",
+    "intel:dev": "pnpm --filter @quant/intel-worker dev"
   },
   "devDependencies": {
     "typescript": "^5.3.3"

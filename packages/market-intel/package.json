@@ -1,0 +1,21 @@
+{
+  "name": "@quant/market-intel",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@quant/broker": "workspace:*",
+    "@quant/contracts": "workspace:*",
+    "@quant/db": "workspace:*",
+    "@quant/indicators": "workspace:*",
+    "google-auth-library": "^9.14.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.16",
+    "typescript": "^5.3.3"
+  }
+}

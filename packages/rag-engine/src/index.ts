@@ -181,4 +181,27 @@ export class RAGEngine {
   public getAllChunks(): RAGChunk[] {
     return this.chunks;
   }
+
+  /**
+   * Merge static KB results with external market intel chunks (hybrid retrieval).
+   */
+  public hybridQuery(
+    queryText: string,
+    externalChunks: Array<{ title: string; content: string; category?: string; score?: number }>,
+    maxResults = 8,
+    categoryFilter?: string
+  ): RAGChunk[] {
+    const kb = this.query(queryText, Math.ceil(maxResults / 2), categoryFilter);
+    const external: RAGChunk[] = externalChunks.map((c, i) => ({
+      filePath: `intel://${i}`,
+      fileName: c.title,
+      category: c.category ?? "market-intel",
+      title: c.title,
+      content: c.content,
+      score: c.score ?? 0.5
+    }));
+    const merged = [...external, ...kb];
+    merged.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+    return merged.slice(0, maxResults);
+  }
 }

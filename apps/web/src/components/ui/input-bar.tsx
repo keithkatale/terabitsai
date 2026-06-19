@@ -10,6 +10,7 @@ import {
 } from "react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { TypingPlaceholderOverlay } from "@/components/ui/typing-placeholder";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -30,6 +31,13 @@ export type AttachedFile = {
   size?: number;
 };
 
+export type TaggedAsset = {
+  symbol: string;
+  name?: string;
+  assetClass?: string;
+  sector?: string | null;
+};
+
 export type InputBarProps = {
   onSend?: (message: { role: "user"; content: string }) => void;
   onStop?: () => void;
@@ -47,6 +55,11 @@ export type InputBarProps = {
   autoFocus?: boolean;
   leftActions?: ReactNode;
   rightActions?: ReactNode;
+  placeholderSuggestions?: string[];
+  variant?: "default" | "landing";
+  taggedAssets?: TaggedAsset[];
+  onRemoveTaggedAsset?: (symbol: string) => void;
+  maxTaggedAssets?: number;
 };
 
 const PaperclipIcon = ({ className = "w-[18px] h-[18px]" }) => (
@@ -128,6 +141,33 @@ const FileIcon = ({ className = "w-4 h-4" }) => (
   </svg>
 );
 
+function AssetTagChip({
+  tag,
+  onRemove,
+}: {
+  tag: TaggedAsset;
+  onRemove?: () => void;
+}) {
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-blue-400/25 bg-blue-500/10 pl-2 pr-1 py-0.5 text-[11px] font-semibold text-blue-100">
+      <span className="font-mono text-[10px]">{tag.symbol}</span>
+      {onRemove ? (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove();
+          }}
+          aria-label={`Remove ${tag.symbol}`}
+          className="inline-flex size-4 items-center justify-center rounded-full text-blue-200/80 hover:bg-blue-400/20 hover:text-white"
+        >
+          <XIcon className="size-2.5" />
+        </button>
+      ) : null}
+    </span>
+  );
+}
+
 function AttachmentButton({
   onClick,
   disabled,
@@ -141,7 +181,7 @@ function AttachmentButton({
       onClick={onClick}
       disabled={disabled}
       aria-label="Attach"
-      className="inline-flex items-center justify-center w-8 h-8 rounded-full text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-40"
+      className="inline-flex items-center justify-center w-8 h-8 rounded-full text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.05] transition-colors disabled:opacity-40"
     >
       <PaperclipIcon />
     </button>
@@ -163,10 +203,10 @@ function SendButton({
       onClick={onClick}
       aria-label={isStreaming ? "Stop" : "Send"}
       className={cn(
-        "inline-flex items-center justify-center w-8 h-8 rounded-full transition-all duration-150",
+        "inline-flex items-center justify-center w-9 h-9 rounded-[14px] transition-all duration-150",
         isActive
-          ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900"
-          : "bg-neutral-200 text-neutral-400 dark:bg-neutral-800 dark:text-neutral-600",
+          ? "terminal-btn-primary !p-0 !min-w-9 !min-h-9 text-white"
+          : "bg-white/[0.04] text-zinc-600 border border-white/[0.06] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]",
       )}
     >
       {isStreaming ? <StopIcon /> : <SendIcon />}
@@ -261,8 +301,14 @@ export const InputBar = memo(function InputBar({
   autoFocus,
   leftActions,
   rightActions,
+  placeholderSuggestions,
+  variant = "default",
+  taggedAssets = [],
+  onRemoveTaggedAsset,
+  maxTaggedAssets = 3,
 }: InputBarProps) {
   const [internalInput, setInternalInput] = useState("");
+  const [focused, setFocused] = useState(false);
   const isControlled = controlledValue !== undefined;
   const input = isControlled ? controlledValue : internalInput;
   const setInput = useCallback(
@@ -272,33 +318,38 @@ export const InputBar = memo(function InputBar({
     },
     [isControlled, controlledOnChange],
   );
+  const inputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  const isLanding = variant === "landing";
   const isStreaming = status === "streaming" || status === "submitted";
   const hasInput = input.trim().length > 0;
+  const hasTags = taggedAssets.length > 0;
   const hasContextItems =
     attachedImages.length > 0 || attachedFiles.length > 0;
 
   useEffect(() => {
+    if (isLanding) return;
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "0";
     const next = Math.min(el.scrollHeight, 120);
     el.style.height = `${next}px`;
     el.style.overflowY = el.scrollHeight > 120 ? "auto" : "hidden";
-  }, [input]);
+  }, [input, isLanding]);
 
   useEffect(() => {
     if (!autoFocus) return;
-    textareaRef.current?.focus();
-  }, [autoFocus]);
+    if (isLanding) inputRef.current?.focus();
+    else textareaRef.current?.focus();
+  }, [autoFocus, isLanding]);
 
   const handleSubmit = useCallback(() => {
     const trimmed = input.trim();
-    if (!trimmed || isStreaming || disabled) return;
+    if ((!trimmed && !hasTags) || isStreaming || disabled) return;
     onSend?.({ role: "user", content: trimmed });
     setInput("");
-  }, [input, isStreaming, disabled, onSend, setInput]);
+  }, [input, hasTags, isStreaming, disabled, onSend, setInput]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -310,26 +361,103 @@ export const InputBar = memo(function InputBar({
     [handleSubmit],
   );
 
-  const handleContainerClick = useCallback((e: React.MouseEvent) => {
-    if (
-      e.target === e.currentTarget ||
-      !(e.target as HTMLElement).closest("button, textarea")
-    ) {
-      textareaRef.current?.focus();
-    }
-  }, []);
+  const handleContainerClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (
+        e.target === e.currentTarget ||
+        !(e.target as HTMLElement).closest("button, textarea, input")
+      ) {
+        if (isLanding) inputRef.current?.focus();
+        else textareaRef.current?.focus();
+      }
+    },
+    [isLanding],
+  );
 
   const sendState: "idle" | "typing" | "streaming" = isStreaming
     ? "streaming"
-    : hasInput && !disabled
+    : (hasInput || hasTags) && !disabled
       ? "typing"
       : "idle";
+
+  const showTypingPlaceholder =
+    Boolean(placeholderSuggestions?.length) &&
+    !hasInput &&
+    !hasTags &&
+    !focused &&
+    !disabled;
+
+  if (isLanding) {
+    return (
+      <div className={cn("shrink-0 w-full", className)}>
+        <div className="mx-auto max-w-2xl">
+          <div
+            className="terminal-card relative cursor-text rounded-2xl px-3 py-2.5 shadow-2xl"
+            onClick={handleContainerClick}
+          >
+            {hasTags ? (
+              <div className="mb-2 flex flex-wrap items-center gap-1.5 border-b border-[var(--terminal-border)] pb-2">
+                {taggedAssets.map((tag) => (
+                  <AssetTagChip
+                    key={tag.symbol}
+                    tag={tag}
+                    onRemove={
+                      onRemoveTaggedAsset
+                        ? () => onRemoveTaggedAsset(tag.symbol)
+                        : undefined
+                    }
+                  />
+                ))}
+              </div>
+            ) : null}
+
+            <div className="flex items-center gap-2">
+              <div className="relative min-w-0 flex-1">
+                <TypingPlaceholderOverlay
+                  suggestions={placeholderSuggestions ?? []}
+                  visible={showTypingPlaceholder}
+                />
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  onFocus={() => setFocused(true)}
+                  onBlur={() => setFocused(false)}
+                  placeholder={showTypingPlaceholder ? " " : placeholder}
+                  disabled={disabled}
+                  className={cn(
+                    "relative z-[1] h-9 w-full bg-transparent border-0 outline-none text-[14px] leading-none text-zinc-100 placeholder:text-zinc-500",
+                    disabled && "opacity-50 cursor-not-allowed",
+                  )}
+                />
+              </div>
+
+              <SendButton
+                state={sendState}
+                onClick={() => {
+                  if (isStreaming) onStop?.();
+                  else if (hasInput || hasTags) handleSubmit();
+                }}
+              />
+            </div>
+          </div>
+          {taggedAssets.length >= maxTaggedAssets ? (
+            <p className="mt-1.5 text-[10px] text-zinc-500 text-center">
+              Max {maxTaggedAssets} assets — remove one to pin another.
+            </p>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={cn("shrink-0 px-3 pb-3 w-full", className)}>
       <div className="mx-auto max-w-2xl">
         <div
-          className="relative cursor-text rounded-[16px] bg-white dark:bg-neutral-900 shadow-sm ring-1 ring-neutral-200 dark:ring-neutral-800"
+          className="relative cursor-text rounded-[20px] neo-surface"
           onClick={handleContainerClick}
         >
           <div
@@ -364,17 +492,23 @@ export const InputBar = memo(function InputBar({
               )}
             </div>
           </div>
-          <div className="pt-3 pb-0 pr-3 pl-3.5 min-h-[44px]">
+            <div className="relative min-h-[44px] pt-3 pb-0 pr-3 pl-3.5">
+            <TypingPlaceholderOverlay
+              suggestions={placeholderSuggestions ?? []}
+              visible={showTypingPlaceholder}
+            />
             <textarea
               ref={textareaRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={placeholder}
+              onFocus={() => setFocused(true)}
+              onBlur={() => setFocused(false)}
+              placeholder={showTypingPlaceholder ? " " : placeholder}
               disabled={disabled}
               rows={1}
               className={cn(
-                "w-full resize-none bg-transparent border-0 outline-none text-[14px] leading-[1.6] text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 dark:placeholder:text-neutral-500",
+                "relative z-[1] w-full resize-none bg-transparent border-0 outline-none text-[14px] leading-[1.6] text-zinc-100 placeholder:text-zinc-500",
                 "overflow-hidden",
                 disabled && "opacity-50 cursor-not-allowed",
               )}

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useMemo } from "react";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { ChevronDown, Loader2 } from "lucide-react";
 import { AssistantSiriOrb } from "./assistant-siri-orb";
@@ -305,6 +306,7 @@ export function ChatMessage({
   hideAssistantOrb = false,
   livePrices,
   onClosePosition,
+  guestSignInCta = false,
   rootRef,
 }: {
   message: ChatMessageData;
@@ -312,6 +314,7 @@ export function ChatMessage({
   hideAssistantOrb?: boolean;
   livePrices?: Record<string, { spot: number }>;
   onClosePosition?: (id: string) => void;
+  guestSignInCta?: boolean;
   rootRef?: React.Ref<HTMLDivElement | null>;
 }) {
   if (message.role === "user") {
@@ -406,6 +409,22 @@ export function ChatMessage({
             return null;
           });
         })()}
+
+        {guestSignInCta ? (
+          <div className="mt-3 rounded-[16px] border border-white/[0.08] bg-white/[0.04] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              Sign in free to save this thread, unlock deeper analysis, and access your demo wallet.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Link href="/login?next=/" className="terminal-btn terminal-btn-primary py-2 px-4 text-xs">
+                Sign in
+              </Link>
+              <Link href="/signup" className="terminal-btn terminal-btn-ghost py-2 px-4 text-xs">
+                Create account
+              </Link>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );

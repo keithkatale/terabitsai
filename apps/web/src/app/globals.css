@@ -1,23 +1,41 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;1,9..40,400&display=swap');
 
 @import "tailwindcss";
 @source "../components/**/*.{js,ts,jsx,tsx,mdx}";
 @source "./**/*.{js,ts,jsx,tsx,mdx}";
 
 :root {
-  --background: #0b0d19;
-  --panel-bg: rgba(18, 23, 44, 0.35);
-  --glass-border: rgba(255, 255, 255, 0.04);
-  --glass-highlight: rgba(255, 255, 255, 0.015);
-  --text-primary: #f1f3f9;
-  --text-secondary: #8e96aa;
+  --background: #14161a;
+  --panel-bg: rgba(28, 31, 38, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.07);
+  --glass-highlight: rgba(255, 255, 255, 0.04);
+  --text-primary: #f5f6f8;
+  --text-secondary: #9ca3af;
+  --accent-blue: #3b82f6;
+  --accent-blue-soft: #60a5fa;
+  --accent-blue-deep: #2563eb;
   --accent-cyan: #38bdf8;
-  --accent-purple: #a78bfa;
   --accent-green: #34d399;
   --accent-red: #f87171;
-  --glow-color: rgba(56, 189, 248, 0.15);
-  --font-sans: 'Outfit', sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+  --glow-color: rgba(59, 130, 246, 0.16);
+  --font-sans: var(--font-dm-sans, 'DM Sans'), system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --terminal-surface: #1c1f26;
+  --terminal-surface-raised: #242830;
+  --terminal-border: rgba(255, 255, 255, 0.08);
+  --terminal-border-strong: rgba(255, 255, 255, 0.14);
+  --neo-highlight: rgba(255, 255, 255, 0.06);
+  --neo-shadow: rgba(0, 0, 0, 0.42);
+  --neo-raised:
+    6px 6px 18px var(--neo-shadow),
+    -4px -4px 14px var(--neo-highlight),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  --neo-soft:
+    0 14px 36px rgba(0, 0, 0, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --neo-inset:
+    inset 4px 4px 10px rgba(0, 0, 0, 0.38),
+    inset -2px -2px 8px rgba(255, 255, 255, 0.04);
+  --terminal-shadow: var(--neo-soft);
 }
 
 * {
@@ -30,10 +48,10 @@ body {
   font-family: var(--font-sans);
   overflow-x: hidden;
   min-height: 100vh;
-  background-image: 
-    radial-gradient(at 15% 15%, rgba(167, 139, 250, 0.04) 0px, transparent 55%),
-    radial-gradient(at 85% 85%, rgba(56, 189, 248, 0.04) 0px, transparent 55%),
-    radial-gradient(at 50% 50%, rgba(15, 23, 42, 0.85) 0px, transparent 100%);
+  background-image:
+    radial-gradient(at 12% 8%, rgba(59, 130, 246, 0.05) 0px, transparent 52%),
+    radial-gradient(at 88% 92%, rgba(255, 255, 255, 0.03) 0px, transparent 55%),
+    radial-gradient(at 50% 50%, rgba(20, 22, 26, 0.92) 0px, transparent 100%);
 }
 
 /* Scrollbar styling */
@@ -80,7 +98,7 @@ body {
   font-size: 22px;
   font-weight: 800;
   letter-spacing: -0.5px;
-  background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+  background: linear-gradient(135deg, var(--accent-blue-soft), var(--accent-blue));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
@@ -118,15 +136,142 @@ body {
 .stat-value {
   font-size: 16px;
   font-weight: 700;
-  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Terminal design system — soft neumorphic surfaces */
+.terminal-card {
+  background: linear-gradient(155deg, var(--terminal-surface-raised) 0%, var(--terminal-surface) 100%);
+  border: 1px solid var(--terminal-border);
+  border-radius: 20px;
+  box-shadow: var(--neo-soft);
+}
+
+.terminal-card-raised {
+  background: linear-gradient(155deg, #2a2e38 0%, var(--terminal-surface-raised) 100%);
+  border: 1px solid var(--terminal-border-strong);
+  border-radius: 20px;
+  box-shadow: var(--neo-raised);
+}
+
+.terminal-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: 0.5rem 0.875rem;
+  border-radius: 14px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  transition: all 0.22s ease;
+  cursor: pointer;
+}
+
+.terminal-btn-ghost {
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.04), rgba(0, 0, 0, 0.12));
+  border: 1px solid var(--terminal-border);
+  color: var(--text-secondary);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.terminal-btn-ghost:hover {
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.07), rgba(0, 0, 0, 0.1));
+  color: var(--text-primary);
+  border-color: var(--terminal-border-strong);
+  transform: translateY(-1px);
+}
+
+.terminal-btn-primary {
+  background: linear-gradient(145deg, var(--accent-blue-soft) 0%, var(--accent-blue-deep) 100%);
+  border: 1px solid rgba(147, 197, 253, 0.28);
+  color: white;
+  box-shadow:
+    0 6px 18px rgba(37, 99, 235, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+.terminal-btn-primary:hover {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+  box-shadow:
+    0 8px 22px rgba(37, 99, 235, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.24);
+}
+
+.neo-input {
+  background: linear-gradient(145deg, rgba(0, 0, 0, 0.22), rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--terminal-border);
+  border-radius: 14px;
+  box-shadow: var(--neo-inset);
+  color: var(--text-primary);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.neo-input:focus {
+  outline: none;
+  border-color: rgba(59, 130, 246, 0.45);
+  box-shadow:
+    var(--neo-inset),
+    0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
+.neo-surface {
+  background: linear-gradient(155deg, var(--terminal-surface-raised) 0%, var(--terminal-surface) 100%);
+  border: 1px solid var(--terminal-border);
+  box-shadow: var(--neo-soft);
+}
+
+.terminal-tab {
+  padding: 0.375rem 0.75rem;
+  border-radius: 14px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.terminal-tab-active {
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(96, 165, 250, 0.28);
+  color: #bfdbfe;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.terminal-tab-idle {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+}
+
+.terminal-tab-idle:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.terminal-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.terminal-num {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
 }
 
 .glass-panel {
   background: var(--panel-bg);
   backdrop-filter: blur(24px);
   border: 1px solid var(--glass-border);
-  border-radius: 24px;
-  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.2);
+  border-radius: 28px;
+  box-shadow: var(--neo-soft);
   padding: 24px;
   overflow: hidden;
   transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
@@ -169,8 +314,8 @@ body {
 
 .message-user {
   align-self: flex-end;
-  background: linear-gradient(135deg, rgba(56, 189, 248, 0.1), rgba(167, 139, 250, 0.1));
-  border: 1px solid rgba(167, 139, 250, 0.15);
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(255, 255, 255, 0.04));
+  border: 1px solid rgba(96, 165, 250, 0.14);
 }
 
 .message-ai {
@@ -200,7 +345,7 @@ body {
 }
 
 .chat-send-btn {
-  background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+  background: linear-gradient(135deg, var(--accent-blue-soft), var(--accent-blue));
   border: none;
   outline: none;
   color: white;
@@ -257,7 +402,7 @@ body {
 }
 
 .selector-tab.active {
-  background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+  background: linear-gradient(135deg, var(--accent-blue-soft), var(--accent-blue));
   color: white;
   border-color: transparent;
   box-shadow: 0 4px 15px rgba(6, 182, 212, 0.3);
@@ -311,7 +456,7 @@ body {
 }
 
 .primary-btn {
-  background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+  background: linear-gradient(135deg, var(--accent-blue-soft), var(--accent-blue));
   color: white;
   font-weight: 700;
   border: none;
@@ -388,7 +533,7 @@ body {
   color: var(--accent-cyan);
   font-size: 10px;
   font-weight: 700;
-  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
   pointer-events: none;
 }
 
@@ -418,7 +563,7 @@ body {
 .sentiment-card p {
   font-size: 18px;
   font-weight: 800;
-  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ==========================================
@@ -684,7 +829,7 @@ body {
 }
 
 .tab-btn.active {
-  background: linear-gradient(135deg, rgba(56, 189, 248, 0.08), rgba(167, 139, 250, 0.08));
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(255, 255, 255, 0.03));
   border: 1px solid rgba(56, 189, 248, 0.15);
   color: #ffffff;
   text-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
@@ -951,7 +1096,7 @@ body {
   background: linear-gradient(
     90deg,
     rgba(255, 255, 255, 0.015) 25%,
-    rgba(99, 102, 241, 0.08) 50%,
+    rgba(59, 130, 246, 0.08) 50%,
     rgba(255, 255, 255, 0.015) 75%
   );
   background-size: 960px 100%;
@@ -968,14 +1113,30 @@ body {
   animation: genui-draw 1.1s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+@keyframes market-queue-left {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(-50%, 0, 0); }
+}
+
+.market-queue-track {
+  animation: market-queue-left 52s linear infinite;
+  will-change: transform;
+}
+
+.market-queue-track-reverse {
+  animation: market-queue-left 58s linear infinite reverse;
+  will-change: transform;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-fade-in,
   .genui-enter,
   .genui-draw,
+  .market-queue-track,
+  .market-queue-track-reverse,
   .genui-skeleton-shimmer {
     animation: none;
   }
 }
-
 
 

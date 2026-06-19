@@ -8,7 +8,9 @@
   },
   "dependencies": {
     "@quant/rag-engine": "workspace:*",
-    "@quant/indicators": "workspace:*"
+    "@quant/indicators": "workspace:*",
+    "@quant/market-intel": "workspace:*",
+    "@quant/db": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.11.16",

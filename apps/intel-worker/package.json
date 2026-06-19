@@ -1,0 +1,24 @@
+{
+  "name": "@quant/intel-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "once": "tsx src/index.ts --once",
+    "once:hot": "tsx src/index.ts --once --hot",
+    "once:full": "tsx src/index.ts --once --full"
+  },
+  "dependencies": {
+    "@quant/market-intel": "workspace:*",
+    "@quant/db": "workspace:*",
+    "bullmq": "^5.34.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.16",
+    "tsx": "^4.19.0",
+    "typescript": "^5.3.3"
+  }
+}

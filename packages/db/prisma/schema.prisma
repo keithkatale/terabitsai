@@ -1,6 +1,7 @@
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 generator client {
@@ -150,4 +151,232 @@ model Order {
   agentRun    AgentRun @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
 
   @@map("orders")
+}
+
+// ── Market intelligence (24/7 worker) ─────────────────────────────────────
+
+model IntelScanRun {
+  id             String   @id @default(uuid())
+  scanType       String   @map("scan_type") // hot | full | sector
+  status         String   @default("RUNNING") // RUNNING | COMPLETED | FAILED
+  symbolsScanned Int      @default(0) @map("symbols_scanned")
+  signalsCreated Int      @default(0) @map("signals_created")
+  error          String?
+  startedAt      DateTime @default(now()) @map("started_at")
+  completedAt    DateTime? @map("completed_at")
+
+  signals       MarketSignal[]
+  newsItems     MarketNewsItem[]
+  opportunities InvestOpportunity[]
+  pulse         MarketPulseSnapshot?
+
+  @@index([scanType, startedAt])
+  @@map("intel_scan_runs")
+}
+
+model MarketSignal {
+  id         String    @id @default(uuid())
+  symbol     String
+  strategy   String
+  action     String    // BUY | SELL | WATCH
+  timeframe  String    @default("1H")
+  confidence Float     @default(0.5)
+  reason     String
+  source     String    @default("deterministic") // deterministic | ai | news
+  payload    Json?
+  sector     String?
+  assetClass String?   @map("asset_class")
+  expiresAt  DateTime? @map("expires_at")
+  scanRunId  String?   @map("scan_run_id")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  scanRun IntelScanRun? @relation(fields: [scanRunId], references: [id], onDelete: SetNull)
+
+  @@index([symbol, createdAt])
+  @@index([strategy, createdAt])
+  @@index([sector, createdAt])
+  @@map("market_signals")
+}
+
+model MarketNewsItem {
+  id          String    @id @default(uuid())
+  symbol      String?
+  headline    String
+  summary     String
+  sentiment   String    @default("neutral") // bullish | bearish | neutral
+  source      String
+  url         String?
+  category    String?
+  publishedAt DateTime? @map("published_at")
+  scanRunId   String?   @map("scan_run_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  scanRun IntelScanRun? @relation(fields: [scanRunId], references: [id], onDelete: SetNull)
+
+  @@index([symbol, createdAt])
+  @@index([createdAt])
+  @@map("market_news_items")
+}
+
+model InvestOpportunity {
+  id         String    @id @default(uuid())
+  title      String
+  thesis     String
+  symbols    String[]
+  horizon    String    @default("swing") // intraday | swing | position
+  conviction Int       @default(3)
+  style      String    @default("thematic") // growth | value | income | thematic
+  sector     String?
+  payload    Json?
+  expiresAt  DateTime? @map("expires_at")
+  scanRunId  String?   @map("scan_run_id")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  scanRun IntelScanRun? @relation(fields: [scanRunId], references: [id], onDelete: SetNull)
+
+  @@index([sector, createdAt])
+  @@map("invest_opportunities")
+}
+
+model MarketPulseSnapshot {
+  id        String   @id @default(uuid())
+  themes    Json
+  scanRunId String?  @unique @map("scan_run_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  scanRun IntelScanRun? @relation(fields: [scanRunId], references: [id], onDelete: SetNull)
+
+  @@map("market_pulse_snapshots")
+}
+
+// ── Market synthesis platform ───────────────────────────────────────────────
+
+model IntelDocument {
+  id          String    @id @default(uuid())
+  diet        String    // catalyst | fundamental | flow | macro | calendar | onchain
+  source      String    // finnhub | fmp | fred | marketaux | yahoo | ...
+  externalId  String?   @map("external_id")
+  symbol      String?
+  symbols     String[]
+  title       String
+  body        String
+  url         String?
+  sentiment   Float?
+  eventType   String?   @map("event_type")
+  publishedAt DateTime? @map("published_at")
+  payload     Json?
+  scanRunId   String?   @map("scan_run_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  embedding DocumentEmbedding?
+
+  @@unique([source, externalId])
+  @@index([symbol, publishedAt])
+  @@index([diet, createdAt])
+  @@map("intel_documents")
+}
+
+model DocumentEmbedding {
+  id         String   @id @default(uuid())
+  documentId String   @unique @map("document_id")
+  dimensions Int      @default(0)
+  embedding  Json     // float[] — pgvector column via raw SQL when enabled
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  document IntelDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@map("document_embeddings")
+}
+
+model SynthesisBrief {
+  id          String    @id @default(uuid())
+  briefType   String    @map("brief_type") // catalyst | fundamental | flow | macro | morning | contradiction
+  symbols     String[]
+  headline    String
+  thesis      String
+  bullets     Json
+  impactScore Int       @default(5) @map("impact_score")
+  confidence  Float     @default(0.5)
+  provenance  Json
+  analogs     Json?
+  regime      String?
+  expiresAt   DateTime? @map("expires_at")
+  scanRunId   String?   @map("scan_run_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([briefType, createdAt])
+  @@index([symbols], type: Gin)
+  @@map("synthesis_briefs")
+}
+
+model EntityNode {
+  id       String  @id @default(uuid())
+  type     String  // company | commodity | country | sector | index
+  label    String
+  symbol   String?
+  metadata Json?
+
+  edgesFrom EntityEdge[] @relation("EdgeFrom")
+  edgesTo   EntityEdge[] @relation("EdgeTo")
+
+  @@index([symbol])
+  @@index([type, label])
+  @@map("entity_nodes")
+}
+
+model EntityEdge {
+  id          String  @id @default(uuid())
+  fromId      String  @map("from_id")
+  toId        String  @map("to_id")
+  relation    String  // supplies | competes | regulates | correlates | affects
+  weight      Float   @default(1.0)
+  sourceDocId String? @map("source_doc_id")
+
+  fromNode EntityNode @relation("EdgeFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  toNode   EntityNode @relation("EdgeTo", fields: [toId], references: [id], onDelete: Cascade)
+
+  @@index([fromId])
+  @@index([toId])
+  @@map("entity_edges")
+}
+
+model MacroRegimeSnapshot {
+  id        String   @id @default(uuid())
+  regime    String   // risk_on | risk_off | late_cycle | recession_scare | neutral
+  themes    Json
+  fredData  Json?    @map("fred_data")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("macro_regime_snapshots")
+}
+
+model HistoricalAnalog {
+  id              String   @id @default(uuid())
+  documentId      String?  @map("document_id")
+  synthesisId     String?  @map("synthesis_id")
+  symbol          String?
+  eventSummary    String   @map("event_summary")
+  contextEmbedding Json?
+  return1h        Float?   @map("return_1h")
+  return1d        Float?   @map("return_1d")
+  return1w        Float?   @map("return_1w")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([symbol, createdAt])
+  @@map("historical_analogs")
+}
+
+model ContradictionAlert {
+  id         String   @id @default(uuid())
+  symbol     String
+  newsBias   String   @map("news_bias")
+  flowBias   String?  @map("flow_bias")
+  technicalBias String? @map("technical_bias")
+  summary    String
+  severity   Int      @default(5)
+  payload    Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([symbol, createdAt])
+  @@map("contradiction_alerts")
 }

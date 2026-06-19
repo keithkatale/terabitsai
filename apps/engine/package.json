@@ -15,6 +15,7 @@
     "@quant/broker": "workspace:*",
     "@quant/contracts": "workspace:*",
     "@quant/db": "workspace:*",
+    "@quant/market-intel": "workspace:*",
     "@quant/model-router": "workspace:*",
     "@quant/risk": "workspace:*"
   },

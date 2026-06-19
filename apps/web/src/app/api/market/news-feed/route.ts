@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateVertexTextCompletion } from "@/lib/gemini/vertex-text-completion";
+import { prisma } from "@quant/db";
+import { fetchYahooFinanceNews, fetchFinnhubNews, normalizeNews } from "@quant/market-intel";
 
 export const dynamic = "force-dynamic";
 
@@ -31,63 +33,72 @@ interface NewsFeedResponse {
 // Module-level in-memory cache for news feeds (resilient across Next dev session refreshes)
 const newsFeedCache = new Map<string, { feed: Omit<NewsFeedResponse, "expirationDays">; expiresAt: number }>();
 
-/**
- * Fetches recent news for a symbol from Yahoo Finance search API.
- */
-async function fetchYahooFinanceNews(symbol: string): Promise<string[]> {
-  try {
-    const url = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(symbol)}&newsCount=5`;
-    const res = await fetch(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
-      },
-      next: { revalidate: 1800 } // Cache for 30 minutes
-    });
-    if (!res.ok) {
-      console.warn(`Yahoo news fetch failed with status: ${res.status}`);
-      return [];
+const DB_NEWS_TTL_MS = 30 * 60 * 1000;
+
+async function feedFromDatabase(symbol: string): Promise<Omit<NewsFeedResponse, "expirationDays"> | null> {
+  const since = new Date(Date.now() - DB_NEWS_TTL_MS);
+  const rows = await prisma.marketNewsItem.findMany({
+    where: { symbol, createdAt: { gte: since } },
+    orderBy: { createdAt: "desc" },
+    take: 5
+  });
+  if (rows.length === 0) return null;
+
+  const news: NewsItem[] = rows.map((r) => ({
+    title: r.headline,
+    source: r.source,
+    summary: r.summary,
+    sentiment: r.sentiment as NewsItem["sentiment"],
+    timestamp: r.publishedAt
+      ? `${Math.max(1, Math.round((Date.now() - r.publishedAt.getTime()) / 3_600_000))}h ago`
+      : "recent"
+  }));
+
+  const bullish = rows.filter((r) => r.sentiment === "bullish").length;
+  const bearish = rows.filter((r) => r.sentiment === "bearish").length;
+  const bias = bullish > bearish ? "bullish" : bearish > bullish ? "bearish" : "neutral";
+
+  return {
+    catalysts: [
+      `News flow (${bias === "bullish" ? "Bullish" : bias === "bearish" ? "Bearish" : "Neutral"})`,
+      `${rows.length} fresh headlines`,
+      "Intel worker scan"
+    ],
+    narrative: `Latest persisted intelligence for ${symbol} from Yahoo, Finnhub, and scanner synthesis. ${news[0]?.summary ?? ""}`,
+    news,
+    social: {
+      author: "Lumina Intelligence",
+      username: "@LuminaIntel",
+      verified: true,
+      text: `Fresh ${symbol} headlines from the 24/7 intel worker. ${news[0]?.title ?? ""}`,
+      cardTitle: `${symbol} Intelligence Brief`,
+      cardDesc: "DB-backed market news from the intelligence scanner.",
+      cardImage: getFallbackImage(symbol, symbol, "stock"),
+      link: `lumina.market/${symbol.toLowerCase()}`
     }
-    const data = await res.json();
-    const articles = data?.news || [];
-    return articles.map((art: any) => {
-      const title = art.title || "";
-      const publisher = art.publisher || "";
-      return `[${publisher}] ${title}`;
-    });
-  } catch (err) {
-    console.warn("Error fetching Yahoo Finance news:", err);
-    return [];
-  }
+  };
 }
 
-/**
- * Fetches company-specific news from Finnhub.
- */
-async function fetchFinnhubNews(symbol: string): Promise<string[]> {
-  try {
-    const apiKey = process.env.FINNHUB_API_KEY || process.env.NEXT_PUBLIC_FINNHUB_API_KEY;
-    if (!apiKey) return [];
-
-    const toDate = new Date();
-    const fromDate = new Date();
-    fromDate.setDate(fromDate.getDate() - 7);
-
-    const pad = (n: number) => String(n).padStart(2, "0");
-    const toStr = `${toDate.getFullYear()}-${pad(toDate.getMonth() + 1)}-${pad(toDate.getDate())}`;
-    const fromStr = `${fromDate.getFullYear()}-${pad(fromDate.getMonth() + 1)}-${pad(fromDate.getDate())}`;
-
-    const url = `https://finnhub.io/api/v1/company-news?symbol=${encodeURIComponent(symbol)}&from=${fromStr}&to=${toStr}&token=${apiKey}`;
-    const res = await fetch(url, { next: { revalidate: 1800 } });
-    if (!res.ok) return [];
-    const articles = await res.json();
-    if (!Array.isArray(articles)) return [];
-
-    return articles.slice(0, 5).map((art: any) => {
-      return `[${art.source || "Finnhub"}] ${art.headline || ""}: ${art.summary || ""}`;
-    });
-  } catch (err) {
-    console.warn("Error fetching Finnhub news:", err);
-    return [];
+async function persistHeadlines(symbol: string, scanRunId?: string) {
+  const [yahoo, finnhub] = await Promise.all([
+    fetchYahooFinanceNews(symbol),
+    fetchFinnhubNews(symbol)
+  ]);
+  const headlines = normalizeNews(symbol, yahoo, finnhub);
+  for (const h of headlines) {
+    await prisma.marketNewsItem.create({
+      data: {
+        symbol,
+        headline: h.headline,
+        summary: h.summary,
+        sentiment: h.sentiment,
+        source: h.source,
+        url: h.url,
+        category: "symbol",
+        publishedAt: h.publishedAt,
+        scanRunId: scanRunId ?? null
+      }
+    }).catch(() => {});
   }
 }
 
@@ -313,7 +324,19 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Symbol is required" }, { status: 400 });
   }
 
-  // 1. Check module-level in-memory cache
+  // 1. Check persisted DB news (intel worker)
+  if (!forceRefresh) {
+    try {
+      const dbFeed = await feedFromDatabase(symbol);
+      if (dbFeed) {
+        return NextResponse.json({ success: true, feed: dbFeed, cached: true, source: "db" });
+      }
+    } catch {
+      // fall through to cache / live fetch
+    }
+  }
+
+  // 2. Check module-level in-memory cache
   const cached = newsFeedCache.get(symbol);
   if (cached && cached.expiresAt > Date.now() && !forceRefresh) {
     return NextResponse.json({
@@ -323,10 +346,13 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  // 2. Fetch the news headlines as context
+  // 3. Fetch the news headlines as context
   const newsContext = await getRecentNewsForSymbol(symbol);
 
-  // 3. Construct prompt & system instruction for Gemini Vertex completion
+  // 4. Persist raw headlines for future DB reads
+  persistHeadlines(symbol).catch(() => {});
+
+  // 5. Construct prompt & system instruction for Gemini Vertex completion
   const systemInstruction = `You are a world-class financial analyst and AI researcher at Lumina Intelligence.
 Your task is to generate a premium real-time market catalyst feed and a list of exactly 3 relevant news articles for a given asset symbol based on provided recent news headlines.
 

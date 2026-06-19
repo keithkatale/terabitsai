@@ -2,6 +2,7 @@ import { runOrchestrator } from "@quant/agents"
 import { CapitalBroker } from "@quant/broker"
 import { DEFAULT_RISK_CONFIG, type PortfolioState } from "@quant/contracts"
 import { prisma } from "@quant/db"
+import { searchMarketIntel } from "@quant/market-intel"
 import { ModelRouter } from "@quant/model-router"
 import { evaluateRisk } from "@quant/risk"
 
@@ -59,6 +60,14 @@ async function processSymbol(
   const quote = await broker.fetchQuote(symbol)
   const candles = await broker.fetchCandles(symbol, "HOUR", 200)
 
+  let newsHeadlines: string[] = []
+  try {
+    const intel = await searchMarketIntel({ query: `${symbol} market news catalyst`, symbol, limit: 5 })
+    newsHeadlines = intel.map((r) => `[${r.source}] ${r.title}: ${r.body.slice(0, 120)}`)
+  } catch {
+    // DB may be unavailable
+  }
+
   const agentRun = await safeDb(() =>
     prisma.agentRun.create({ data: { symbol, status: "RUNNING" } })
   )
@@ -68,7 +77,8 @@ async function processSymbol(
       symbol,
       currentPrice: quote.spot,
       change24hPct: quote.change24hPct,
-      candles
+      candles,
+      newsHeadlines
     },
     router
   )
