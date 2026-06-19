@@ -10,7 +10,11 @@ allowBuilds:
   "@prisma/client": true
   "@prisma/engines": true
   "esbuild": true
+  "msgpackr-extract": true
   "prisma": true
   "protobufjs": true
   "sharp": true
+
+# pnpm 11 in Cloud Build fails install when transitive deps need build scripts.
+strictDepBuilds: false
 
