@@ -2,6 +2,9 @@ packages:
   - 'apps/*'
   - 'packages/*'
 
+# Cloud Build uses pnpm 11, which blocks packages published within 24h.
+minimumReleaseAge: 0
+
 allowBuilds:
   "@google/genai": true
   "@prisma/client": true
