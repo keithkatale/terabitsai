@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState, useMemo, useRef, useCallback, useId } from "react";
 import InputBar, { type TaggedAsset } from "@/components/ui/input-bar";
 import {
@@ -23,7 +23,6 @@ import {
   ImageIcon,
   FileUp,
   MonitorIcon,
-  CircleUserRound,
   ArrowUpIcon,
   Paperclip,
   PlusIcon,
@@ -41,7 +40,6 @@ import {
   Zap,
   DollarSign,
   Activity,
-  Menu,
   X,
   Eye,
 } from "lucide-react";
@@ -61,8 +59,11 @@ import { categoryForAsset } from "@/lib/catalog/asset-catalog";
 import { HOT_SYMBOLS, assetClassForSymbol } from "@/lib/market/watchlist";
 import type { LiveSignal } from "@/lib/market/market-intel-data";
 import { PageBackground } from "@/components/ui/page-background";
-import { BrandMark } from "@/components/ui/brand-mark";
-import { MarketPreviewQueue } from "@/components/market/market-preview-queue";
+import {
+  ChatLandingHero,
+  CHAT_LANDING_PROMPT_SUGGESTIONS,
+  CHAT_LANDING_MAX_TAGGED_ASSETS,
+} from "@/components/workspace/chat-landing-hero";
 
 // Self-contained custom Figma SVG icon component
 const Figma = ({ className }: { className?: string }) => (
@@ -188,59 +189,19 @@ const MiniSparkline = ({ points, isPositive }: { points: { x: number; y: number 
 };
 
 // --- Main workspace ---
-export function TradingWorkspace({ variant = "full" }: { variant?: "chat" | "full" }) {
-  const isFull = variant === "full";
+export function TradingWorkspace({ mode = "terminal" }: { mode?: "chat" | "terminal" }) {
+  const router = useRouter();
   const [value, setValue] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
+  const pendingBootstrapped = useRef(false);
 
-  // Layout Collapsible & Resizable States
-  const [leftOpen, setLeftOpen] = useState(true);
-  const [leftWidth, setLeftWidth] = useState(480);
-  const [isResizing, setIsResizing] = useState<"left" | null>(null);
   const [activeTerminalTab, setActiveTerminalTab] = useState<TerminalTabId>("markets");
   const [pinnedAssetTabs, setPinnedAssetTabs] = useState<string[]>([]);
   const [sectorFeedSignals, setSectorFeedSignals] = useState<
     Array<{ symbol: string; strategy: string; action: string; reason: string; sector?: string | null }>
   >([]);
 
-  // Handle panel column resizing drag events
-  const startResize = useCallback((side: "left", e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsResizing(side);
-  }, []);
-
-  useEffect(() => {
-    if (!isResizing) return;
-
-    const handleMouseMove = (e: MouseEvent) => {
-      if (isResizing === "left") {
-        const newWidth = e.clientX;
-        if (newWidth >= 320 && newWidth <= 800) {
-          setLeftWidth(newWidth);
-        }
-      }
-    };
-
-    const handleMouseUp = () => {
-      setIsResizing(null);
-    };
-
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("mouseup", handleMouseUp);
-    
-    document.body.style.userSelect = "none";
-    document.body.style.webkitUserSelect = "none";
-    document.body.style.cursor = "col-resize";
-
-    return () => {
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", handleMouseUp);
-      document.body.style.userSelect = "";
-      document.body.style.webkitUserSelect = "";
-      document.body.style.cursor = "";
-    };
-  }, [isResizing]);
 
   // Active Market selected symbol and category
   const [activeSymbol, setActiveSymbol] = useState("BTCUSD");
@@ -564,7 +525,7 @@ export function TradingWorkspace({ variant = "full" }: { variant?: "chat" | "ful
   const [isAccountPanelOpen, setIsAccountPanelOpen] = useState(false);
   const [taggedAssets, setTaggedAssets] = useState<TaggedAsset[]>([]);
 
-  const MAX_TAGGED_ASSETS = 3;
+  const MAX_TAGGED_ASSETS = CHAT_LANDING_MAX_TAGGED_ASSETS;
 
   const toggleTaggedAsset = useCallback((symbol: string) => {
     setTaggedAssets((prev) => {
@@ -660,7 +621,7 @@ export function TradingWorkspace({ variant = "full" }: { variant?: "chat" | "ful
 
   // 2. Poll Active Quote and Chart Candles every 10s
   useEffect(() => {
-    if (!isFull) return;
+    if (mode !== "terminal") return;
     let active = true;
     const fetchActiveDetails = async () => {
       try {
@@ -693,11 +654,11 @@ export function TradingWorkspace({ variant = "full" }: { variant?: "chat" | "ful
       active = false;
       clearInterval(interval);
     };
-  }, [activeSymbol, activeCategory, selectedTimeframe, isFull]);
+  }, [activeSymbol, activeCategory, selectedTimeframe, mode]);
 
   // 2b. Poll watchlist quotes for market scanner (HOT_SYMBOLS)
   useEffect(() => {
-    if (!isFull) return;
+    if (mode !== "terminal") return;
     let active = true;
     const fetchWatchlist = async () => {
       const results = await Promise.allSettled(
@@ -726,11 +687,11 @@ export function TradingWorkspace({ variant = "full" }: { variant?: "chat" | "ful
       active = false;
       clearInterval(interval);
     };
-  }, [isFull]);
+  }, [mode]);
 
   // 2c. Bootstrap intel on app open (triggers scan if stale, feeds Markets + Intelligence)
   useEffect(() => {
-    if (!isFull) return;
+    if (mode !== "terminal") return;
     fetch("/api/intel/bootstrap")
       .then((r) => r.json())
       .then((data) => {
@@ -748,11 +709,11 @@ export function TradingWorkspace({ variant = "full" }: { variant?: "chat" | "ful
         }
       })
       .catch(() => {});
-  }, [isFull]);
+  }, [mode]);
 
   // 3. 3-second client-side Brownian Motion Price fluctuation (Premium Terminal Effect!)
   useEffect(() => {
-    if (!isFull) return;
+    if (mode !== "terminal") return;
     const timer = setInterval(() => {
       setSidebarQuotes((prev) => {
         const updated = { ...prev };
@@ -953,8 +914,8 @@ export function TradingWorkspace({ variant = "full" }: { variant?: "chat" | "ful
     if (!displayPrompt && pinnedForSend.length === 0) return;
     if (loading) return;
 
-    if (!user && isFull) {
-      window.location.href = `/login?next=${encodeURIComponent("/app")}`;
+    if (!user && mode === "terminal") {
+      window.location.href = `/login?next=${encodeURIComponent("/app/terminal")}`;
       return;
     }
 
@@ -1170,94 +1131,60 @@ Provide:
   const activeQuoteSpread = activeQuoteAsk - activeQuoteBid;
   const activeQuoteSpreadPct = (activeQuoteSpread / activeQuoteSpot) * 100;
 
-  if (!isFull) {
-    const isGuest = !user && !accountLoading;
-    const inConversation = messages.length > 0;
+  const goToChatWithPrompt = useCallback(
+    (prompt: string) => {
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("chat:pending", JSON.stringify({ prompt, tags: [] }));
+      }
+      router.push("/app/chat");
+    },
+    [router],
+  );
 
+  useEffect(() => {
+    if (mode !== "chat" || pendingBootstrapped.current) return;
+    const raw = sessionStorage.getItem("chat:pending");
+    if (!raw) return;
+    pendingBootstrapped.current = true;
+    sessionStorage.removeItem("chat:pending");
+    try {
+      const parsed = JSON.parse(raw) as { prompt?: string; tags?: TaggedAsset[] };
+      const tags = parsed.tags ?? [];
+      if (tags.length > 0) setTaggedAssets(tags);
+      const prompt = parsed.prompt?.trim() ?? "";
+      if (prompt || tags.length > 0) {
+        void handleSend(prompt, tags);
+      }
+    } catch {
+      /* ignore malformed pending payload */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- bootstrap once from sessionStorage
+  }, [mode]);
+
+  if (mode === "chat") {
     return (
-      <div className="relative flex h-screen flex-col overflow-hidden text-zinc-200 antialiased">
-        {inConversation ? (
-          <div className="pointer-events-none fixed inset-0 -z-10 bg-[var(--background)]" aria-hidden />
-        ) : (
-          <PageBackground overlay="minimal" />
-        )}
-
-        <header
-          className={cn(
-            "relative z-20 flex items-center justify-between px-5 py-4",
-            inConversation
-              ? "border-b border-[var(--terminal-border)] bg-[var(--background)]"
-              : "bg-transparent",
-          )}
-        >
-          <BrandMark size="sm" />
-          <nav className="flex items-center gap-2 text-xs">
-            <Link href="/pricing" className="terminal-btn terminal-btn-ghost py-1.5 px-3 border-white/10 bg-white/[0.04] backdrop-blur-sm">
-              Pricing
-            </Link>
-            <Link href="/app" className="terminal-btn terminal-btn-ghost py-1.5 px-3 border-white/10 bg-white/[0.04] backdrop-blur-sm">
-              Terminal
-            </Link>
-            {user ? (
-              <button type="button" onClick={signOut} className="terminal-btn terminal-btn-ghost py-1.5 px-3 border-white/10 bg-white/[0.04] backdrop-blur-sm">
-                Sign out
-              </button>
-            ) : (
-              <>
-                <Link href="/login?next=/" className="terminal-btn terminal-btn-ghost py-1.5 px-3 border-white/10 bg-white/[0.04] backdrop-blur-sm">
-                  Sign in
-                </Link>
-                <Link href="/signup" className="terminal-btn terminal-btn-primary py-1.5 px-3">
-                  Get started
-                </Link>
-              </>
-            )}
-          </nav>
-        </header>
-
-        <main className="relative z-10 flex-1 flex flex-col min-h-0 w-full max-w-5xl mx-auto px-4 overflow-y-auto">
+      <>
+        {messages.length === 0 ? <PageBackground overlay="minimal" variant="orb" /> : null}
+        <div className="relative mx-auto flex h-full w-full max-w-5xl flex-col overflow-hidden">
           {messages.length === 0 ? (
-            <div className="flex min-h-full flex-col items-center justify-center text-center py-8 pb-10">
-              <BrandMark size="lg" className="mb-5" />
-              <p className="mb-3 text-xs text-zinc-400">
-                <Link href="/app" className="text-blue-400 hover:underline font-medium">
-                  Upgrade to access the terminal
-                </Link>
-              </p>
-              <h1 className="text-3xl md:text-4xl font-bold text-white tracking-tight mb-3">
-                Understand the Markets
-              </h1>
-              <p className="text-sm text-zinc-300/85 max-w-md leading-relaxed mb-7">
-                Ask anything about macro trends, asset direction, and risk — AI-first analysis without the noise.
-              </p>
-              <div className="w-full max-w-xl">
-                <InputBar
-                  value={value}
-                  onChange={setValue}
-                  onSend={({ content }) => {
-                    const tags = [...taggedAssets];
-                    setTaggedAssets([]);
-                    handleSend(content, tags);
-                  }}
-                  disabled={loading}
-                  status={loading ? "streaming" : "ready"}
-                  placeholder="Ask about tagged assets or anything else…"
-                  placeholderSuggestions={LANDING_PROMPT_SUGGESTIONS}
-                  variant="landing"
-                  taggedAssets={taggedAssets}
-                  onRemoveTaggedAsset={removeTaggedAsset}
-                  maxTaggedAssets={MAX_TAGGED_ASSETS}
-                />
-              </div>
-              <MarketPreviewQueue
-                taggedSymbols={taggedAssets.map((t) => t.symbol)}
-                maxTags={MAX_TAGGED_ASSETS}
-                onSelect={toggleTaggedAsset}
-              />
-            </div>
+            <ChatLandingHero
+              value={value}
+              onChange={setValue}
+              onSend={(content) => {
+                const tags = [...taggedAssets];
+                setTaggedAssets([]);
+                handleSend(content, tags);
+              }}
+              loading={loading}
+              taggedAssets={taggedAssets}
+              onRemoveTaggedAsset={removeTaggedAsset}
+              onToggleTaggedAsset={toggleTaggedAsset}
+              placeholderSuggestions={CHAT_LANDING_PROMPT_SUGGESTIONS}
+              maxTaggedAssets={MAX_TAGGED_ASSETS}
+            />
           ) : (
-            <div className="flex-1 flex flex-col min-h-0 py-4 relative">
-              <Conversation className="flex-1 overflow-y-auto min-h-0 pb-24">
+            <div className="relative flex min-h-0 flex-1 flex-col px-4 py-4">
+              <Conversation className="min-h-0 flex-1 overflow-y-auto pb-24">
                 <ConversationContent className="space-y-6 bg-transparent">
                   {messages.map((message, messageIndex) => {
                     const isLastMessage = messageIndex === messages.length - 1;
@@ -1268,19 +1195,13 @@ Provide:
                         isAssistantStreaming={loading && isLastMessage}
                         livePrices={sidebarQuotes}
                         onClosePosition={closePosition}
-                        guestSignInCta={
-                          isGuest &&
-                          message.role === "assistant" &&
-                          isLastMessage &&
-                          !loading
-                        }
                       />
                     );
                   })}
                 </ConversationContent>
                 <ConversationScrollButton className="border-zinc-800 bg-zinc-950/80 text-zinc-300 hover:text-white" />
               </Conversation>
-              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-[var(--background)] via-[var(--background)]/95 to-transparent pt-6 pb-3">
+              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-[var(--background)] via-[var(--background)]/95 to-transparent pb-3 pt-6">
                 <InputBar
                   value={value}
                   onChange={setValue}
@@ -1300,195 +1221,18 @@ Provide:
               </div>
             </div>
           )}
-        </main>
-      </div>
+        </div>
+      </>
     );
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[var(--background)] text-zinc-200 antialiased selection:bg-blue-500/20 selection:text-blue-100 relative w-full">
-      
-      {/* Mesh Background */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-[350px] bg-gradient-to-b from-blue-950/12 via-neutral-950/6 to-transparent blur-3xl pointer-events-none -z-10" />
+    <div className="relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-[var(--background)] selection:bg-blue-500/20 selection:text-blue-100">
+      <div className="pointer-events-none absolute top-0 left-1/2 -z-10 h-[350px] w-full max-w-7xl -translate-x-1/2 bg-gradient-to-b from-blue-950/12 via-neutral-950/6 to-transparent blur-3xl" />
 
-      {/* --- LEFT PANEL: CONVERSATIONAL AI WORKSPACE (40% width, resizable) --- */}
-      <aside
-        style={{ width: leftOpen ? `${leftWidth}px` : "0px" }}
-        className={cn(
-          "shrink-0 border-r border-zinc-900/60 bg-[#07070c]/90 backdrop-blur-xl flex flex-col h-full relative z-30 overflow-hidden",
-          !isResizing && "transition-all duration-300",
-          leftOpen ? "opacity-100" : "opacity-0 pointer-events-none"
-        )}
-      >
-        {/* Sub-panel background accent */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-[250px] bg-gradient-to-b from-indigo-950/15 via-transparent to-transparent blur-3xl pointer-events-none -z-10" />
-
-        {/* Minimalist AI Chat Header */}
-        <header className="flex items-center justify-between px-4 py-3.5 border-b border-zinc-900/60 bg-zinc-950/35 backdrop-blur-md sticky top-0 z-40 shrink-0 select-none">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setLeftOpen(!leftOpen)}
-              className="p-1.5 rounded-lg border border-zinc-900/60 bg-zinc-950/20 text-zinc-400 hover:text-white hover:bg-zinc-900 transition-all cursor-pointer"
-              title="Collapse AI Chat"
-            >
-              <Menu className="size-4" />
-            </button>
-            <BrandMark size="sm" className="gap-1.5" />
-            <Link href="/" className="terminal-btn terminal-btn-ghost py-1 px-2 text-[10px] ml-1">
-              Chat
-            </Link>
-            <Link href="/pricing" className="terminal-btn terminal-btn-ghost py-1 px-2 text-[10px]">
-              Pricing
-            </Link>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {balance && (
-              <button
-                type="button"
-                onClick={() => setIsAccountPanelOpen(true)}
-                className="flex items-center gap-2 bg-zinc-950/60 border border-zinc-900/50 rounded-lg px-2 py-1 shadow-sm hover:border-zinc-700 transition-all cursor-pointer"
-              >
-                <div className="flex flex-col text-right">
-                  <span className="text-[7px] text-zinc-500 font-extrabold tracking-wider uppercase leading-none">
-                    Demo cash
-                  </span>
-                  <span className="text-[10px] font-mono font-bold text-white mt-0.5">
-                    ${balance.wallet_available.toLocaleString(undefined, {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
-                  </span>
-                </div>
-                <CircleUserRound className="size-4 text-indigo-400 shrink-0" />
-              </button>
-            )}
-            <button
-              onClick={() => setIsDepositModalOpen(true)}
-              className="p-1 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 hover:bg-indigo-500 hover:text-white transition-all cursor-pointer text-[9px] font-extrabold uppercase px-2 py-1"
-            >
-              Fund
-            </button>
-          </div>
-        </header>
-
-        {/* Conversation Message Core */}
-        <div className="flex-1 flex flex-col min-h-0 relative h-full w-full px-4 py-4 self-center overflow-hidden">
-          {messages.length === 0 ? (
-            /* Centered Landing State */
-            <div className="flex-1 flex flex-col items-center justify-center space-y-6 w-full py-6 text-center">
-              <BrandMark size="md" showWordmark={false} />
-              <div className="space-y-2">
-                <h1 className="text-2xl font-extrabold text-white tracking-tight select-none">
-                  Terabits AI
-                </h1>
-                <p className="text-zinc-500 text-xs max-w-[280px] mx-auto select-none font-medium leading-relaxed">
-                  Analyze live trends, paper-trade CFDs with your demo wallet, and explore markets in the workspace.
-                </p>
-              </div>
-              <div className="w-full max-w-sm pt-4">
-                <InputBar
-                  value={value}
-                  onChange={setValue}
-                  onSend={({ content }) => handleSend(content)}
-                  disabled={loading}
-                  status={loading ? "streaming" : "ready"}
-                  placeholder={`Ask AI about ${activeSymbol}...`}
-                  onAttach={() => {}}
-                />
-              </div>
-            </div>
-          ) : (
-            /* Active Conversation Thread Feed */
-            <div className="flex-1 flex flex-col w-full min-h-0 space-y-4 relative overflow-hidden">
-              <Conversation className="flex-1 overflow-y-auto min-h-0 pb-20">
-                <ConversationContent className="p-1 pb-16 space-y-6 bg-transparent">
-                  {messages.map((message, messageIndex) => {
-                    const isLastMessage = messageIndex === messages.length - 1;
-
-                    return (
-                      <div key={message.id} className="flex flex-col gap-2">
-                        <ChatMessageBubble
-                          message={message}
-                          isAssistantStreaming={loading && isLastMessage}
-                          livePrices={sidebarQuotes}
-                          onClosePosition={closePosition}
-                        />
-
-                        {message.role === "assistant" && isLastMessage && !loading && (
-                          <div className="flex items-center gap-1.5 justify-start pl-8 sm:pl-10">
-                            <button
-                              onClick={() => handleSend(messages[messages.length - 2]?.parts[0]?.text || "")}
-                              className="px-2 py-1 rounded-md text-[10px] font-semibold border border-zinc-800 bg-zinc-900/10 hover:border-zinc-700 hover:bg-zinc-900 text-zinc-500 hover:text-white transition-all flex items-center gap-1 cursor-pointer"
-                              title="Retry"
-                            >
-                              <RefreshCcwIcon className="size-2.5" />
-                              <span>Retry</span>
-                            </button>
-                            <button
-                              onClick={() => {
-                                const combinedText = message.parts.map((p) => p.text ?? "").join("");
-                                navigator.clipboard.writeText(combinedText);
-                              }}
-                              className="px-2 py-1 rounded-md text-[10px] font-semibold border border-zinc-800 bg-zinc-900/10 hover:border-zinc-700 hover:bg-zinc-900 text-zinc-500 hover:text-white transition-all flex items-center gap-1 cursor-pointer"
-                              title="Copy"
-                            >
-                              <CopyIcon className="size-2.5" />
-                              <span>Copy</span>
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </ConversationContent>
-                <ConversationScrollButton className="border-zinc-800 bg-zinc-950/80 text-zinc-300 hover:text-white" />
-              </Conversation>
-
-              {/* Floating Input bar inside sidebar chat */}
-              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-[#07070c] via-[#07070c]/95 to-transparent pt-4 pb-2 z-30">
-                <InputBar
-                  value={value}
-                  onChange={setValue}
-                  onSend={({ content }) => handleSend(content)}
-                  disabled={loading}
-                  status={loading ? "streaming" : "ready"}
-                  placeholder={`Ask AI about ${activeSymbol}...`}
-                  onAttach={() => {}}
-                />
-              </div>
-            </div>
-          )}
-        </div>
-      </aside>
-
-      {/* --- MIDDLE RESIZER DIVIDER --- */}
-      {leftOpen && (
-        <div
-          onMouseDown={(e) => startResize("left", e)}
-          className={cn(
-            "w-[5px] hover:w-[6px] cursor-col-resize h-full relative z-40 transition-all select-none border-r border-zinc-950 shrink-0",
-            isResizing === "left"
-              ? "bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.5)]"
-              : "bg-zinc-900/30 hover:bg-indigo-500/30"
-          )}
-        />
-      )}
-
-      {/* --- MARKET TERMINAL (unified right panel) --- */}
-      <div className="flex-1 flex flex-col min-w-0 h-full relative">
-        {!leftOpen ? (
-          <button
-            type="button"
-            onClick={() => setLeftOpen(true)}
-            className="absolute top-3 left-3 z-50 p-1.5 rounded-lg border border-zinc-900/60 bg-zinc-950/80 text-zinc-400 hover:text-white hover:bg-zinc-900 transition-all cursor-pointer"
-            title="Expand AI Chat"
-          >
-            <Menu className="size-4" />
-          </button>
-        ) : null}
+      <div className="flex min-h-0 flex-1 flex-col">
         <MarketTerminal
-          leftOpen={leftOpen}
+          leftOpen={false}
           activeTab={activeTerminalTab}
           setActiveTab={setActiveTerminalTab}
           pinnedAssetTabs={pinnedAssetTabs}
@@ -1529,13 +1273,9 @@ Provide:
           onCardClick={handleCardClick}
           onSignalClick={handleSignalClick}
           onSymbolFromFeed={handleSymbolFromFeed}
-          onAskAi={(prompt) => {
-            if (!leftOpen) setLeftOpen(true);
-            handleSend(prompt);
-          }}
+          onAskAi={goToChatWithPrompt}
           onAnalyzeWithAi={() => {
-            if (!leftOpen) setLeftOpen(true);
-            handleSend(
+            goToChatWithPrompt(
               `Analyze the recent market performance, technical setups, and risk metrics for ${activeSymbol} and recommend a detailed strategy.`,
             );
           }}
@@ -1609,11 +1349,3 @@ function ActionButton({ icon, label, onClick }: ActionButtonProps) {
   );
 }
 
-const LANDING_PROMPT_SUGGESTIONS = [
-  "What's driving Bitcoin this week?",
-  "Summarize today's macro headlines",
-  "Is NVDA overextended after earnings?",
-  "Compare GOLD vs US100 in a risk-off tape",
-  "Which sectors are rotating right now?",
-  "What's the outlook for EURUSD into NFP?",
-];

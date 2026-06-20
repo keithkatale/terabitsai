@@ -1,5 +1,5 @@
-import { TradingWorkspace } from "@/components/workspace/trading-workspace";
+import { redirect } from "next/navigation";
 
-export default function AppTerminalPage() {
-  return <TradingWorkspace variant="full" />;
+export default function AppIndexPage() {
+  redirect("/app/terminal");
 }

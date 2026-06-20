@@ -1,20 +1,33 @@
 {
   "name": "terabits-ai",
   "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "engines": {
     "node": ">=20.0.0"
   },
   "scripts": {
-    "dev": "pnpm --recursive --parallel run dev",
-    "build": "pnpm --recursive run build",
+    "dev": "npm run dev -w @terabits/web",
+    "dev:all": "npm-run-all --parallel dev:web dev:engine dev:intel",
+    "dev:web": "npm run dev -w @terabits/web",
+    "dev:engine": "npm run dev -w @quant/engine",
+    "dev:intel": "npm run dev -w @quant/intel-worker",
+    "build": "npm run build --workspaces --if-present",
+    "build:web": "npm run build -w @terabits/web",
     "start": "node apps/web/.next/standalone/apps/web/server.js",
-    "test": "pnpm --recursive run test",
-    "engine:once": "pnpm --filter @quant/engine loop:once",
-    "engine:dev": "pnpm --filter @quant/engine dev",
-    "intel:once": "pnpm --filter @quant/intel-worker once",
-    "intel:dev": "pnpm --filter @quant/intel-worker dev"
+    "test": "npm run test --workspaces --if-present",
+    "engine:once": "npm run loop:once -w @quant/engine",
+    "engine:opar": "ENGINE_MODE=opar npm run dev -w @quant/engine",
+    "engine:opar:once": "ENGINE_MODE=opar npm run loop:once -w @quant/engine",
+    "engine:dev": "npm run dev -w @quant/engine",
+    "mcp:server": "npm run start -w @quant/mcp-server",
+    "intel:once": "npm run once -w @quant/intel-worker",
+    "intel:dev": "npm run dev -w @quant/intel-worker"
   },
   "devDependencies": {
+    "npm-run-all": "^4.1.5",
     "typescript": "^5.3.3"
   }
 }

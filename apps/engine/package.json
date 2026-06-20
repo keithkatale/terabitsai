@@ -11,13 +11,15 @@
     "loop:once": "tsx src/loop.ts --once"
   },
   "dependencies": {
-    "@quant/agents": "workspace:*",
-    "@quant/broker": "workspace:*",
-    "@quant/contracts": "workspace:*",
-    "@quant/db": "workspace:*",
-    "@quant/market-intel": "workspace:*",
-    "@quant/model-router": "workspace:*",
-    "@quant/risk": "workspace:*"
+    "@quant/agents": "*",
+    "@quant/broker": "*",
+    "@quant/contracts": "*",
+    "@quant/db": "*",
+    "@quant/hitl": "*",
+    "@quant/market-intel": "*",
+    "@quant/memory": "*",
+    "@quant/model-router": "*",
+    "@quant/risk": "*"
   },
   "devDependencies": {
     "@types/node": "^20.11.16",

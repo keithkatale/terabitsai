@@ -61,7 +61,7 @@ export default function PricingPage() {
           <Link href="/" className="text-zinc-400 hover:text-white transition-colors">
             Chat
           </Link>
-          <Link href="/app" className="text-zinc-400 hover:text-white transition-colors">
+          <Link href="/app/terminal" className="text-zinc-400 hover:text-white transition-colors">
             Terminal
           </Link>
           {user ? (

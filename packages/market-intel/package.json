@@ -8,10 +8,10 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@quant/broker": "workspace:*",
-    "@quant/contracts": "workspace:*",
-    "@quant/db": "workspace:*",
-    "@quant/indicators": "workspace:*",
+    "@quant/broker": "*",
+    "@quant/contracts": "*",
+    "@quant/db": "*",
+    "@quant/indicators": "*",
     "google-auth-library": "^9.14.0"
   },
   "devDependencies": {

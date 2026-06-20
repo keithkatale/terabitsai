@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, readdirSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -19,16 +19,11 @@ const staticDest = join(standaloneWeb, ".next/static");
 mkdirSync(dirname(staticDest), { recursive: true });
 cpSync(staticSrc, staticDest, { recursive: true });
 
-const pnpmRoot = join(repoRoot, "node_modules/.pnpm");
-const prismaPkg = existsSync(pnpmRoot)
-  ? readdirSync(pnpmRoot).find((entry) => entry.startsWith("@prisma+client@"))
-  : undefined;
-
-if (prismaPkg) {
-  const prismaClientDir = join(pnpmRoot, prismaPkg, "node_modules/.prisma/client");
+const prismaClientDir = join(repoRoot, "node_modules/.prisma/client");
+if (existsSync(prismaClientDir)) {
   const prismaTargets = [
     join(standaloneWeb, ".prisma/client"),
-    join(standaloneRoot, "node_modules/.pnpm", prismaPkg, "node_modules/.prisma/client"),
+    join(standaloneRoot, "node_modules/.prisma/client"),
   ];
 
   for (const target of prismaTargets) {

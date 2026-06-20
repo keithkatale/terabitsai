@@ -7,7 +7,7 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@quant/contracts": "workspace:*"
+    "@quant/contracts": "*"
   },
   "devDependencies": {
     "@types/node": "^20.11.16",

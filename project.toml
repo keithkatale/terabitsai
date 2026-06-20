@@ -1,4 +1,4 @@
-# Google Cloud Buildpacks — pnpm monorepo, Next.js standalone on Cloud Run
+# Google Cloud Buildpacks — npm workspaces monorepo, Next.js standalone on Cloud Run
 [[build.env]]
 name = "GOOGLE_ENTRYPOINT"
 value = "node apps/web/.next/standalone/apps/web/server.js"

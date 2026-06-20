@@ -4,13 +4,18 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "start": "node dist/server.js"
   },
   "dependencies": {
-    "@quant/rag-engine": "workspace:*",
-    "@quant/indicators": "workspace:*",
-    "@quant/market-intel": "workspace:*",
-    "@quant/db": "workspace:*"
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@quant/broker": "*",
+    "@quant/contracts": "*",
+    "@quant/db": "*",
+    "@quant/indicators": "*",
+    "@quant/market-intel": "*",
+    "@quant/rag-engine": "*",
+    "@quant/risk": "*"
   },
   "devDependencies": {
     "@types/node": "^20.11.16",

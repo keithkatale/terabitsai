@@ -7,9 +7,12 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@quant/contracts": "workspace:*",
-    "@quant/indicators": "workspace:*",
-    "@quant/model-router": "workspace:*",
+    "@langchain/core": "^1.2.0",
+    "@langchain/langgraph": "^1.4.4",
+    "@quant/contracts": "*",
+    "@quant/indicators": "*",
+    "@quant/model-router": "*",
+    "@quant/risk": "*",
     "zod": "^3.22.4"
   },
   "devDependencies": {

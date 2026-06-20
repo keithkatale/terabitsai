@@ -14,7 +14,7 @@ const nextConfig = {
     "@quant/rag-engine",
   ],
   outputFileTracingIncludes: {
-    "/**": ["./node_modules/.pnpm/**/.prisma/**", "./node_modules/.prisma/**"],
+    "/**": ["./node_modules/.prisma/**"],
   },
 };
 

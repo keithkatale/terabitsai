@@ -8,7 +8,7 @@
   },
   "dependencies": {
     "@google/genai": "^2.8.0",
-    "@quant/contracts": "workspace:*",
+    "@quant/contracts": "*",
     "zod": "^3.22.4"
   },
   "devDependencies": {

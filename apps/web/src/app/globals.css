@@ -937,6 +937,83 @@ body {
   transform: translateY(0) scale(0.98);
 }
 
+/* Home landing — dim, slow-moving blue ambient orb */
+@property --landing-orb-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes landing-orb-rotate {
+  from {
+    --landing-orb-angle: 0deg;
+  }
+  to {
+    --landing-orb-angle: 360deg;
+  }
+}
+
+@keyframes landing-orb-drift {
+  0%,
+  100% {
+    transform: translate(-50%, -50%) scale(0.94);
+  }
+  50% {
+    transform: translate(calc(-50% + 1.5%), calc(-50% - 1%)) scale(1.04);
+  }
+}
+
+.landing-ambient-orb {
+  position: absolute;
+  left: 50%;
+  top: 42%;
+  width: min(480px, 72vw);
+  height: min(480px, 72vw);
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  opacity: 0.55;
+  filter: blur(72px);
+  animation: landing-orb-drift 18s ease-in-out infinite;
+  background:
+    radial-gradient(circle at 38% 32%, rgba(96, 165, 250, 0.22) 0%, transparent 46%),
+    radial-gradient(circle at 62% 68%, rgba(37, 99, 235, 0.16) 0%, transparent 50%),
+    radial-gradient(circle at 50% 50%, rgba(59, 130, 246, 0.12) 0%, transparent 62%);
+}
+
+.landing-ambient-orb-glare {
+  position: absolute;
+  left: 50%;
+  top: 42%;
+  width: min(280px, 42vw);
+  height: min(280px, 42vw);
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  opacity: 0.42;
+  filter: blur(36px);
+  animation:
+    landing-orb-rotate 28s linear infinite,
+    landing-orb-drift 22s ease-in-out infinite reverse;
+  background:
+    conic-gradient(
+      from var(--landing-orb-angle) at 50% 50%,
+      transparent 0deg,
+      rgba(96, 165, 250, 0.14) 40deg,
+      transparent 80deg,
+      rgba(59, 130, 246, 0.1) 160deg,
+      transparent 220deg,
+      rgba(37, 99, 235, 0.12) 300deg,
+      transparent 360deg
+    ),
+    radial-gradient(circle at 50% 45%, rgba(147, 197, 253, 0.1) 0%, transparent 58%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-ambient-orb,
+  .landing-ambient-orb-glare {
+    animation: none;
+  }
+}
+
 /* Gotham assistant avatar — animated orb (profile beside assistant messages) */
 @property --assistant-siri-angle {
   syntax: "<angle>";

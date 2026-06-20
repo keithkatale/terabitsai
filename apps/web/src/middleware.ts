@@ -22,7 +22,7 @@ function isAuthRequired(pathname: string): boolean {
 }
 
 function isProRequired(pathname: string): boolean {
-  if (pathname === "/app" || pathname.startsWith("/app/")) return true;
+  if (pathname === "/app/terminal" || pathname.startsWith("/app/terminal/")) return true;
   if (pathname.startsWith("/api/intel")) return true;
   return false;
 }

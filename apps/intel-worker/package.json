@@ -12,8 +12,8 @@
     "once:full": "tsx src/index.ts --once --full"
   },
   "dependencies": {
-    "@quant/market-intel": "workspace:*",
-    "@quant/db": "workspace:*",
+    "@quant/market-intel": "*",
+    "@quant/db": "*",
     "bullmq": "^5.34.5"
   },
   "devDependencies": {

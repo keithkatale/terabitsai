@@ -1,14 +1,11 @@
 # Terabits AI — Next.js standalone for Google Cloud Run (PORT=8080)
 FROM node:20-alpine AS base
 RUN apk add --no-cache libc6-compat
-ENV PNPM_HOME="/pnpm"
-ENV PATH="$PNPM_HOME:$PATH"
-RUN corepack enable && corepack prepare pnpm@10.32.1 --activate
-
-FROM base AS deps
 WORKDIR /app
 
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+FROM base AS deps
+
+COPY package.json package-lock.json ./
 COPY apps/web/package.json ./apps/web/
 COPY apps/engine/package.json ./apps/engine/
 COPY packages/agents/package.json ./packages/agents/
@@ -23,10 +20,9 @@ COPY packages/risk/package.json ./packages/risk/
 COPY packages/market-intel/package.json ./packages/market-intel/
 COPY apps/intel-worker/package.json ./apps/intel-worker/
 
-RUN pnpm install --frozen-lockfile
+RUN npm ci
 
 FROM base AS builder
-WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
@@ -37,10 +33,9 @@ ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_OPTIONS="--max-http-header-size=65536"
 
-RUN pnpm --filter @terabits/web... build
+RUN npm run build -w @terabits/web
 
 FROM base AS runner
-WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=8080
