@@ -8,17 +8,19 @@ FROM base AS deps
 COPY package.json package-lock.json ./
 COPY apps/web/package.json ./apps/web/
 COPY apps/engine/package.json ./apps/engine/
+COPY apps/intel-worker/package.json ./apps/intel-worker/
 COPY packages/agents/package.json ./packages/agents/
 COPY packages/broker/package.json ./packages/broker/
 COPY packages/contracts/package.json ./packages/contracts/
 COPY packages/db/package.json ./packages/db/
+COPY packages/hitl/package.json ./packages/hitl/
 COPY packages/indicators/package.json ./packages/indicators/
+COPY packages/market-intel/package.json ./packages/market-intel/
 COPY packages/mcp-server/package.json ./packages/mcp-server/
+COPY packages/memory/package.json ./packages/memory/
 COPY packages/model-router/package.json ./packages/model-router/
 COPY packages/rag-engine/package.json ./packages/rag-engine/
 COPY packages/risk/package.json ./packages/risk/
-COPY packages/market-intel/package.json ./packages/market-intel/
-COPY apps/intel-worker/package.json ./apps/intel-worker/
 
 RUN npm ci
 
@@ -33,6 +35,7 @@ ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_OPTIONS="--max-http-header-size=65536"
 
+RUN npm run build:packages
 RUN npm run build -w @terabits/web
 
 FROM base AS runner
