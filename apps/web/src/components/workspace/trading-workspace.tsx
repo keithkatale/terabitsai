@@ -12,7 +12,7 @@ import { SmoothAreaChart } from "@/components/ui/smooth-area-chart";
 import { capitalAdapter } from "@/lib/execution/capital-adapter";
 import QuickTradeDialog from "@/components/ui/quick-trade-dialog";
 import { useAppAccount } from "@/contexts/app-account-context";
-import { postTradeLedger, fetchOpenPositions, closePositionAtMarket } from "@/lib/account/api";
+import { postTradeLedger, fetchOpenPositions, closePositionAtMarket, purchaseAssetAtMarket } from "@/lib/account/api";
 import {
   PositionActionsSheet,
   type PositionActionRequest,
@@ -220,10 +220,15 @@ export function TradingWorkspace() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [followUpQuestion, setFollowUpQuestion] = useState<ParsedInteractiveQuestion | null>(null);
-  const [followUpLoading, setFollowUpLoading] = useState(false);
   const [dismissedQuestionIds, setDismissedQuestionIds] = useState<string[]>([]);
   const pendingBootstrapped = useRef(false);
   const followUpRequestId = useRef(0);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [sessionNumber, setSessionNumber] = useState<number | null>(null);
+  const sessionContextRef = useRef("");
+  const conversationBootstrapped = useRef(false);
+  const conversationIdRef = useRef<string | null>(null);
+  const lastTaskPollRef = useRef(new Date().toISOString());
 
   const [activeTerminalTab, setActiveTerminalTab] = useState<TerminalTabId>("markets");
   const [pinnedAssetTabs, setPinnedAssetTabs] = useState<string[]>([]);
@@ -560,6 +565,90 @@ export function TradingWorkspace() {
     isTabActive("home") || isTabActive("investing"),
   );
 
+  useEffect(() => {
+    conversationIdRef.current = conversationId;
+  }, [conversationId]);
+
+  useEffect(() => {
+    conversationBootstrapped.current = false;
+  }, [tradingMode]);
+
+  useEffect(() => {
+    if (mode !== "command" || !user || conversationBootstrapped.current) return;
+    conversationBootstrapped.current = true;
+
+    void (async () => {
+      try {
+        const [convRes, ctxRes] = await Promise.all([
+          fetch("/api/chat/conversations", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mode: tradingMode }),
+          }),
+          fetch(`/api/chat/context?mode=${tradingMode}`),
+        ]);
+
+        if (convRes.ok) {
+          const convJson = (await convRes.json()) as {
+            conversation?: { id?: string; session_number?: number };
+          };
+          const id = convJson.conversation?.id ?? null;
+          setConversationId(id);
+          conversationIdRef.current = id;
+          setSessionNumber(convJson.conversation?.session_number ?? null);
+        }
+
+        if (ctxRes.ok) {
+          const ctxJson = (await ctxRes.json()) as { prompt?: string };
+          sessionContextRef.current = ctxJson.prompt ?? "";
+        }
+      } catch (e) {
+        console.warn("Failed to bootstrap chat session", e);
+      }
+    })();
+  }, [mode, user, tradingMode]);
+
+  useEffect(() => {
+    if (mode !== "command" || !user) return;
+
+    const pollTasks = async () => {
+      try {
+        const since = lastTaskPollRef.current;
+        const res = await fetch(
+          `/api/chat/pending-tasks?mode=${tradingMode}&since=${encodeURIComponent(since)}`,
+        );
+        if (!res.ok) return;
+
+        const json = (await res.json()) as {
+          tasks?: Array<{ id: string; task_type: string; result?: { message?: string } }>;
+        };
+        const tasks = json.tasks ?? [];
+        if (tasks.length === 0) return;
+
+        lastTaskPollRef.current = new Date().toISOString();
+        setMessages((prev) => [
+          ...prev,
+          ...tasks.map((task) => ({
+            id: `task-${task.id}`,
+            role: "system" as const,
+            parts: [
+              {
+                type: "text" as const,
+                text: `⏱ **Scheduled task · ${task.task_type.replace(/_/g, " ")}**\n\n${task.result?.message ?? "Task completed."}`,
+              },
+            ],
+          })),
+        ]);
+      } catch {
+        // Ignore polling errors — tables may not exist until migration runs.
+      }
+    };
+
+    void pollTasks();
+    const interval = window.setInterval(() => void pollTasks(), 60_000);
+    return () => window.clearInterval(interval);
+  }, [mode, user, tradingMode]);
+
   const [isAccountPanelOpen, setIsAccountPanelOpen] = useState(false);
   const [taggedAssets, setTaggedAssets] = useState<TaggedAsset[]>([]);
 
@@ -774,7 +863,7 @@ export function TradingWorkspace() {
     const walletAvailable = balance?.wallet_available ?? 0;
     if (walletAvailable < trade.margin) {
       const errorMsg: ChatMessage = {
-        id: Date.now().toString(),
+        id: crypto.randomUUID(),
         role: "assistant",
         parts: [
           {
@@ -788,46 +877,59 @@ export function TradingWorkspace() {
       return;
     }
 
-    const position: TradeData = {
-      id: trade.id,
-      symbol: trade.symbol,
-      direction: trade.direction,
-      entryPrice: trade.price,
-      size: trade.size,
-      leverage: trade.leverage,
-      margin: trade.margin,
-      tp: trade.tp,
-      sl: trade.sl,
-      status: "OPEN",
-      timestamp: trade.timestamp,
-    };
-
-    setPositions((prev) => [position, ...prev]);
-
     try {
-      await postTradeLedger(tradingMode, {
-        action: "reserve",
-        amount: trade.margin,
+      const result = await purchaseAssetAtMarket(tradingMode, {
         symbol: trade.symbol,
-        tradeId: trade.id,
-        side: trade.direction.toLowerCase() as "buy" | "sell",
-        quantity: trade.size,
-        entryPrice: trade.price,
+        side: trade.direction === "BUY" ? "buy" : "sell",
+        size: trade.size,
         leverage: trade.leverage,
       });
-      await refreshAccount();
-      notifyPortfolioUpdated();
-    } catch (err) {
-      console.error("Failed to post trade reserve:", err);
-    }
 
-    const receiptMessage: ChatMessage = {
-      id: Date.now().toString(),
-      role: "assistant",
-      parts: [{ type: "trade-execution", text: JSON.stringify(position) }],
-    };
-    setMessages((prev) => [...prev, receiptMessage]);
-  }, [balance, refreshAccount, tradingMode]);
+      await refreshAccount();
+      await reloadPositions();
+      notifyPortfolioUpdated();
+
+      const position: TradeData = {
+        id: result.trade.id,
+        symbol: result.trade.symbol,
+        direction: result.trade.direction,
+        entryPrice: result.trade.entryPrice,
+        size: result.trade.size,
+        leverage: result.trade.leverage,
+        margin: result.trade.margin,
+        tp: trade.tp,
+        sl: trade.sl,
+        status: "OPEN",
+        timestamp: trade.timestamp,
+      };
+
+      const receiptMessage: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        parts: [
+          {
+            type: "trade-execution",
+            text: JSON.stringify({
+              ...position,
+              capitalDealId: result.trade.capitalDealId,
+              notional: result.trade.notional,
+            }),
+          },
+        ],
+      };
+      setMessages((prev) => [...prev, receiptMessage]);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Trade execution failed";
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          parts: [{ type: "text", text: `⚠️ **Trade failed:** ${message}` }],
+        },
+      ]);
+    }
+  }, [balance, openDeposit, refreshAccount, reloadPositions, tradingMode]);
 
   // Listen to standard "execute-simulated-trade" custom window events dispatched by Approach B widgets
   useEffect(() => {
@@ -1015,7 +1117,6 @@ export function TradingWorkspace() {
       }
 
       const requestId = ++followUpRequestId.current;
-      setFollowUpLoading(true);
 
       try {
         const response = await fetch("/api/chat/predict", {
@@ -1041,10 +1142,6 @@ export function TradingWorkspace() {
         }
       } catch (err) {
         console.error("Follow-up predictor failed:", err);
-      } finally {
-        if (requestId === followUpRequestId.current) {
-          setFollowUpLoading(false);
-        }
       }
     },
     [
@@ -1120,7 +1217,7 @@ export function TradingWorkspace() {
     const pinnedAssets = pinnedForSend.map(toPinnedAssetRef);
 
     // Add user message
-    const userMsgId = Date.now().toString();
+    const userMsgId = crypto.randomUUID();
     const newUserMessage: ChatMessage = {
       id: userMsgId,
       role: "user",
@@ -1128,7 +1225,7 @@ export function TradingWorkspace() {
     };
     
     // Placeholder assistant message
-    const assistantMsgId = (Date.now() + 1).toString();
+    const assistantMsgId = crypto.randomUUID();
     const newAssistantMessage: ChatMessage = {
       id: assistantMsgId,
       role: "assistant",
@@ -1139,7 +1236,6 @@ export function TradingWorkspace() {
     setValue("");
     setFollowUpQuestion(null);
     followUpRequestId.current += 1;
-    setFollowUpLoading(false);
     setLoading(true);
 
     try {
@@ -1151,6 +1247,9 @@ export function TradingWorkspace() {
           message: apiMessage,
           pinnedAssets,
           history,
+          conversationId: conversationIdRef.current,
+          tradingMode,
+          sessionContext: sessionContextRef.current,
         }),
       });
 
@@ -1283,6 +1382,33 @@ export function TradingWorkspace() {
       setMessages((prev) => {
         if (prev.length >= 2) {
           void loadFollowUpSuggestions(prev);
+
+          const convId = conversationIdRef.current;
+          if (convId) {
+            const userMsg = prev.find((m) => m.id === userMsgId);
+            const assistantMsg = prev.find((m) => m.id === assistantMsgId);
+            if (userMsg && assistantMsg && assistantMsg.parts.length > 0) {
+              void fetch(`/api/chat/conversations/${convId}/messages`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  messages: [
+                    {
+                      id: userMsg.id,
+                      role: userMsg.role,
+                      parts: userMsg.parts,
+                    },
+                    {
+                      id: assistantMsg.id,
+                      role: assistantMsg.role,
+                      parts: assistantMsg.parts,
+                      toolPods: assistantMsg.toolPods,
+                    },
+                  ],
+                }),
+              }).catch((err) => console.warn("Failed to persist chat messages", err));
+            }
+          }
         }
         return prev;
       });
@@ -1404,6 +1530,11 @@ Provide:
         {messages.length === 0 ? <PageBackground overlay="minimal" variant="orb" /> : null}
         <ChatWidgetProvider onWidgetAction={handleWidgetAction}>
         <div className="relative mx-auto flex h-full w-full max-w-5xl flex-col overflow-hidden">
+          {sessionNumber ? (
+            <div className="shrink-0 px-4 pt-2 text-[10px] font-medium uppercase tracking-wider text-zinc-500">
+              Session {sessionNumber} · Continuing with memory from prior sessions
+            </div>
+          ) : null}
           {messages.length === 0 ? (
             <ChatLandingHero
               showBrandMark={false}
@@ -1441,7 +1572,6 @@ Provide:
                   {!loading && !isQuestionActive ? (
                     <FollowUpSuggestions
                       question={followUpQuestion}
-                      loading={followUpLoading}
                       disabled={loading}
                       onSelect={handleFollowUpSelect}
                       className="pb-2 pt-1"

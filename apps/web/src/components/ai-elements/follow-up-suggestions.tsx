@@ -1,43 +1,25 @@
 "use client";
 
-import { ArrowRight, Loader2 } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ParsedInteractiveQuestion } from "@/lib/chat/interactive-question-helper";
 
 export function FollowUpSuggestions({
   question,
-  loading = false,
   disabled = false,
   onSelect,
   className,
 }: {
   question: ParsedInteractiveQuestion | null;
-  loading?: boolean;
   disabled?: boolean;
   onSelect: (prompt: string) => void;
   className?: string;
 }) {
-  if (loading) {
-    return (
-      <div className={cn("flex flex-wrap items-center gap-2 px-0.5 py-1", className)}>
-        <Loader2 className="size-3.5 animate-spin text-cyan-400/80" aria-hidden />
-        <span className="text-[11px] text-zinc-500">Suggesting follow-ups…</span>
-      </div>
-    );
-  }
-
   if (!question?.options?.length) return null;
 
   return (
-    <div className={cn("space-y-2.5 animate-fade-in", className)}>
-      <div className="px-0.5">
-        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-500 font-mono">
-          {question.title || "Suggested follow-ups"}
-        </p>
-        {question.description ? (
-          <p className="mt-0.5 text-[11px] text-zinc-500 leading-relaxed">{question.description}</p>
-        ) : null}
-      </div>
+    <div className={cn("space-y-2 animate-fade-in", className)}>
+      <p className="px-0.5 text-[10px] text-zinc-600">Suggested</p>
       <div className="flex flex-wrap gap-2">
         {question.options.map((option) => (
           <button

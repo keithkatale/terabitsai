@@ -9,6 +9,13 @@ import type { ChatStreamEvent } from "@/lib/chat/stream-types";
 import { extractToolGenui } from "@/lib/chat/stream-types";
 import { historyContextBlob, parseClientHistory, toGeminiContents, type ChatHistoryTurn } from "@/lib/chat/conversation-history";
 import { augmentMessageWithPinnedAssets, parsePinnedAssets } from "@/lib/chat/pinned-assets";
+import { fetchAccountState } from "@/lib/chat/tools/account-state-tool";
+import { executeBrokerAction, type BrokerActionArgs } from "@/lib/chat/tools/broker-action-tool";
+import { manageUserGoals, type ManageGoalArgs } from "@/lib/chat/tools/goal-tool";
+import { fetchFundamentals, fetchMacroData } from "@/lib/chat/tools/macro-tools";
+import { scheduleAgentTask, type ScheduleTaskArgs } from "@/lib/chat/tools/schedule-task-tool";
+import { buildSessionContextPrompt, getSessionContext } from "@/lib/chat/conversation-persistence";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { Type } from "@google/genai";
 
 export const dynamic = "force-dynamic";
@@ -142,15 +149,152 @@ const getCatalystBriefDeclaration = {
   },
 };
 
+const getAccountStateDeclaration = {
+  name: "get_account_state",
+  description:
+    "Get complete account information: wallet balance, locked margin, open positions, recent transactions, and portfolio performance.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      include_history: { type: Type.BOOLEAN, description: "Include recent ledger transactions" },
+      include_positions: { type: Type.BOOLEAN, description: "Include open positions with P&L" },
+      include_performance: { type: Type.BOOLEAN, description: "Include portfolio growth metrics" },
+      history_limit: { type: Type.NUMBER, description: "Max transactions to return (default 50)" },
+    },
+  },
+};
+
+const brokerActionDeclaration = {
+  name: "broker_action",
+  description:
+    "Interact with Capital.com: quotes, candles, broker account, positions. place_order/close_position return a confirmation proposal — never execute without user confirmation.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      action: {
+        type: Type.STRING,
+        enum: ["get_quote", "get_positions", "get_account", "get_candles", "place_order", "close_position"],
+      },
+      symbol: { type: Type.STRING },
+      direction: { type: Type.STRING, enum: ["BUY", "SELL"] },
+      size: { type: Type.NUMBER },
+      stop_loss: { type: Type.NUMBER },
+      take_profit: { type: Type.NUMBER },
+      deal_id: { type: Type.STRING },
+      timeframe: { type: Type.STRING, description: "1D, 1W, 1M, 3M, 6M, 1Y" },
+    },
+    required: ["action"],
+  },
+};
+
+const scheduleTaskDeclaration = {
+  name: "schedule_task",
+  description:
+    "Schedule a future check (price, position review, reminder). Use when waiting for price movement or long-running scalping workflows.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      task_type: {
+        type: Type.STRING,
+        enum: ["price_check", "position_review", "market_open", "reminder", "strategy_check"],
+      },
+      delay_minutes: { type: Type.NUMBER, description: "Minutes from now (1–1440)" },
+      symbol: { type: Type.STRING },
+      condition: { type: Type.STRING, description: "Optional JS expression using `price`, e.g. price > 50000" },
+      message: { type: Type.STRING },
+    },
+    required: ["task_type", "delay_minutes"],
+  },
+};
+
+const manageGoalsDeclaration = {
+  name: "manage_goals",
+  description: "Set, list, update, or cancel persistent user trading goals (e.g. grow $20 to $1000).",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      operation: { type: Type.STRING, enum: ["list", "set", "update", "cancel"] },
+      goal_type: {
+        type: Type.STRING,
+        enum: ["balance_target", "strategy_preference", "risk_tolerance", "milestone"],
+      },
+      goal_value: { type: Type.OBJECT, description: "JSON goal payload, e.g. { target: 1000, current: 20 }" },
+      description: { type: Type.STRING },
+      goal_id: { type: Type.STRING },
+      progress_pct: { type: Type.NUMBER },
+      status: { type: Type.STRING, enum: ["active", "achieved", "cancelled", "paused"] },
+    },
+    required: ["operation"],
+  },
+};
+
+const getMacroDataDeclaration = {
+  name: "get_macro_data",
+  description: "Fetch macro indicators and market sentiment (Fear & Greed, rates, VIX via FRED when configured).",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      indicators: {
+        type: Type.ARRAY,
+        items: { type: Type.STRING },
+        description: "e.g. fear_greed, macro, rates, vix",
+      },
+    },
+  },
+};
+
+const getFundamentalsDeclaration = {
+  name: "get_fundamentals",
+  description: "Fetch stock fundamentals and news sentiment via Alpha Vantage (when API key configured).",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      symbol: { type: Type.STRING },
+    },
+    required: ["symbol"],
+  },
+};
+
 export async function POST(req: Request) {
   try {
-    const { message, history: rawHistory, pinnedAssets: rawPinned } = await req.json();
+    const supabase = await createSupabaseServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const body = await req.json();
+    const {
+      message,
+      history: rawHistory,
+      pinnedAssets: rawPinned,
+      conversationId,
+      tradingMode: rawTradingMode,
+      sessionContext: clientSessionContext,
+    } = body;
 
     if (!message || typeof message !== "string") {
       return new Response(JSON.stringify({ success: false, error: "Prompt message is required" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
       });
+    }
+
+    const tradingMode = rawTradingMode === "live" ? "live" : "demo";
+    let memoryContext = typeof clientSessionContext === "string" ? clientSessionContext : "";
+    if (!memoryContext) {
+      try {
+        const ctx = await getSessionContext(user.id, tradingMode);
+        memoryContext = buildSessionContextPrompt(ctx);
+      } catch {
+        memoryContext = "";
+      }
     }
 
     const pinnedAssets = parsePinnedAssets(rawPinned);
@@ -243,7 +387,15 @@ CONVERSATION MEMORY:
 PINNED ASSETS:
 - When a user message includes a <pinned_assets> block, those symbols are exact catalog tickers chosen in the UI — never substitute or guess alternatives.
 - Always call get_asset_details and get_asset_market_data for every pinned symbol before synthesizing your answer.
-`;
+
+AUTONOMOUS QUANT CAPABILITIES:
+- Use get_account_state before trade proposals to know wallet, positions, and performance.
+- Use broker_action for live Capital.com quotes/positions; place_order/close_position only as proposals — confirm via interactive-question.
+- Use schedule_task to wait for price moves or review positions later (e.g. 30-minute scalp check).
+- Use manage_goals to remember milestones (e.g. grow $20 → $1000) across sessions.
+- Use get_macro_data and get_fundamentals for broader market context.
+- Be proactive: on session start, summarize goals, account state, and suggest next steps.
+- Risk rule: never risk > 2% of account per trade unless user explicitly overrides.${memoryContext}`;
 
     const encoder = new TextEncoder();
 
@@ -280,7 +432,13 @@ PINNED ASSETS:
                     getMarketOverviewDeclaration,
                     spawnSubagentsDeclaration,
                     searchMarketIntelDeclaration,
-                    getCatalystBriefDeclaration
+                    getCatalystBriefDeclaration,
+                    getAccountStateDeclaration,
+                    brokerActionDeclaration,
+                    scheduleTaskDeclaration,
+                    manageGoalsDeclaration,
+                    getMacroDataDeclaration,
+                    getFundamentalsDeclaration,
                   ]
                 }
               ]
@@ -424,6 +582,51 @@ PINNED ASSETS:
 
                     const subagentResults = await Promise.all(subagentPromises);
                     toolResult = { success: true, team_results: subagentResults };
+                  } else if (name === "get_account_state") {
+                    toolResult = await fetchAccountState(user.id, tradingMode, {
+                      include_history: args?.include_history as boolean | undefined,
+                      include_positions: args?.include_positions as boolean | undefined,
+                      include_performance: args?.include_performance as boolean | undefined,
+                      history_limit: args?.history_limit as number | undefined,
+                    });
+                  } else if (name === "broker_action") {
+                    toolResult = await executeBrokerAction(user.id, tradingMode, {
+                      action: args?.action as BrokerActionArgs["action"],
+                      symbol: args?.symbol as string | undefined,
+                      direction: args?.direction as "BUY" | "SELL" | undefined,
+                      size: args?.size as number | undefined,
+                      stop_loss: args?.stop_loss as number | undefined,
+                      take_profit: args?.take_profit as number | undefined,
+                      deal_id: args?.deal_id as string | undefined,
+                      timeframe: args?.timeframe as string | undefined,
+                      conversation_id: typeof conversationId === "string" ? conversationId : undefined,
+                    });
+                  } else if (name === "schedule_task") {
+                    toolResult = await scheduleAgentTask(user.id, tradingMode, {
+                      task_type: args?.task_type as ScheduleTaskArgs["task_type"],
+                      delay_minutes: Number(args?.delay_minutes ?? 30),
+                      symbol: args?.symbol as string | undefined,
+                      condition: args?.condition as string | undefined,
+                      message: args?.message as string | undefined,
+                      conversation_id: typeof conversationId === "string" ? conversationId : undefined,
+                    });
+                  } else if (name === "manage_goals") {
+                    toolResult = await manageUserGoals(user.id, tradingMode, {
+                      operation: args?.operation as ManageGoalArgs["operation"],
+                      goal_type: args?.goal_type as ManageGoalArgs["goal_type"],
+                      goal_value: args?.goal_value as Record<string, unknown> | undefined,
+                      description: args?.description as string | undefined,
+                      goal_id: args?.goal_id as string | undefined,
+                      progress_pct: args?.progress_pct as number | undefined,
+                      status: args?.status as ManageGoalArgs["status"],
+                    });
+                  } else if (name === "get_macro_data") {
+                    const indicators = Array.isArray(args?.indicators)
+                      ? (args.indicators as string[])
+                      : undefined;
+                    toolResult = await fetchMacroData(indicators);
+                  } else if (name === "get_fundamentals") {
+                    toolResult = await fetchFundamentals(String(args?.symbol ?? ""));
                   } else {
                     toolResult = { success: false, error: "Unknown tool name" };
                   }

@@ -313,7 +313,6 @@ export function PortfolioGrowthChart({
             showZeroWhenEmpty
             forcePriceScaleZero
             showYAxis={showYAxis}
-            tickIntervalSec={SNAPSHOT_BUCKET_SEC}
           />
         )}
       </div>

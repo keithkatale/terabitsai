@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/portfolio-snapshot",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/scheduled-tasks",
+      "schedule": "* * * * *"
     }
   ]
 }

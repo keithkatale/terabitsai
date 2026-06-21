@@ -44,20 +44,88 @@ function smoothLinePath(pts: Array<{ x: number; y: number }>): string {
   return d;
 }
 
-function formatChartTick(tUnixSec: number, spanSec: number): string {
-  const ms = tUnixSec * 1000;
-  if (spanSec <= 24 * 3600) {
-    return new Date(ms).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+const NICE_X_INTERVALS_SEC = [
+  60, 120, 300, 600, 900, 1800, 3600, 2 * 3600, 3 * 3600, 4 * 3600, 6 * 3600, 8 * 3600,
+  12 * 3600, 86400, 2 * 86400, 3 * 86400, 7 * 86400, 14 * 86400, 30 * 86400, 60 * 86400,
+  90 * 86400, 180 * 86400, 365 * 86400,
+] as const;
+
+const MIN_X_TICKS = 7;
+const MAX_X_TICKS = 15;
+const IDEAL_X_TICKS = 10;
+const MIN_X_LABEL_PX = 48;
+
+export function chooseXTickInterval(spanSec: number, chartWidthPx: number): number {
+  const widthMinInterval = (spanSec * MIN_X_LABEL_PX) / Math.max(chartWidthPx, 1);
+
+  let bestInterval = NICE_X_INTERVALS_SEC[NICE_X_INTERVALS_SEC.length - 1]!;
+  let bestScore = Infinity;
+
+  for (const interval of NICE_X_INTERVALS_SEC) {
+    if (interval < widthMinInterval) continue;
+
+    const count = spanSec / interval;
+    if (count < MIN_X_TICKS - 0.5 || count > MAX_X_TICKS + 0.5) continue;
+
+    const score = Math.abs(count - IDEAL_X_TICKS);
+    if (score < bestScore) {
+      bestScore = score;
+      bestInterval = interval;
+    }
   }
-  if (spanSec <= 7 * 86400) {
-    return new Date(ms).toLocaleString(undefined, {
-      month: "short",
-      day: "numeric",
+
+  if (bestScore < Infinity) return bestInterval;
+
+  const ideal = Math.max(spanSec / IDEAL_X_TICKS, widthMinInterval);
+  return NICE_X_INTERVALS_SEC.reduce((best, interval) =>
+    Math.abs(interval - ideal) < Math.abs(best - ideal) ? interval : best,
+  );
+}
+
+function formatChartTick(tUnixSec: number, intervalSec: number, spanSec: number): string {
+  const ms = tUnixSec * 1000;
+  const d = new Date(ms);
+
+  if (intervalSec >= 90 * 86400 || spanSec > 400 * 86400) {
+    return d.toLocaleDateString(undefined, { month: "short", year: "2-digit" });
+  }
+  if (intervalSec >= 86400) {
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  }
+  if (intervalSec >= 3600) {
+    return d.toLocaleString(undefined, {
+      month: spanSec > 2 * 86400 ? "short" : undefined,
+      day: spanSec > 2 * 86400 ? "numeric" : undefined,
       hour: "numeric",
-      minute: "2-digit"
+      minute: intervalSec >= 2 * 3600 ? undefined : "2-digit",
     });
   }
-  return new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+
+function filterCrowdedXTicks(
+  ticks: Array<{ x: number; time: number }>,
+  minPx: number,
+): Array<{ x: number; time: number }> {
+  if (ticks.length <= 1) return ticks;
+
+  const filtered: Array<{ x: number; time: number }> = [];
+  for (const tick of ticks) {
+    if (filtered.length === 0 || tick.x - filtered[filtered.length - 1]!.x >= minPx) {
+      filtered.push(tick);
+    }
+  }
+
+  if (filtered.length > MAX_X_TICKS) {
+    const step = (filtered.length - 1) / (MAX_X_TICKS - 1);
+    const thinned: typeof filtered = [];
+    for (let i = 0; i < MAX_X_TICKS; i++) {
+      thinned.push(filtered[Math.round(i * step)]!);
+    }
+    return thinned;
+  }
+
+  return filtered;
 }
 
 export function SmoothAreaChart({
@@ -259,40 +327,49 @@ export function SmoothAreaChart({
     });
   }, [showYAxis, mapped.length, layout, bounds]);
 
-  const xTicks = useMemo(() => {
-    if (mapped.length < 2) return [];
-    const interval = tickIntervalSec ?? Math.max(60, Math.floor(spanSec / 4));
-    const t0 = mapped[0]!.time;
-    const t1 = mapped[mapped.length - 1]!.time;
+  const xAxisIntervalSec = useMemo(
+    () => tickIntervalSec ?? chooseXTickInterval(spanSec, size.w),
+    [tickIntervalSec, spanSec, size.w],
+  );
 
-    const picks: typeof mapped = [];
+  const xTicks = useMemo(() => {
+    if (displayPoints.length < 2 || size.w <= 20) return [];
+
+    const t0 = displayPoints[0]!.time;
+    const t1 = displayPoints[displayPoints.length - 1]!.time;
+    const spanT = Math.max(t1 - t0, 1);
+    const innerW = size.w - padLeft - PAD_X_RIGHT;
+    const interval = xAxisIntervalSec;
+
+    const timeToX = (time: number) => padLeft + ((time - t0) / spanT) * innerW;
+
+    const ticks: Array<{ x: number; time: number }> = [];
     let nextTick = Math.ceil(t0 / interval) * interval;
     while (nextTick <= t1) {
-      let best = 0;
-      let bestD = Infinity;
-      for (let i = 0; i < mapped.length; i++) {
-        const d = Math.abs(mapped[i]!.time - nextTick);
-        if (d < bestD) {
-          bestD = d;
-          best = i;
-        }
-      }
-      const candidate = mapped[best]!;
-      if (!picks.some((p) => p.time === candidate.time)) {
-        picks.push(candidate);
-      }
+      ticks.push({ x: timeToX(nextTick), time: nextTick });
       nextTick += interval;
     }
 
-    if (picks.length === 0) {
-      return [mapped[0]!, mapped[mapped.length - 1]!];
+    if (ticks.length === 0) {
+      return [
+        { x: timeToX(t0), time: t0 },
+        { x: timeToX(t1), time: t1 },
+      ];
     }
-    if (picks[0]!.time !== mapped[0]!.time) picks.unshift(mapped[0]!);
-    if (picks[picks.length - 1]!.time !== mapped[mapped.length - 1]!.time) {
-      picks.push(mapped[mapped.length - 1]!);
+
+    const minGapSec = interval * 0.55;
+    const first = ticks[0]!;
+    const last = ticks[ticks.length - 1]!;
+
+    if (t0 < first.time - minGapSec) {
+      ticks.unshift({ x: timeToX(t0), time: t0 });
     }
-    return picks;
-  }, [mapped, spanSec, tickIntervalSec]);
+    if (t1 > last.time + minGapSec) {
+      ticks.push({ x: timeToX(t1), time: t1 });
+    }
+
+    return filterCrowdedXTicks(ticks, MIN_X_LABEL_PX);
+  }, [displayPoints, size.w, padLeft, xAxisIntervalSec]);
 
   if (displayPoints.length < 2 && !showZeroWhenEmpty) {
     return (
@@ -411,7 +488,7 @@ export function SmoothAreaChart({
             fontWeight="500"
             className="font-sans select-none"
           >
-            {formatChartTick(p.time, spanSec)}
+            {formatChartTick(p.time, xAxisIntervalSec, spanSec)}
           </text>
         ))}
 
