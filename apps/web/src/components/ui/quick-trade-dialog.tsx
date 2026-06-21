@@ -104,7 +104,7 @@ export default function QuickTradeDialog({
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="h-2 w-2 rounded-full bg-indigo-500 animate-pulse" />
+            <div className="h-2 w-2 rounded-full bg-cyan-500 animate-pulse" />
             <span className="text-xs font-semibold tracking-wider uppercase text-zinc-500">Simulate CFD Position</span>
           </div>
           <button
@@ -202,7 +202,7 @@ export default function QuickTradeDialog({
           <div>
             <div className="flex justify-between items-center mb-1.5">
               <label className="text-xs font-semibold text-zinc-400">Leverage (Multiplier)</label>
-              <span className="text-xs font-bold text-indigo-400 tabular-nums">{leverage}x</span>
+              <span className="text-xs font-bold text-cyan-400 tabular-nums">{leverage}x</span>
             </div>
             <input
               type="range"
@@ -210,7 +210,7 @@ export default function QuickTradeDialog({
               max={symbol.includes("USD") ? "20" : symbol.length === 6 ? "100" : "50"}
               value={leverage}
               onChange={(e) => setLeverage(parseInt(e.target.value) || 1)}
-              className="w-full h-1 bg-zinc-900 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+              className="w-full h-1 bg-zinc-900 rounded-lg appearance-none cursor-pointer accent-cyan-500"
             />
             <div className="flex justify-between text-[9px] font-bold text-zinc-600 px-0.5 mt-1">
               <span>1x (No Leverage)</span>
@@ -271,7 +271,7 @@ export default function QuickTradeDialog({
           </div>
           <div className="flex justify-between items-center text-zinc-500">
             <span>Estimated Leverage Margin</span>
-            <span className="text-indigo-400 font-mono font-bold">
+            <span className="text-cyan-400 font-mono font-bold">
               ${marginRequired.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
           </div>
@@ -284,8 +284,8 @@ export default function QuickTradeDialog({
         </div>
 
         {/* Simulated Warning */}
-        <div className="flex gap-2 p-3 bg-indigo-500/5 rounded-xl border border-indigo-500/10 text-[10px] text-zinc-400/90 leading-normal">
-          <ShieldAlert className="size-4 shrink-0 text-indigo-400" />
+        <div className="flex gap-2 p-3 bg-cyan-500/5 rounded-xl border border-cyan-500/10 text-[10px] text-zinc-400/90 leading-normal">
+          <ShieldAlert className="size-4 shrink-0 text-cyan-400" />
           <span>This is a simulated transaction powered by Quant's local paper-trading engine. No actual capital is exposed or placed on real exchanges.</span>
         </div>
 

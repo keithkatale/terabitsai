@@ -3,11 +3,12 @@
 import { useMemo, useState } from "react";
 import { ArrowDownToLine, RefreshCcwIcon, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { postDemoWithdrawal } from "@/lib/account/api";
+import { postWithdrawal, type TradingMode } from "@/lib/account/api";
 
 type Props = {
   open: boolean;
   onClose: () => void;
+  mode: TradingMode;
   walletAvailable: number;
   onSuccess: (amount: number) => void;
 };
@@ -15,6 +16,7 @@ type Props = {
 export function WithdrawModal({
   open,
   onClose,
+  mode,
   walletAvailable,
   onSuccess,
 }: Props) {
@@ -46,7 +48,7 @@ export function WithdrawModal({
     setBusy(true);
     setError(null);
     try {
-      await postDemoWithdrawal(parsedAmount);
+      await postWithdrawal(mode, parsedAmount);
       onSuccess(parsedAmount);
       setAmount("");
       onClose();
@@ -69,14 +71,16 @@ export function WithdrawModal({
 
         <div className="space-y-1">
           <span className="text-[10px] font-extrabold text-rose-400 tracking-wider uppercase">
-            Demo wallet
+            {mode === "demo" ? "Demo wallet" : "Live wallet"}
           </span>
           <h2 className="text-xl font-extrabold text-white tracking-tight flex items-center gap-1.5">
             <ArrowDownToLine className="size-5 text-rose-400" />
             Withdraw funds
           </h2>
           <p className="text-xs text-zinc-500 font-medium">
-            Transfer simulated cash out of your paper margin account.
+            {mode === "demo"
+              ? "Transfer simulated cash out of your paper margin account."
+              : "Request a withdrawal from your live wallet balance."}
           </p>
         </div>
 
@@ -105,7 +109,7 @@ export function WithdrawModal({
           <button
             type="button"
             onClick={() => setAmount(walletAvailable.toFixed(2))}
-            className="text-[10px] font-bold text-indigo-400 hover:text-indigo-300 cursor-pointer"
+            className="text-[10px] font-bold text-cyan-400 hover:text-cyan-300 cursor-pointer"
           >
             Withdraw max
           </button>

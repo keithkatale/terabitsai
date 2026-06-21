@@ -168,7 +168,7 @@ export function PortfolioBreakdown({
           </div>
           <div className="flex items-center gap-1.5 text-xs font-mono font-bold">
             <DollarSign className="size-3 text-zinc-500" />
-            <span className="text-indigo-400">${activeSegment.value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            <span className="text-cyan-400">${activeSegment.value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
           </div>
         </div>
         <p className="text-[11px] text-zinc-400 leading-relaxed font-sans mt-0.5">

@@ -138,7 +138,7 @@ export function ArtifactSandboxCard({ code, language = "html", title = "Interact
       />
       {loading ? (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-[#050508]/60">
-          <Loader2 className="size-5 animate-spin text-indigo-400" />
+          <Loader2 className="size-5 animate-spin text-cyan-400" />
         </div>
       ) : null}
       {runtimeError ? (
@@ -157,7 +157,7 @@ export function ArtifactSandboxCard({ code, language = "html", title = "Interact
           onClick={() => setActiveTab("preview")}
           className={cn(
             "flex cursor-pointer items-center gap-1 rounded-md px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider transition-all",
-            activeTab === "preview" ? "border border-indigo-500/15 bg-indigo-500/10 text-indigo-400" : "border border-transparent text-zinc-500 hover:text-zinc-300",
+            activeTab === "preview" ? "border border-cyan-500/15 bg-cyan-500/10 text-cyan-400" : "border border-transparent text-zinc-500 hover:text-zinc-300",
           )}
         >
           <Eye className="size-3" />
@@ -167,7 +167,7 @@ export function ArtifactSandboxCard({ code, language = "html", title = "Interact
           onClick={() => setActiveTab("code")}
           className={cn(
             "flex cursor-pointer items-center gap-1 rounded-md px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider transition-all",
-            activeTab === "code" ? "border border-indigo-500/15 bg-indigo-500/10 text-indigo-400" : "border border-transparent text-zinc-500 hover:text-zinc-300",
+            activeTab === "code" ? "border border-cyan-500/15 bg-cyan-500/10 text-cyan-400" : "border border-transparent text-zinc-500 hover:text-zinc-300",
           )}
         >
           <Code className="size-3" />
@@ -193,7 +193,7 @@ export function ArtifactSandboxCard({ code, language = "html", title = "Interact
   const header = (
     <div className="flex items-center justify-between border-b border-zinc-900/60 bg-zinc-950/80 px-4 py-2.5 shrink-0 select-none">
       <div className="flex items-center gap-2">
-        <div className="size-2 animate-pulse rounded-full bg-indigo-500" />
+        <div className="size-2 animate-pulse rounded-full bg-cyan-500" />
         <span className="max-w-[200px] truncate text-xs font-bold text-zinc-100">{title}</span>
         <span className="rounded border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-zinc-500">
           {isSvg ? "SVG" : "SANDBOXED HTML"}

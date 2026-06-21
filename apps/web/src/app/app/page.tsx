@@ -1,5 +1,3 @@
-import { redirect } from "next/navigation";
-
-export default function AppIndexPage() {
-  redirect("/app/terminal");
+export default function AppPage() {
+  return null;
 }

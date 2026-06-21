@@ -1,3 +1,5 @@
+export type TradingMode = "demo" | "live";
+
 export type LedgerSummaryResponse = {
   account: {
     id: string;
@@ -9,8 +11,13 @@ export type LedgerSummaryResponse = {
   balance: {
     wallet_available: number;
     order_locked: number;
+    invested_value_usd?: number;
+    unrealized_pnl_usd?: number;
     total_balance: number;
     currency: string;
+  };
+  portfolio?: {
+    open_positions_count: number;
   };
   mode: "demo" | "live";
   recent_ledger_entries: Array<{
@@ -26,8 +33,29 @@ export type LedgerSummaryResponse = {
   }>;
 };
 
-export async function fetchLedgerSummary(): Promise<LedgerSummaryResponse> {
-  const res = await fetch("/api/ledger/summary?mode=demo", {
+export async function fetchAccountPreferences(): Promise<{
+  trading_mode: TradingMode;
+  accounts: { live: { id: string }; demo: { id: string } };
+}> {
+  const res = await fetch("/api/account/preferences", { credentials: "include" });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? "Failed to load preferences");
+  return data;
+}
+
+export async function patchTradingMode(mode: TradingMode): Promise<void> {
+  const res = await fetch("/api/account/preferences", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ trading_mode: mode }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? "Failed to update trading mode");
+}
+
+export async function fetchLedgerSummary(mode: TradingMode): Promise<LedgerSummaryResponse> {
+  const res = await fetch(`/api/ledger/summary?mode=${mode}`, {
     credentials: "include",
   });
   const data = await res.json();
@@ -37,15 +65,16 @@ export async function fetchLedgerSummary(): Promise<LedgerSummaryResponse> {
   return data;
 }
 
-export async function postDemoDeposit(
+export async function postDeposit(
+  mode: TradingMode,
   amount: number,
-  gateway = "ACH"
+  gateway = "ACH",
 ): Promise<void> {
   const res = await fetch("/api/funding/deposit", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
-    body: JSON.stringify({ mode: "demo", amount, currency: "USD", gateway }),
+    body: JSON.stringify({ mode, amount, currency: "USD", gateway }),
   });
   const data = await res.json();
   if (!res.ok) {
@@ -53,15 +82,15 @@ export async function postDemoDeposit(
   }
 }
 
-export async function postDemoWithdrawal(amount: number): Promise<void> {
+export async function postWithdrawal(mode: TradingMode, amount: number): Promise<void> {
   const res = await fetch("/api/funding/withdrawal-request", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
     body: JSON.stringify({
-      mode: "demo",
+      mode,
       requestedAmount: amount,
-      method: "demo",
+      method: mode === "demo" ? "demo" : "bank",
     }),
   });
   const data = await res.json();
@@ -70,7 +99,48 @@ export async function postDemoWithdrawal(amount: number): Promise<void> {
   }
 }
 
+export async function fetchPortfolioHistory(mode: TradingMode): Promise<{
+  points: Array<{ time: number; value: number }>;
+  currentValue: number;
+  changePct: number;
+}> {
+  const res = await fetch(`/api/portfolio/history?mode=${mode}`, {
+    credentials: "include",
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error ?? "Failed to load portfolio history");
+  }
+  return data;
+}
+
+export async function fetchOpenPositions(mode: TradingMode): Promise<
+  Array<{
+    id: string;
+    symbol: string;
+    direction: "BUY" | "SELL";
+    entryPrice: number;
+    size: number;
+    leverage: number;
+    margin: number;
+    tp: null;
+    sl: null;
+    status: "OPEN";
+    timestamp: number;
+  }>
+> {
+  const res = await fetch(`/api/portfolio/positions?mode=${mode}`, {
+    credentials: "include",
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error ?? "Failed to load positions");
+  }
+  return data.positions ?? [];
+}
+
 export async function postTradeLedger(
+  mode: TradingMode,
   body:
     | {
         action: "reserve";
@@ -78,6 +148,9 @@ export async function postTradeLedger(
         symbol: string;
         tradeId: string;
         side: "buy" | "sell";
+        quantity?: number;
+        entryPrice?: number;
+        leverage?: number;
       }
     | {
         action: "release";
@@ -85,6 +158,7 @@ export async function postTradeLedger(
         symbol: string;
         tradeId: string;
         side: "buy" | "sell";
+        closePrice?: number;
       }
     | {
         action: "adjustment";
@@ -92,16 +166,61 @@ export async function postTradeLedger(
         symbol: string;
         tradeId: string;
         side: "buy" | "sell";
-      }
+        closePrice?: number;
+      },
 ): Promise<void> {
   const res = await fetch("/api/ledger/trade", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
-    body: JSON.stringify(body),
+    body: JSON.stringify({ mode, ...body }),
   });
   const data = await res.json();
   if (!res.ok) {
     throw new Error(data.error ?? "Trade ledger update failed");
   }
 }
+
+export async function purchaseAssetAtMarket(
+  mode: TradingMode,
+  body: {
+    symbol: string;
+    side: "buy" | "sell";
+    size: number;
+    leverage?: number;
+  },
+): Promise<{
+  ok: boolean;
+  trade: {
+    id: string;
+    symbol: string;
+    direction: "BUY" | "SELL";
+    size: number;
+    leverage: number;
+    margin: number;
+    entryPrice: number;
+    notional: number;
+    bid: number;
+    ask: number;
+    spot: number;
+  };
+}> {
+  const res = await fetch("/api/investing/purchase", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ mode, ...body }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error ?? "Purchase failed");
+  }
+  return data;
+}
+
+/** @deprecated use postDeposit */
+export const postDemoDeposit = (amount: number, gateway?: string) =>
+  postDeposit("demo", amount, gateway);
+
+/** @deprecated use postWithdrawal */
+export const postDemoWithdrawal = (amount: number) => postWithdrawal("demo", amount);

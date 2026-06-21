@@ -52,7 +52,7 @@ export function SmoothAreaChart({
   points: ChartPoint[];
   className?: string;
   height?: number;
-  accent?: "bullish" | "bearish" | "neutral";
+  accent?: "bullish" | "bearish" | "neutral" | "cyan";
 }) {
   const uid = useId().replace(/:/g, "");
   const gradId = `quant-fill-${uid}`;
@@ -154,6 +154,12 @@ export function SmoothAreaChart({
         stroke: "#ef4444", // Red
         fillTop: "rgba(239, 68, 68, 0.18)",
         fillBot: "rgba(239, 68, 68, 0.01)"
+      };
+    } else if (accent === "cyan") {
+      return {
+        stroke: "#2EC9FF",
+        fillTop: "rgba(46, 201, 255, 0.22)",
+        fillBot: "rgba(46, 201, 255, 0.01)",
       };
     } else {
       return {
@@ -306,7 +312,9 @@ export function SmoothAreaChart({
               ? "border-emerald-500/30 shadow-emerald-500/5"
               : accent === "bearish"
                 ? "border-red-500/30 shadow-red-500/5"
-                : "border-indigo-500/30 shadow-indigo-500/5"
+                : accent === "cyan"
+                  ? "border-cyan-400/30 shadow-cyan-500/5"
+                  : "border-cyan-500/30 shadow-cyan-500/5"
           )}
           style={{
             left: `${(hoveredPt.x / size.w) * 100}%`,

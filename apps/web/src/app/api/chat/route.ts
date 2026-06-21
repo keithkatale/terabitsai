@@ -2,6 +2,7 @@ import { getAgentGeminiModelId, getVertexGeminiClient, isGeminiRuntimeConfigured
 import { parseVertexErrorMessage } from "@/lib/gemini/vertex-error-parser";
 import { getCapitalAssetCatalog } from "@/lib/catalog/capital-assets";
 import { generateVertexTextCompletion } from "@/lib/gemini/vertex-text-completion";
+import { fetchAssetCatalog } from "@/lib/chat/asset-catalog-tool";
 import { fetchAssetMarketData, fetchMarketOverview } from "@/lib/chat/market-data-tool";
 import { searchMarketIntel, getLatestCatalystBrief, getMacroRegime, findHistoricalAnalogs } from "@quant/market-intel";
 import type { ChatStreamEvent } from "@/lib/chat/stream-types";
@@ -157,19 +158,23 @@ export async function POST(req: Request) {
 
     const conversationHistory = parseClientHistory(rawHistory);
 
-    const systemInstruction = `You are Terabits AI, a highly capable, neutral, and unbiased financial AI assistant.
-Your goal is to provide clear, helpful, accurate, and objective answers to any technical, financial, or general prompt.
-You maintain a professional, objective, and polite tone. Provide structured replies using markdown formatting beautifully.
+    const systemInstruction = `You are the Terabits Wealth Engine coordinator — an AI trading agent team that helps users grow capital on autopilot.
+Your goal is to observe markets, synthesize intel, propose actionable trades, explain risk, and guide simulated or live execution with clarity and discipline.
+You maintain a professional, decisive tone. Provide structured replies using markdown formatting beautifully.
 
-You are equipped with advanced MCP tools to:
+You coordinate specialized agent teams equipped with MCP tools to:
 - Retrieve the asset catalog and detailed assets data.
 - Pull live quotes and historical OHLCV via get_asset_market_data (use this for ANY chart or price request).
-- Search verified market intelligence via search_market_intel for news/catalyst questions — cite provenance URLs, never invent headlines.
-- Spin up specialized agent teams (parallel subagents) to perform granular technical, fundamental, risk, or sentiment analyses.
+- Search verified market intelligence via search_market_intel for catalyst and headline context — cite provenance URLs, never invent headlines.
+- Spin up specialized agent teams (parallel subagents) for technical, fundamental, risk, and sentiment analysis before trade proposals.
 
 When the user asks for a chart, price, market overview, or market view:
 1. Call get_market_overview (multi-asset) or get_asset_market_data (single asset).
 2. The client renders the tool's \`genui\` payload automatically — write **one short intro sentence only**. Do NOT output a \`\`\`genui block for market data (the server injects the dashboard).
+
+When the user asks to list, browse, or pull assets from the catalog:
+1. Call get_all_assets (optionally filter by asset_class).
+2. The client renders the tool's \`genui\` payload automatically (AssetCatalogGrid with logos and live prices) — write **one short intro sentence only**. Do NOT output barlist nodes or markdown tables for the full catalog.
 
 When requested to analyze assets or run deep research, aggressively use the 'spawn_subagents' tool to form a team of subagents, and then synthesize their findings beautifully in your final response.
 
@@ -184,7 +189,7 @@ Node vocabulary (every node has a \`type\`):
 - Metrics: stat{label,value,delta?,trend?:up|down|flat,icon?,accent?}, metricCard{label,value,sublabel?,delta?,trend?,sparkline?:number[],accent?}
 - Viz: sparkline{data:number[],accent?,label?}, chart{variant?:line|area,series:[{name,data:number[],color?}],labels?:string[],title?}, gauge{value:0-100,label?,caption?,accent?}, progress{value:0-100,label?,caption?,accent?}, barlist{title?,items:[{label,value,accent?}],unit?}
 - Info: callout{variant:info|success|warning|danger,title?,text}, badge{text,accent?}, keyValue{items:[{label,value,accent?}]}, table{columns:string[],rows:(string|number)[][]}
-- Bridge to prebuilt widgets: component{name,props} where name is AssetComparativeChart | PortfolioBreakdown | TransactionSummary | TradeConfirmationWidget
+- Bridge to prebuilt widgets: component{name,props} where name is AssetCatalogGrid | AssetComparativeChart | PortfolioBreakdown | TransactionSummary | TradeConfirmationWidget
 accent is one of cyan|violet|emerald|rose|amber|sky|zinc. icon is any lucide icon name (e.g. "trending-up").
 
 Example for "How is Bitcoin doing?" — call get_asset_market_data, then paste the returned \`genui\` object:
@@ -304,18 +309,7 @@ PINNED ASSETS:
 
                   if (name === "get_all_assets") {
                     const filter = args?.asset_class as string | undefined;
-                    const allAssets = getCapitalAssetCatalog();
-                    const filtered = filter
-                      ? allAssets.filter((a) => a.asset_class === filter)
-                      : allAssets;
-                    const summarized = filtered.map((a) => ({
-                      id: a.id,
-                      symbol: a.symbol,
-                      display_name: a.display_name,
-                      asset_class: a.asset_class,
-                      sector: a.sector,
-                    }));
-                    toolResult = { success: true, count: summarized.length, assets: summarized };
+                    toolResult = await fetchAssetCatalog(filter);
                   } else if (name === "get_asset_details") {
                     const symbol = args?.symbol as string | undefined;
                     const allAssets = getCapitalAssetCatalog();
@@ -905,41 +899,16 @@ Feel free to customize the HTML code directly inside your request and watch me c
     });
     await new Promise((resolve) => setTimeout(resolve, 800));
 
+    const catalog = await fetchAssetCatalog();
     sendEvent({
       type: "reasoning",
-      text: `   ✅ Loaded **125** assets from catalog.\n`
+      text: `   ✅ Loaded **${catalog.count}** assets from catalog.\n`
     });
     await new Promise((resolve) => setTimeout(resolve, 500));
 
-    const mainText = `${prefixText}### 📋 Quant Asset Catalog Summary
+    sendEvent({ type: "genui", payload: catalog.genui, source: "get_all_assets" });
 
-Based on the system catalog, there are **125 assets** registered. Here is a curated overview of the leading markets:
-
-#### 🪙 Cryptocurrencies (20x Max Leverage)
-| Symbol | Asset Name | Sector | Min Notional |
-| :--- | :--- | :--- | :--- |
-| **BTCUSD** | Bitcoin / USD CFD | Crypto | $10 |
-| **ETHUSD** | Ethereum / USD CFD | Crypto | $10 |
-| **SOLUSD** | Solana / USD CFD | Crypto | $10 |
-| **XRPUSD** | Ripple / USD CFD | Crypto | $10 |
-
-#### 📈 Blue-Chip Stocks (20x Max Leverage)
-| Symbol | Company Name | Sector | Region |
-| :--- | :--- | :--- | :--- |
-| **AAPL** | Apple Inc. CFD | Technology | US |
-| **MSFT** | Microsoft Corp. CFD | Technology | US |
-| **TSLA** | Tesla Inc. CFD | Automotive | US |
-| **NVDA** | NVIDIA Corp. CFD | Semiconductors | US |
-
-#### 🌍 Forex & Commodities (20x Max Leverage)
-| Symbol | Name | Class | Sector |
-| :--- | :--- | :--- | :--- |
-| **EURUSD** | EUR/USD CFD | Forex | Currencies |
-| **GBPUSD** | GBP/USD CFD | Forex | Currencies |
-| **GOLD** | Gold Spot CFD | Commodity | Precious Metals |
-| **OIL_CRUDE** | WTI Crude Oil CFD | Commodity | Energy |
-
-You can trade any of these assets directly from the terminal or ask me to perform deep analytical reports on them!`;
+    const mainText = `${prefixText}Here are **${catalog.count}** tradable assets from the Terabits catalog — grouped by class with logos and live prices below. Ask me to analyze any symbol or open a trade from Command.`;
 
     const textChunks = mainText.split(" ");
     for (const chunk of textChunks) {

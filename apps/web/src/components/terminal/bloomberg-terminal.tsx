@@ -6,6 +6,7 @@ import { RiskMetricsPanel, useRiskMetrics } from "./risk-metrics-panel"
 import { HITLApprovalModal, useHITLRequests, type HITLApprovalRequest } from "./hitl-approval-modal"
 import { TradeBlotter, useTradeBlotter } from "./trade-blotter"
 import { TradingWorkspace } from "@/components/workspace/trading-workspace"
+import { AppTabProvider } from "@/contexts/app-tab-context"
 import { cn } from "@/lib/utils"
 
 type Tab = "chat" | "blotter"
@@ -59,7 +60,9 @@ export function BloombergTerminal() {
         {/* Tab Content */}
         <div className="flex-1 overflow-hidden">
           {activeTab === "chat" ? (
-            <TradingWorkspace mode="terminal" />
+            <AppTabProvider>
+              <TradingWorkspace />
+            </AppTabProvider>
           ) : (
             <TradeBlotter entries={blotterEntries} className="h-full" />
           )}

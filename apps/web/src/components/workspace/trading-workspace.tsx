@@ -1,7 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useEffect, useState, useMemo, useRef, useCallback, useId } from "react";
+import { useEffect, useState, useMemo, useRef, useCallback, useId, type ReactNode } from "react";
+import { useAppTab, type AppTab } from "@/contexts/app-tab-context";
 import InputBar, { type TaggedAsset } from "@/components/ui/input-bar";
 import {
   formatUserDisplayMessage,
@@ -11,10 +11,8 @@ import { cn } from "@/lib/utils";
 import { SmoothAreaChart } from "@/components/ui/smooth-area-chart";
 import { capitalAdapter } from "@/lib/execution/capital-adapter";
 import QuickTradeDialog from "@/components/ui/quick-trade-dialog";
-import { useAccount } from "@/hooks/use-account";
-import { postTradeLedger } from "@/lib/account/api";
-import { DepositModal } from "@/components/account/deposit-modal";
-import { WithdrawModal } from "@/components/account/withdraw-modal";
+import { useAppAccount } from "@/contexts/app-account-context";
+import { postTradeLedger, fetchOpenPositions } from "@/lib/account/api";
 import { AccountPanel } from "@/components/account/account-panel";
 
 import { getCapitalAssetCatalog } from "@/lib/catalog/capital-assets";
@@ -56,7 +54,6 @@ import {
 import { MarketTerminal } from "@/components/terminal/market-terminal";
 import type { TerminalTabId } from "@/components/terminal/types";
 import { categoryForAsset } from "@/lib/catalog/asset-catalog";
-import { HOT_SYMBOLS, assetClassForSymbol } from "@/lib/market/watchlist";
 import type { LiveSignal } from "@/lib/market/market-intel-data";
 import { PageBackground } from "@/components/ui/page-background";
 import {
@@ -64,6 +61,8 @@ import {
   CHAT_LANDING_PROMPT_SUGGESTIONS,
   CHAT_LANDING_MAX_TAGGED_ASSETS,
 } from "@/components/workspace/chat-landing-hero";
+import { HomeSection } from "@/components/workspace/app-sections/home-section";
+import { InvestingSection } from "@/components/workspace/app-sections/investing-section";
 
 // Self-contained custom Figma SVG icon component
 const Figma = ({ className }: { className?: string }) => (
@@ -188,9 +187,32 @@ const MiniSparkline = ({ points, isPositive }: { points: { x: number; y: number 
   );
 };
 
+function tabPanelClass(active: boolean) {
+  return cn(
+    "absolute inset-0 flex min-h-0 flex-col overflow-hidden",
+    !active && "hidden",
+  );
+}
+
+function TabPanel({
+  tab,
+  activeTab,
+  children,
+}: {
+  tab: AppTab;
+  activeTab: AppTab;
+  children: ReactNode;
+}) {
+  return (
+    <div className={tabPanelClass(activeTab === tab)} aria-hidden={activeTab !== tab}>
+      {children}
+    </div>
+  );
+}
+
 // --- Main workspace ---
-export function TradingWorkspace({ mode = "terminal" }: { mode?: "chat" | "terminal" }) {
-  const router = useRouter();
+export function TradingWorkspace() {
+  const { activeTab: mode, setActiveTab, isTabActive } = useAppTab();
   const [value, setValue] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
@@ -198,10 +220,6 @@ export function TradingWorkspace({ mode = "terminal" }: { mode?: "chat" | "termi
 
   const [activeTerminalTab, setActiveTerminalTab] = useState<TerminalTabId>("markets");
   const [pinnedAssetTabs, setPinnedAssetTabs] = useState<string[]>([]);
-  const [sectorFeedSignals, setSectorFeedSignals] = useState<
-    Array<{ symbol: string; strategy: string; action: string; reason: string; sector?: string | null }>
-  >([]);
-
 
   // Active Market selected symbol and category
   const [activeSymbol, setActiveSymbol] = useState("BTCUSD");
@@ -406,9 +424,9 @@ export function TradingWorkspace({ mode = "terminal" }: { mode?: "chat" | "termi
   const leftPoolPointer = useRef(8);
   const rightPoolPointer = useRef(8);
 
-  // Pre-fetch 1M historical candles for any visible and upcoming symbols on landing page
+  // Pre-fetch 1M historical candles for carousel cards (chat landing only)
   useEffect(() => {
-    if (messages.length > 0) return;
+    if (mode !== "command" || messages.length > 0) return;
     const visibleSymbols = new Set<string>();
     leftSlots.forEach(s => {
       visibleSymbols.add(s.activeSide === "front" ? s.front.symbol : s.back.symbol);
@@ -430,10 +448,10 @@ export function TradingWorkspace({ mode = "terminal" }: { mode?: "chat" | "termi
           }
         }).catch(err => console.warn("Card candle fetch failed:", sym, err));
     });
-  }, [leftSlots, rightSlots, messages.length, cardCandles, convertCandlesToSparklinePoints]);
+  }, [mode, leftSlots, rightSlots, messages.length, cardCandles, convertCandlesToSparklinePoints]);
 
   useEffect(() => {
-    if (messages.length > 0) return;
+    if (mode !== "command" || messages.length > 0) return;
 
     let leftFlipIndex = 0;
     let rightFlipIndex = 0;
@@ -497,7 +515,7 @@ export function TradingWorkspace({ mode = "terminal" }: { mode?: "chat" | "termi
       clearTimeout(rightTimeout);
       rightIntervals.forEach(clearInterval);
     };
-  }, [messages.length]);
+  }, [mode, messages.length]);
 
   // Sidebar dynamic quotes record & search state
   const [searchQuery, setSearchQuery] = useState("");
@@ -518,10 +536,12 @@ export function TradingWorkspace({ mode = "terminal" }: { mode?: "chat" | "termi
     signOut,
     accountId,
     balance,
-  } = useAccount();
+    tradingMode,
+    openDeposit,
+    openWithdraw,
+    registerFundingHandlers,
+  } = useAppAccount();
 
-  const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
-  const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
   const [isAccountPanelOpen, setIsAccountPanelOpen] = useState(false);
   const [taggedAssets, setTaggedAssets] = useState<TaggedAsset[]>([]);
 
@@ -552,24 +572,22 @@ export function TradingWorkspace({ mode = "terminal" }: { mode?: "chat" | "termi
 
   const handleDepositSuccess = useCallback(
     async (amt: number, gateway: string) => {
-      const updated = await fetch("/api/ledger/summary?mode=demo", {
-        credentials: "include",
-      }).then((r) => r.json());
-      await refreshAccount();
+      const updated = await refreshAccount();
       const available = updated?.balance?.wallet_available ?? 0;
+      const label = tradingMode === "demo" ? "Demo wallet funded" : "Deposit received";
       const receiptMessage: ChatMessage = {
         id: Date.now().toString(),
         role: "assistant",
         parts: [
           {
             type: "text",
-            text: `✅ **Demo wallet funded**\n\nCredited **$${amt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}** via simulated **${gateway}**.\n\nAvailable margin: **$${available.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}**`,
+            text: `✅ **${label}**\n\nCredited **$${amt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}**${tradingMode === "demo" ? ` via simulated **${gateway}**` : ""}.\n\nAvailable margin: **$${available.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}**`,
           },
         ],
       };
       setMessages((prev) => [...prev, receiptMessage]);
     },
-    [refreshAccount]
+    [refreshAccount, tradingMode],
   );
 
   const handleWithdrawSuccess = useCallback(
@@ -581,14 +599,89 @@ export function TradingWorkspace({ mode = "terminal" }: { mode?: "chat" | "termi
         parts: [
           {
             type: "text",
-            text: `✅ **Withdrawal processed**\n\n**$${amt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}** was withdrawn from your demo wallet.`,
+            text: `✅ **Withdrawal processed**\n\n**$${amt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}** was withdrawn from your ${tradingMode} wallet.`,
           },
         ],
       };
       setMessages((prev) => [...prev, receiptMessage]);
     },
-    [refreshAccount]
+    [refreshAccount, tradingMode],
   );
+
+  useEffect(() => {
+    registerFundingHandlers({
+      onDepositSuccess: handleDepositSuccess,
+      onWithdrawSuccess: handleWithdrawSuccess,
+    });
+  }, [registerFundingHandlers, handleDepositSuccess, handleWithdrawSuccess]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const depositStatus = params.get("deposit");
+    if (!depositStatus) return;
+
+    params.delete("deposit");
+    const url = new URL(window.location.href);
+    url.search = params.toString();
+    window.history.replaceState(null, "", url.toString());
+
+    if (depositStatus === "success") {
+      void refreshAccount().then((updated) => {
+        const available = updated?.balance?.wallet_available ?? 0;
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now().toString(),
+            role: "assistant",
+            parts: [
+              {
+                type: "text",
+                text: `✅ **Deposit received**\n\nYour live wallet balance is now **$${available.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}**. It may take a moment for card payments to settle.`,
+              },
+            ],
+          },
+        ]);
+      });
+      setActiveTab("home");
+    } else if (depositStatus === "cancel") {
+      setActiveTab("home");
+    }
+  }, [refreshAccount, setActiveTab]);
+
+  useEffect(() => {
+    if (!user) {
+      setPositions([]);
+      return;
+    }
+
+    let cancelled = false;
+    const loadPositions = async () => {
+      try {
+        const rows = await fetchOpenPositions(tradingMode);
+        if (!cancelled) {
+          setPositions(rows as TradeData[]);
+        }
+      } catch {
+        if (!cancelled) setPositions([]);
+      }
+    };
+
+    void loadPositions();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, tradingMode]);
+
+  const reloadPositions = useCallback(async () => {
+    try {
+      const rows = await fetchOpenPositions(tradingMode);
+      setPositions(rows as TradeData[]);
+      await refreshAccount();
+    } catch {
+      /* keep current positions on refresh failure */
+    }
+  }, [refreshAccount, tradingMode]);
 
   // --- Real-time Polling & Quote Sync ---
   
@@ -619,139 +712,7 @@ export function TradingWorkspace({ mode = "terminal" }: { mode?: "chat" | "termi
     setSidebarQuotes(initialQuotes);
   }, []);
 
-  // 2. Poll Active Quote and Chart Candles every 10s
-  useEffect(() => {
-    if (mode !== "terminal") return;
-    let active = true;
-    const fetchActiveDetails = async () => {
-      try {
-        const quoteRes = await fetch(`/api/market/quote?symbol=${activeSymbol}&assetClass=${activeCategory}`);
-        if (!active) return;
-        if (quoteRes.ok) {
-          const quoteData = await quoteRes.json();
-          setActiveQuote(quoteData);
-          setSidebarQuotes((prev) => ({
-            ...prev,
-            [activeSymbol]: quoteData,
-          }));
-        }
-
-        const candlesRes = await fetch(`/api/market/candles?symbol=${activeSymbol}&range=${selectedTimeframe}`);
-        if (!active) return;
-        if (candlesRes.ok) {
-          const candlesData = await candlesRes.json();
-          setCandlePoints(candlesData.points || []);
-        }
-      } catch (err) {
-        console.warn("Failed to fetch active symbol data:", err);
-      }
-    };
-
-    fetchActiveDetails();
-    const interval = setInterval(fetchActiveDetails, 10000);
-
-    return () => {
-      active = false;
-      clearInterval(interval);
-    };
-  }, [activeSymbol, activeCategory, selectedTimeframe, mode]);
-
-  // 2b. Poll watchlist quotes for market scanner (HOT_SYMBOLS)
-  useEffect(() => {
-    if (mode !== "terminal") return;
-    let active = true;
-    const fetchWatchlist = async () => {
-      const results = await Promise.allSettled(
-        HOT_SYMBOLS.map(async (symbol) => {
-          const assetClass = assetClassForSymbol(symbol);
-          const res = await fetch(`/api/market/quote?symbol=${symbol}&assetClass=${assetClass}`);
-          if (!res.ok) return null;
-          const data = await res.json();
-          return { symbol, data };
-        })
-      );
-      if (!active) return;
-      setSidebarQuotes((prev) => {
-        const next = { ...prev };
-        for (const r of results) {
-          if (r.status === "fulfilled" && r.value) {
-            next[r.value.symbol] = r.value.data;
-          }
-        }
-        return next;
-      });
-    };
-    fetchWatchlist();
-    const interval = setInterval(fetchWatchlist, 30_000);
-    return () => {
-      active = false;
-      clearInterval(interval);
-    };
-  }, [mode]);
-
-  // 2c. Bootstrap intel on app open (triggers scan if stale, feeds Markets + Intelligence)
-  useEffect(() => {
-    if (mode !== "terminal") return;
-    fetch("/api/intel/bootstrap")
-      .then((r) => r.json())
-      .then((data) => {
-        if (data?.success && Array.isArray(data.items)) {
-          const signals = data.items
-            .filter((i: { kind: string }) => i.kind === "signal")
-            .map((i: { item: Record<string, unknown> }) => i.item as {
-              symbol: string;
-              strategy: string;
-              action: string;
-              reason: string;
-              sector?: string;
-            });
-          if (signals.length > 0) setSectorFeedSignals(signals);
-        }
-      })
-      .catch(() => {});
-  }, [mode]);
-
-  // 3. 3-second client-side Brownian Motion Price fluctuation (Premium Terminal Effect!)
-  useEffect(() => {
-    if (mode !== "terminal") return;
-    const timer = setInterval(() => {
-      setSidebarQuotes((prev) => {
-        const updated = { ...prev };
-        let changed = false;
-
-        Object.keys(updated).forEach((sym) => {
-          if (sym === activeSymbol) return; // Skip currently active symbol to stay in exact sync with REST API polls
-
-          const q = updated[sym];
-          if (!q) return;
-
-          // Brownian walk (fluctuate ±0.04% max)
-          const changePct = (Math.random() - 0.5) * 0.0008;
-          const oldSpot = q.spot;
-          const newSpot = oldSpot * (1 + changePct);
-          const spreadBps = 12 / 10000;
-          const bid = newSpot * (1 - spreadBps / 2);
-          const ask = newSpot * (1 + spreadBps / 2);
-
-          const netChange = (q.change24hPct || 0) + (changePct * 100);
-
-          updated[sym] = {
-            ...q,
-            bid,
-            ask,
-            spot: newSpot,
-            change24hPct: Math.min(Math.max(netChange, -15), 15),
-            spread: ask - bid,
-          };
-          changed = true;
-        });
-
-        return changed ? updated : prev;
-      });
-    }, 3000);
-
-    return () => clearInterval(timer);
-  }, [activeSymbol]);
+  // 2b. Watchlist polling removed — news tab loads its own data.
 
   // --- CFD Transaction Execution ---
 
@@ -780,7 +741,7 @@ export function TradingWorkspace({ mode = "terminal" }: { mode?: "chat" | "termi
         ],
       };
       setMessages((prev) => [...prev, errorMsg]);
-      setIsDepositModalOpen(true);
+      openDeposit();
       return;
     }
 
@@ -801,12 +762,15 @@ export function TradingWorkspace({ mode = "terminal" }: { mode?: "chat" | "termi
     setPositions((prev) => [position, ...prev]);
 
     try {
-      await postTradeLedger({
+      await postTradeLedger(tradingMode, {
         action: "reserve",
         amount: trade.margin,
         symbol: trade.symbol,
         tradeId: trade.id,
         side: trade.direction.toLowerCase() as "buy" | "sell",
+        quantity: trade.size,
+        entryPrice: trade.price,
+        leverage: trade.leverage,
       });
       await refreshAccount();
     } catch (err) {
@@ -819,7 +783,7 @@ export function TradingWorkspace({ mode = "terminal" }: { mode?: "chat" | "termi
       parts: [{ type: "trade-execution", text: JSON.stringify(position) }],
     };
     setMessages((prev) => [...prev, receiptMessage]);
-  }, [balance, refreshAccount]);
+  }, [balance, refreshAccount, tradingMode]);
 
   // Listen to standard "execute-simulated-trade" custom window events dispatched by Approach B widgets
   useEffect(() => {
@@ -868,19 +832,21 @@ export function TradingWorkspace({ mode = "terminal" }: { mode?: "chat" | "termi
 
     try {
       await Promise.all([
-        postTradeLedger({
+        postTradeLedger(tradingMode, {
           action: "release",
           amount: pos.margin,
           symbol: pos.symbol,
           tradeId: pos.id,
           side: pos.direction.toLowerCase() as "buy" | "sell",
+          closePrice: currentSpot,
         }),
-        postTradeLedger({
+        postTradeLedger(tradingMode, {
           action: "adjustment",
           signedAmount: finalPnl,
           symbol: pos.symbol,
           tradeId: pos.id,
           side: pos.direction.toLowerCase() as "buy" | "sell",
+          closePrice: currentSpot,
         }),
       ]);
       await refreshAccount();
@@ -905,7 +871,7 @@ export function TradingWorkspace({ mode = "terminal" }: { mode?: "chat" | "termi
       ],
     };
     setMessages((prev) => [...prev, receiptMessage]);
-  }, [positions, sidebarQuotes, refreshAccount]);
+  }, [positions, sidebarQuotes, refreshAccount, tradingMode]);
 
   // --- Core AI Streaming Logic ---
   const handleSend = async (textToSend: string, pinnedForSend: TaggedAsset[] = []) => {
@@ -914,8 +880,8 @@ export function TradingWorkspace({ mode = "terminal" }: { mode?: "chat" | "termi
     if (!displayPrompt && pinnedForSend.length === 0) return;
     if (loading) return;
 
-    if (!user && mode === "terminal") {
-      window.location.href = `/login?next=${encodeURIComponent("/app/terminal")}`;
+    if (!user) {
+      window.location.href = `/login?next=${encodeURIComponent("/app")}`;
       return;
     }
 
@@ -1136,13 +1102,13 @@ Provide:
       if (typeof window !== "undefined") {
         sessionStorage.setItem("chat:pending", JSON.stringify({ prompt, tags: [] }));
       }
-      router.push("/app/chat");
+      setActiveTab("command");
     },
-    [router],
+    [setActiveTab],
   );
 
   useEffect(() => {
-    if (mode !== "chat" || pendingBootstrapped.current) return;
+    if (mode !== "command" || pendingBootstrapped.current) return;
     const raw = sessionStorage.getItem("chat:pending");
     if (!raw) return;
     pendingBootstrapped.current = true;
@@ -1161,13 +1127,44 @@ Provide:
     // eslint-disable-next-line react-hooks/exhaustive-deps -- bootstrap once from sessionStorage
   }, [mode]);
 
-  if (mode === "chat") {
-    return (
-      <>
+  return (
+    <div className="relative h-full min-h-0 w-full">
+      <TabPanel tab="home" activeTab={mode}>
+        <HomeSection
+          balance={balance}
+          summary={summary}
+          userEmail={user?.email}
+          accountLoading={accountLoading}
+          tradingMode={tradingMode}
+          positions={positions}
+          sidebarQuotes={sidebarQuotes}
+          onDeposit={openDeposit}
+          onWithdraw={openWithdraw}
+          onClosePosition={closePosition}
+        />
+      </TabPanel>
+
+      <TabPanel tab="investing" activeTab={mode}>
+        <InvestingSection
+          balance={balance}
+          summary={summary}
+          accountLoading={accountLoading}
+          tradingMode={tradingMode}
+          positions={positions}
+          sidebarQuotes={sidebarQuotes}
+          onClosePosition={closePosition}
+          onRefresh={() => void reloadPositions()}
+          isActive={isTabActive("investing")}
+        />
+      </TabPanel>
+
+      <TabPanel tab="command" activeTab={mode}>
         {messages.length === 0 ? <PageBackground overlay="minimal" variant="orb" /> : null}
         <div className="relative mx-auto flex h-full w-full max-w-5xl flex-col overflow-hidden">
           {messages.length === 0 ? (
             <ChatLandingHero
+              showBrandMark={false}
+              marketPreviewEnabled={isTabActive("command")}
               value={value}
               onChange={setValue}
               onSend={(content) => {
@@ -1199,7 +1196,7 @@ Provide:
                     );
                   })}
                 </ConversationContent>
-                <ConversationScrollButton className="border-zinc-800 bg-zinc-950/80 text-zinc-300 hover:text-white" />
+                <ConversationScrollButton className="border-white/8 bg-[var(--terminal-surface)] text-zinc-300 hover:text-white" />
               </Conversation>
               <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-[var(--background)] via-[var(--background)]/95 to-transparent pb-3 pt-6">
                 <InputBar
@@ -1222,92 +1219,7 @@ Provide:
             </div>
           )}
         </div>
-      </>
-    );
-  }
-
-  return (
-    <div className="relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-[var(--background)] selection:bg-blue-500/20 selection:text-blue-100">
-      <div className="pointer-events-none absolute top-0 left-1/2 -z-10 h-[350px] w-full max-w-7xl -translate-x-1/2 bg-gradient-to-b from-blue-950/12 via-neutral-950/6 to-transparent blur-3xl" />
-
-      <div className="flex min-h-0 flex-1 flex-col">
-        <MarketTerminal
-          leftOpen={false}
-          activeTab={activeTerminalTab}
-          setActiveTab={setActiveTerminalTab}
-          pinnedAssetTabs={pinnedAssetTabs}
-          onOpenAssetTab={openAssetTab}
-          onCloseAssetTab={closeAssetTab}
-          sectorFeedSignals={sectorFeedSignals}
-          setSectorFeedSignals={setSectorFeedSignals}
-          activeSymbol={activeSymbol}
-          activeCategory={activeCategory}
-          setActiveSymbol={setActiveSymbol}
-          setActiveCategory={setActiveCategory}
-          selectedTimeframe={selectedTimeframe}
-          setSelectedTimeframe={setSelectedTimeframe}
-          candlePoints={candlePoints}
-          sidebarQuotes={sidebarQuotes}
-          searchQuery={searchQuery}
-          setSearchQuery={setSearchQuery}
-          positions={positions}
-          tradeDirection={tradeDirection}
-          setTradeDirection={setTradeDirection}
-          tradeSize={tradeSize}
-          setTradeSize={setTradeSize}
-          tradeLeverage={tradeLeverage}
-          setTradeLeverage={setTradeLeverage}
-          activeQuoteSpot={activeQuoteSpot}
-          activeQuoteBid={activeQuoteBid}
-          activeQuoteAsk={activeQuoteAsk}
-          activeQuoteChange={activeQuoteChange}
-          balance={balance}
-          summary={summary}
-          userEmail={user?.email}
-          accountLoading={accountLoading}
-          onDeposit={() => setIsDepositModalOpen(true)}
-          onWithdraw={() => setIsWithdrawModalOpen(true)}
-          onSignOut={signOut}
-          onTradeExecute={handleTradeExecute}
-          onClosePosition={closePosition}
-          onCardClick={handleCardClick}
-          onSignalClick={handleSignalClick}
-          onSymbolFromFeed={handleSymbolFromFeed}
-          onAskAi={goToChatWithPrompt}
-          onAnalyzeWithAi={() => {
-            goToChatWithPrompt(
-              `Analyze the recent market performance, technical setups, and risk metrics for ${activeSymbol} and recommend a detailed strategy.`,
-            );
-          }}
-        />
-      </div>
-
-      {/* --- QUICK TRADE DIALOG COMPONENT --- */}
-      <QuickTradeDialog
-        isOpen={isTradeOpen}
-        onClose={() => setIsTradeOpen(false)}
-        symbol={activeSymbol}
-        currentPrice={activeQuoteSpot}
-        bid={activeQuoteBid}
-        ask={activeQuoteAsk}
-        change24hPct={activeQuoteChange}
-        onExecute={handleTradeExecute}
-      />
-
-      <DepositModal
-        open={isDepositModalOpen}
-        onClose={() => setIsDepositModalOpen(false)}
-        accountId={accountId}
-        currentBalance={balance?.wallet_available ?? 0}
-        onSuccess={handleDepositSuccess}
-      />
-
-      <WithdrawModal
-        open={isWithdrawModalOpen}
-        onClose={() => setIsWithdrawModalOpen(false)}
-        walletAvailable={balance?.wallet_available ?? 0}
-        onSuccess={handleWithdrawSuccess}
-      />
+      </TabPanel>
 
       <AccountPanel
         open={isAccountPanelOpen}
@@ -1316,11 +1228,11 @@ Provide:
         userEmail={user?.email}
         onDeposit={() => {
           setIsAccountPanelOpen(false);
-          setIsDepositModalOpen(true);
+          openDeposit();
         }}
         onWithdraw={() => {
           setIsAccountPanelOpen(false);
-          setIsWithdrawModalOpen(true);
+          openWithdraw();
         }}
         onSignOut={signOut}
         loading={accountLoading}

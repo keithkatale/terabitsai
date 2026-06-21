@@ -99,7 +99,7 @@ export function TransactionSummary({
       {/* Title Header */}
       <div className="flex items-center justify-between border-b border-zinc-900/40 pb-2.5">
         <div className="flex items-center gap-1.5">
-          <BarChart3 className="size-3.5 text-indigo-400" />
+          <BarChart3 className="size-3.5 text-cyan-400" />
           <span className="text-xs font-bold text-zinc-100 uppercase tracking-wider">{title}</span>
         </div>
         <div className="flex items-center gap-1 text-[10px] text-zinc-500 font-bold uppercase tracking-wider">
@@ -233,7 +233,7 @@ export function TransactionSummary({
           </div>
           <div className="flex items-center gap-1.5 text-xs font-mono font-bold">
             <DollarSign className="size-3 text-zinc-500" />
-            <span className="text-indigo-400">${activeTransaction.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            <span className="text-cyan-400">${activeTransaction.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
           </div>
         </div>
         <p className="text-[11px] text-zinc-400 leading-relaxed font-sans mt-0.5">

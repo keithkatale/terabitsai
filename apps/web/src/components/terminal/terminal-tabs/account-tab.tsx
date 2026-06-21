@@ -1,19 +1,25 @@
 "use client";
 
 import { CircleUserRound, Wallet } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { RecentActivityList } from "@/components/account/recent-activity-list";
 import type { MarketTerminalProps } from "../types";
+
+import type { TradingMode } from "@/lib/account/api";
 
 type AccountTabProps = Pick<
   MarketTerminalProps,
   "balance" | "summary" | "userEmail" | "accountLoading" | "onDeposit" | "onWithdraw" | "onSignOut" | "positions"
->;
+> & {
+  tradingMode: TradingMode;
+};
 
 export function AccountTab({
   balance,
   summary,
   userEmail,
   accountLoading,
+  tradingMode,
   onDeposit,
   onWithdraw,
   onSignOut,
@@ -27,8 +33,22 @@ export function AccountTab({
             <CircleUserRound className="size-7 text-indigo-400" />
           </div>
           <div>
-            <p className="text-sm font-bold text-white">{userEmail ?? "Demo User"}</p>
-            <p className="text-[10px] text-zinc-500 uppercase tracking-wider mt-0.5">Paper trading account</p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-bold text-white">{userEmail ?? "User"}</p>
+              <span
+                className={cn(
+                  "rounded-md px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide",
+                  tradingMode === "demo"
+                    ? "bg-indigo-500/15 text-indigo-300"
+                    : "bg-emerald-500/15 text-emerald-300",
+                )}
+              >
+                {tradingMode}
+              </span>
+            </div>
+            <p className="text-[10px] text-zinc-500 uppercase tracking-wider mt-0.5">
+              {tradingMode === "demo" ? "Paper trading account" : "Live trading account"}
+            </p>
           </div>
         </div>
         <div className="mt-6 grid grid-cols-2 gap-4">
@@ -66,7 +86,7 @@ export function AccountTab({
         ) : (
           <RecentActivityList
             entries={summary?.recent_ledger_entries ?? []}
-            emptyMessage="No activity yet. Fund your demo wallet to start."
+            emptyMessage={`No activity yet. Fund your ${tradingMode} wallet to start.`}
           />
         )}
       </div>

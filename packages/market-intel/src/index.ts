@@ -21,4 +21,4 @@ export { findHistoricalAnalogs, buildConvictionScores, recordAnalog } from "./an
 export * from "./persist.js";
 export * from "./persist-synthesis.js";
 export * from "./enrich/normalizer.js";
-export { fetchPolygonBenzingaNews } from "./ingest/polygon-news.js";
+export { runNewsScan } from "./news-scan.js";

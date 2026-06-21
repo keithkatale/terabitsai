@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { AssetComparativeChart } from "./asset-comparative-chart";
+import { AssetCatalogGrid } from "./asset-catalog-grid";
 import { PortfolioBreakdown } from "./portfolio-breakdown";
 import { TransactionSummary } from "./transaction-summary";
 import { TradeConfirmationWidget } from "./trade-confirmation-widget";
@@ -13,6 +14,8 @@ interface GenerativeUiRegistryProps {
 
 export function GenerativeUiRegistry({ name, props = {} }: GenerativeUiRegistryProps) {
   switch (name) {
+    case "AssetCatalogGrid":
+      return <AssetCatalogGrid {...props} />;
     case "AssetComparativeChart":
       return <AssetComparativeChart {...props} />;
     case "PortfolioBreakdown":

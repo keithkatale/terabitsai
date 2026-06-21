@@ -24,9 +24,11 @@ export function IntelligenceTab(
     MarketTerminalProps,
     "sidebarQuotes" | "activeSymbol" | "onSignalClick" | "onSymbolFromFeed" | "onAskAi"
   > & {
+    enabled?: boolean;
     onFeedLoaded?: (signals: Array<{ symbol: string; strategy: string; action: string; reason: string; sector?: string | null }>) => void;
   }
 ) {
+  const enabled = props.enabled ?? true;
   const [subView, setSubView] = useState<IntelSubView>("radar");
   const [radar, setRadar] = useState<CatalystRadarItem[]>([]);
   const [briefs, setBriefs] = useState<SynthesisBrief[]>([]);
@@ -70,11 +72,12 @@ export function IntelligenceTab(
   }, [applyPayload]);
 
   useEffect(() => {
+    if (!enabled) return;
     load();
     const pollMs = status === "scanning" || status === "running" ? 8000 : 30_000;
     const t = setInterval(load, pollMs);
     return () => clearInterval(t);
-  }, [load, status]);
+  }, [load, status, enabled]);
 
   const handleSymbolClick = (sym: string) => {
     setSelectedSymbol(sym);

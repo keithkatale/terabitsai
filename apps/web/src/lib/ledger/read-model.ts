@@ -1,6 +1,7 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getAccountBalance } from "@/lib/ledger/ledger-service";
+import { summarizeOpenPositions } from "@/lib/portfolio/positions";
 import type { RecentLedgerEntry } from "@/lib/ledger/types";
 
 async function ledgerDb() {
@@ -38,6 +39,21 @@ export async function getLedgerSummary(accountId: string) {
 
   const walletAvailable = balance.available;
   const orderLocked = balance.locked;
+
+  let investedValueUsd = 0;
+  let unrealizedPnlUsd = 0;
+  let openPositionsCount = 0;
+  try {
+    const positionSummary = await summarizeOpenPositions(accountId);
+    investedValueUsd = positionSummary.invested_value_usd;
+    unrealizedPnlUsd = positionSummary.unrealized_pnl_usd;
+    openPositionsCount = positionSummary.open_count;
+  } catch {
+    // positions table may not exist yet
+  }
+
+  const totalBalanceUsd =
+    Math.round((walletAvailable + investedValueUsd) * 100) / 100;
 
   const recentLedgerEntries: RecentLedgerEntry[] =
     recentLedgerRows?.map((row) => {
@@ -99,8 +115,13 @@ export async function getLedgerSummary(accountId: string) {
     balance: {
       wallet_available: walletAvailable,
       order_locked: orderLocked,
-      total_balance: walletAvailable + orderLocked,
+      invested_value_usd: investedValueUsd,
+      unrealized_pnl_usd: unrealizedPnlUsd,
+      total_balance: totalBalanceUsd,
       currency: displayCurrency,
+    },
+    portfolio: {
+      open_positions_count: openPositionsCount,
     },
     mode,
     recent_ledger_entries: recentLedgerEntries,

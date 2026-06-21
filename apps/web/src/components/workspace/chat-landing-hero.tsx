@@ -6,16 +6,18 @@ import { BrandMark } from "@/components/ui/brand-mark";
 import { MarketPreviewQueue } from "@/components/market/market-preview-queue";
 
 export const CHAT_LANDING_PROMPT_SUGGESTIONS = [
-  "What's driving Bitcoin this week?",
-  "Summarize today's macro headlines",
-  "Compare GOLD vs US100 in a risk-off tape",
-  "Which sectors look strongest right now?",
+  "What is the agent team watching today?",
+  "Browse markets and propose a swing trade on BTCUSD",
+  "Show engine status and active signals",
+  "Summarize intel that could move my portfolio",
 ];
 
 export const CHAT_LANDING_MAX_TAGGED_ASSETS = 3;
 
 export function ChatLandingHero({
   showUpgradeLink = false,
+  showBrandMark = true,
+  marketPreviewEnabled = true,
   value,
   onChange,
   onSend,
@@ -27,6 +29,8 @@ export function ChatLandingHero({
   maxTaggedAssets = CHAT_LANDING_MAX_TAGGED_ASSETS,
 }: {
   showUpgradeLink?: boolean;
+  showBrandMark?: boolean;
+  marketPreviewEnabled?: boolean;
   value: string;
   onChange: (value: string) => void;
   onSend: (content: string) => void;
@@ -39,19 +43,19 @@ export function ChatLandingHero({
 }) {
   return (
     <div className="relative mx-auto flex min-h-full w-full max-w-5xl flex-col items-center justify-center px-4 py-8 pb-10 text-center">
-      <BrandMark size="lg" className="mb-5" />
+      {showBrandMark ? <BrandMark size="lg" className="mb-5" /> : null}
       {showUpgradeLink ? (
         <p className="mb-3 text-xs text-zinc-400">
-          <Link href="/app/terminal" className="font-medium text-blue-400 hover:underline">
-            Upgrade to access the professional terminal
+          <Link href="/app?tab=command" className="font-medium text-cyan-400 hover:underline">
+            Open Command to explore markets and execute trades
           </Link>
         </p>
       ) : null}
       <h1 className="mb-3 text-3xl font-bold tracking-tight text-white md:text-4xl">
-        Understand the Markets
+        Your Wealth Engine
       </h1>
       <p className="mb-7 max-w-md text-sm leading-relaxed text-zinc-300/85">
-        Ask anything about macro trends, asset direction, and risk — AI-first analysis without the noise.
+        AI agent teams observe markets, plan trades, pass risk checks, and help you grow capital on autopilot — starting in demo mode.
       </p>
       <div className="w-full max-w-xl">
         <InputBar
@@ -60,7 +64,7 @@ export function ChatLandingHero({
           onSend={({ content }) => onSend(content)}
           disabled={loading}
           status={loading ? "streaming" : "ready"}
-          placeholder="Ask about tagged assets or anything else…"
+          placeholder="Steer your agent team or ask for a trade plan…"
           placeholderSuggestions={placeholderSuggestions}
           variant="landing"
           taggedAssets={taggedAssets}
@@ -69,6 +73,7 @@ export function ChatLandingHero({
         />
       </div>
       <MarketPreviewQueue
+        enabled={marketPreviewEnabled}
         taggedSymbols={taggedAssets.map((t) => t.symbol)}
         maxTags={maxTaggedAssets}
         onSelect={onToggleTaggedAsset}

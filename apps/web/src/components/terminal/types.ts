@@ -1,5 +1,5 @@
 import type { LiveSignal } from "@/lib/market/market-intel-data";
-import type { LedgerSummaryResponse } from "@/lib/account/api";
+import type { LedgerSummaryResponse, TradingMode } from "@/lib/account/api";
 import type { ChartPoint } from "@/components/ui/smooth-area-chart";
 
 export interface TradeData {
@@ -53,6 +53,7 @@ export interface MarketTerminalProps {
   summary: LedgerSummaryResponse | null;
   userEmail?: string;
   accountLoading: boolean;
+  tradingMode: TradingMode;
   onDeposit: () => void;
   onWithdraw: () => void;
   onSignOut: () => void;

@@ -138,7 +138,7 @@ export function TradeConfirmationWidget({
           <Landmark className="size-3.5 text-zinc-400" />
           <span className="text-xs font-bold text-zinc-100 uppercase tracking-wider">Simulated Trade Ticket</span>
         </div>
-        <div className="flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-md border border-indigo-500/10 bg-indigo-950/10 text-indigo-400 font-extrabold uppercase tracking-wide">
+        <div className="flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-md border border-cyan-500/10 bg-indigo-950/10 text-cyan-400 font-extrabold uppercase tracking-wide">
           <span>{leverage}x Leverage cfd</span>
         </div>
       </div>
@@ -176,8 +176,8 @@ export function TradeConfirmationWidget({
         </div>
 
         <div className="flex justify-between items-center border-t border-zinc-900/40 pt-2.5 mt-0.5">
-          <span className="text-indigo-400 uppercase tracking-wider font-extrabold">Estimated Margin</span>
-          <span className="text-indigo-400 font-extrabold text-sm">${marginRequired.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          <span className="text-cyan-400 uppercase tracking-wider font-extrabold">Estimated Margin</span>
+          <span className="text-cyan-400 font-extrabold text-sm">${marginRequired.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
         </div>
 
         <div className="flex justify-between items-center">
@@ -194,8 +194,8 @@ export function TradeConfirmationWidget({
           <Check className="size-4 text-emerald-400 stroke-[3px]" />
         </div>
       ) : status === "executing" ? (
-        <div className="w-full h-11 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 rounded-xl flex items-center justify-center gap-2 font-bold text-xs select-none uppercase tracking-wider">
-          <Loader2 className="size-4 animate-spin text-indigo-400" />
+        <div className="w-full h-11 bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 rounded-xl flex items-center justify-center gap-2 font-bold text-xs select-none uppercase tracking-wider">
+          <Loader2 className="size-4 animate-spin text-cyan-400" />
           <span>Confirming order details...</span>
         </div>
       ) : (

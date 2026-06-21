@@ -3,10 +3,11 @@ import {
   FULL_SCAN_BATCH_SIZE,
   runScan,
   runSectorScan,
-  runColdScan
+  runColdScan,
+  runNewsScan,
 } from "@quant/market-intel";
 
-const HOT_INTERVAL_MS = Number(process.env.INTEL_HOT_INTERVAL_MS ?? 300_000);
+const HOT_INTERVAL_MS = Number(process.env.INTEL_HOT_INTERVAL_MS ?? 600_000);
 const FULL_INTERVAL_MS = Number(process.env.INTEL_FULL_INTERVAL_MS ?? 1_800_000);
 
 const EXTENDED_SYMBOLS = [
@@ -35,8 +36,8 @@ function uniqueSymbols(): string[] {
 }
 
 export async function runHotScan(): Promise<void> {
-  console.log("[intel-worker] Starting hot scan...");
-  await runScan([...HOT_SYMBOLS], "hot");
+  console.log("[intel-worker] Starting news scan (hot)...");
+  await runNewsScan();
 }
 
 export async function runFullScan(): Promise<void> {

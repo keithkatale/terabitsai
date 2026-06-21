@@ -21,17 +21,21 @@ loadEnvFile(resolve(monorepoRoot, "apps/web/.env.local"));
 
 import { startScheduler } from "./scheduler.js";
 import { runHotScan, runFullScan } from "./scan-jobs.js";
+import { runNewsScan } from "@quant/market-intel";
 
 const once = process.argv.includes("--once");
 const hotOnly = process.argv.includes("--hot");
 const fullOnly = process.argv.includes("--full");
+const newsOnly = process.argv.includes("--news");
 const useBullmq = Boolean(process.env.REDIS_URL) && process.env.INTEL_USE_BULLMQ !== "false";
 
 async function main(): Promise<void> {
   console.log("[intel-worker] Market intelligence worker starting");
 
   if (once) {
-    if (fullOnly) {
+    if (newsOnly) {
+      await runNewsScan();
+    } else if (fullOnly) {
       await runFullScan();
     } else {
       await runHotScan();

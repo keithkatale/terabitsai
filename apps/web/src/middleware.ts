@@ -14,7 +14,11 @@ function isPublicPath(pathname: string): boolean {
 
 function isAuthRequired(pathname: string): boolean {
   if (pathname === "/app" || pathname.startsWith("/app/")) return true;
+  if (pathname.startsWith("/api/account")) return true;
   if (pathname.startsWith("/api/ledger")) return true;
+  if (pathname.startsWith("/api/portfolio")) return true;
+  if (pathname.startsWith("/api/engine")) return true;
+  if (pathname.startsWith("/api/hitl")) return true;
   if (pathname.startsWith("/api/funding")) return true;
   if (pathname.startsWith("/api/subscriptions")) return true;
   if (pathname.startsWith("/api/subscription")) return true;
@@ -139,6 +143,10 @@ export const config = {
     "/pricing",
     "/api/intel/:path*",
     "/api/ledger/:path*",
+    "/api/portfolio/:path*",
+    "/api/account/:path*",
+    "/api/engine/:path*",
+    "/api/hitl/:path*",
     "/api/funding/:path*",
     "/api/subscriptions/:path*",
     "/api/subscription/:path*",

@@ -16,7 +16,7 @@ const rawCapitalCatalog = getCapitalAssetCatalog();
 
 export function WelcomeScreen() {
   const router = useRouter();
-  const { user } = useAccount();
+  const { user, signOut } = useAccount();
   const [value, setValue] = useState("");
   const [taggedAssets, setTaggedAssets] = useState<TaggedAsset[]>([]);
 
@@ -55,15 +55,15 @@ export function WelcomeScreen() {
     }
 
     if (!user) {
-      window.location.href = `/login?next=${encodeURIComponent("/app/chat")}`;
+      window.location.href = `/login?next=${encodeURIComponent("/app")}`;
       return;
     }
 
-    router.push("/app/chat");
+    router.push("/app");
   };
 
   return (
-    <AppShell headerClassName="bg-transparent" mainClassName="overflow-y-auto">
+    <AppShell user={user} onSignOut={signOut} headerClassName="bg-transparent" mainClassName="overflow-y-auto">
       <PageBackground overlay="minimal" variant="orb" />
       <ChatLandingHero
         showUpgradeLink

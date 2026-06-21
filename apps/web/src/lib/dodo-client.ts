@@ -42,6 +42,14 @@ export function getDodoProductId(planId: string): string | undefined {
   return undefined;
 }
 
+export function getDodoDepositProductId(): string | undefined {
+  return process.env.DODO_DEPOSIT_PRODUCT_ID?.trim();
+}
+
+export function isDodoDepositsConfigured(): boolean {
+  return Boolean(getDodoApiKey() && getDodoDepositProductId());
+}
+
 export function isDodoConfigured(): boolean {
   return Boolean(getDodoApiKey());
 }

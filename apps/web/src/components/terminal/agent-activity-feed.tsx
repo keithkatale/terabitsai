@@ -154,8 +154,31 @@ export function useAgentActivityStream(maxEvents = 200): AgentEvent[] {
   const [events, setEvents] = useState<AgentEvent[]>([])
 
   useEffect(() => {
+    let cancelled = false
+
+    const poll = async () => {
+      try {
+        const res = await fetch("/api/engine/activity", { credentials: "include" })
+        if (!res.ok || cancelled) return
+        const data = (await res.json()) as AgentEvent[]
+        if (Array.isArray(data)) {
+          setEvents(data.slice(0, maxEvents))
+        }
+      } catch {
+        // Non-fatal
+      }
+    }
+
+    void poll()
+    const pollInterval = setInterval(poll, 15_000)
+
     const wsUrl = process.env.NEXT_PUBLIC_WS_URL
-    if (!wsUrl) return
+    if (!wsUrl) {
+      return () => {
+        cancelled = true
+        clearInterval(pollInterval)
+      }
+    }
 
     let ws: WebSocket
     let reconnectTimeout: ReturnType<typeof setTimeout>
@@ -186,6 +209,8 @@ export function useAgentActivityStream(maxEvents = 200): AgentEvent[] {
     connect()
 
     return () => {
+      cancelled = true
+      clearInterval(pollInterval)
       clearTimeout(reconnectTimeout)
       ws?.close()
     }

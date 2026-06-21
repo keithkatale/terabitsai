@@ -51,11 +51,11 @@ export function AccountPanel({
         </button>
 
         <div className="space-y-1 pr-8">
-          <span className="text-[10px] font-extrabold text-indigo-400 tracking-wider uppercase">
+          <span className="text-[10px] font-extrabold text-cyan-400 tracking-wider uppercase">
             Terabits AI
           </span>
           <h2 className="text-xl font-extrabold text-white tracking-tight flex items-center gap-2">
-            <Wallet className="size-5 text-indigo-400" />
+            <Wallet className="size-5 text-cyan-400" />
             Your account
           </h2>
           {userEmail ? (
@@ -92,8 +92,8 @@ export function AccountPanel({
             onClick={onDeposit}
             className={cn(
               "flex-1 py-2.5 rounded-xl text-xs font-extrabold uppercase tracking-wide",
-              "bg-indigo-500/15 border border-indigo-500/30 text-indigo-400",
-              "hover:bg-indigo-500/25 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+              "bg-cyan-500/15 border border-cyan-500/30 text-cyan-400",
+              "hover:bg-cyan-500/25 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
             )}
           >
             <Plus className="size-3.5" />

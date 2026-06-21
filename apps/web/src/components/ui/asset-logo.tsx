@@ -142,14 +142,14 @@ export function AssetLogoIcon({
   // Premium, Hash-Generated initials gradients as ultimate fallback
   const charCodeSum = symbol.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
   const gradients = [
-    "from-indigo-500 to-purple-600",
+    "from-cyan-500 to-purple-600",
     "from-purple-500 to-pink-600",
-    "from-blue-500 to-indigo-600",
+    "from-blue-500 to-cyan-500",
     "from-emerald-500 to-teal-600",
     "from-cyan-500 to-blue-600",
     "from-rose-500 to-orange-600",
     "from-fuchsia-500 to-pink-600",
-    "from-violet-500 to-indigo-600"
+    "from-violet-500 to-cyan-500"
   ];
   const selectedGradient = gradients[charCodeSum % gradients.length];
   const initials = symbol.slice(0, 2).toUpperCase();

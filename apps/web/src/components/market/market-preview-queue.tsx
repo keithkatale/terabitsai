@@ -202,10 +202,12 @@ export function MarketPreviewQueue({
   taggedSymbols = [],
   maxTags = 3,
   onSelect,
+  enabled = true,
 }: {
   taggedSymbols?: string[];
   maxTags?: number;
   onSelect?: (symbol: string) => void;
+  enabled?: boolean;
 }) {
   const [quotes, setQuotes] = useState<Record<string, Quote>>({});
   const [sparklines, setSparklines] = useState<Record<string, { x: number; y: number }[]>>({});
@@ -213,6 +215,7 @@ export function MarketPreviewQueue({
   const allSymbols = useMemo(() => MARKET_ROWS.flat(), []);
 
   useEffect(() => {
+    if (!enabled) return;
     let active = true;
 
     const fetchQuotes = async () => {
@@ -279,7 +282,7 @@ export function MarketPreviewQueue({
       active = false;
       clearInterval(interval);
     };
-  }, [allSymbols]);
+  }, [allSymbols, enabled]);
 
   return (
     <div className="mt-6 w-full space-y-3.5">

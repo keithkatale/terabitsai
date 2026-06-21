@@ -147,7 +147,7 @@ export function AssetComparativeChart({
       <div className="flex items-center justify-between">
         <div className="flex flex-col gap-0.5">
           <div className="flex items-center gap-1.5">
-            <TrendingUp className="size-3.5 text-indigo-400" />
+            <TrendingUp className="size-3.5 text-cyan-400" />
             <span className="text-xs font-bold text-zinc-100 uppercase tracking-wider">Comparative Performance</span>
           </div>
           <div className="flex items-center gap-2 mt-1">
@@ -165,7 +165,7 @@ export function AssetComparativeChart({
               className={cn(
                 "px-2 py-0.5 rounded text-[9px] font-extrabold tracking-wider transition-all cursor-pointer",
                 timeframe === tf
-                  ? "bg-indigo-500/10 border border-indigo-500/20 text-indigo-400"
+                  ? "bg-cyan-500/10 border border-cyan-500/20 text-cyan-400"
                   : "bg-transparent border border-transparent text-zinc-500 hover:text-zinc-300"
               )}
             >

@@ -1,4 +1,5 @@
 import { appendLedgerEntry, resolvePlatformAccount } from "@/lib/ledger/ledger-service";
+import { capturePortfolioSnapshot } from "@/lib/portfolio/capture-snapshot";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { z } from "zod";
 
@@ -31,7 +32,7 @@ export async function POST(request: Request) {
   if (!parsed.success) {
     return Response.json(
       { error: parsed.error.issues[0]?.message ?? "Validation failed" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -41,14 +42,14 @@ export async function POST(request: Request) {
     return Response.json(
       {
         error:
-          "Live deposits are not enabled yet. Use demo mode to fund your paper account.",
+          "Use card checkout for live deposits. Instant credits are available in demo mode only.",
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
   try {
-    const account = await resolvePlatformAccount(user.id, "demo");
+    const account = await resolvePlatformAccount(user.id, payload.mode);
     const gateway = payload.gateway ?? "ACH";
 
     await appendLedgerEntry({
@@ -58,11 +59,17 @@ export async function POST(request: Request) {
       entryType: "deposit",
       referenceType: "demo_deposit",
       metadata: {
-        mode: "demo",
+        mode: payload.mode,
         gateway,
         timestamp: new Date().toISOString(),
       },
     });
+
+    try {
+      await capturePortfolioSnapshot(account.id, payload.mode);
+    } catch (snapshotError) {
+      console.warn("[funding/deposit] snapshot capture failed:", snapshotError);
+    }
 
     return Response.json({
       ok: true,
@@ -77,7 +84,7 @@ export async function POST(request: Request) {
     console.error("[funding/deposit]", e);
     return Response.json(
       { error: e instanceof Error ? e.message : "Deposit failed" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
