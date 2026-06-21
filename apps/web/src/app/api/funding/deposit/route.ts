@@ -66,7 +66,10 @@ export async function POST(request: Request) {
     });
 
     try {
-      await capturePortfolioSnapshot(account.id, payload.mode);
+      await capturePortfolioSnapshot(account.id, payload.mode, {
+        reason: "deposit",
+        force: true,
+      });
     } catch (snapshotError) {
       console.warn("[funding/deposit] snapshot capture failed:", snapshotError);
     }

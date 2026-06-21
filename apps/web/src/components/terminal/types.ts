@@ -14,6 +14,9 @@ export interface TradeData {
   tp: number | null;
   sl: number | null;
   pnl?: number;
+  pnlPct?: number | null;
+  markPrice?: number;
+  capitalDealId?: string;
   status: "OPEN" | "CLOSED";
   timestamp: number;
 }

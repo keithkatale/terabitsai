@@ -9,6 +9,7 @@ import { AssistantSiriOrb } from "./assistant-siri-orb";
 import { MarkdownContent } from "./markdown-content";
 import { GenUiRenderer } from "@/components/generative-ui/genui-renderer";
 import { stripGenuiFences } from "@/lib/genui/strip-genui-fences";
+import { stripInteractiveQuestionMarkup } from "@/lib/chat/interactive-question-helper";
 import { AssetLogoIcon } from "@/components/ui/asset-logo";
 import type { ChatToolPod } from "@/lib/chat/stream-types";
 
@@ -396,7 +397,8 @@ export function ChatMessage({
               return <GenUiRenderer key={`${message.id}-${idx}`} payload={part.payload} />;
             }
             if (part.type === "text" && part.text?.trim()) {
-              const markdown = hasInjectedGenui ? stripGenuiFences(part.text) : part.text;
+              let markdown = hasInjectedGenui ? stripGenuiFences(part.text) : part.text;
+              markdown = stripInteractiveQuestionMarkup(markdown);
               if (!markdown.trim()) return null;
               return (
                 <MarkdownContent

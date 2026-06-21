@@ -1,6 +1,7 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getAccountBalance } from "@/lib/ledger/ledger-service";
+import { getTotalAccountBalance } from "@/lib/portfolio/portfolio-balance";
 import { summarizeOpenPositions } from "@/lib/portfolio/positions";
 import type { RecentLedgerEntry } from "@/lib/ledger/types";
 
@@ -53,7 +54,7 @@ export async function getLedgerSummary(accountId: string) {
   }
 
   const totalBalanceUsd =
-    Math.round((walletAvailable + investedValueUsd) * 100) / 100;
+    Math.round((await getTotalAccountBalance(accountId)) * 100) / 100;
 
   const recentLedgerEntries: RecentLedgerEntry[] =
     recentLedgerRows?.map((row) => {

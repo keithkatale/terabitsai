@@ -4,6 +4,7 @@ import Link from "next/link";
 import InputBar, { type TaggedAsset } from "@/components/ui/input-bar";
 import { BrandMark } from "@/components/ui/brand-mark";
 import { MarketPreviewQueue } from "@/components/market/market-preview-queue";
+import { LandingPromptChips } from "@/components/ai-elements/follow-up-suggestions";
 
 export const CHAT_LANDING_PROMPT_SUGGESTIONS = [
   "What is the agent team watching today?",
@@ -77,6 +78,11 @@ export function ChatLandingHero({
         taggedSymbols={taggedAssets.map((t) => t.symbol)}
         maxTags={maxTaggedAssets}
         onSelect={onToggleTaggedAsset}
+      />
+      <LandingPromptChips
+        suggestions={placeholderSuggestions}
+        disabled={loading}
+        onSelect={onSend}
       />
     </div>
   );

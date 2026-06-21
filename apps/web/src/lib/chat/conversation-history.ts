@@ -103,3 +103,18 @@ export function historyContextBlob(history: ChatHistoryTurn[], maxTurns = 6): st
     .map((t) => `${t.role === "user" ? "User" : "Assistant"}: ${t.content}`)
     .join("\n");
 }
+
+/** Format chat messages for the follow-up predictor API. */
+export function messagesToPredictPayload(
+  messages: HistoryMessage[],
+): { role: "user" | "assistant"; content: string }[] {
+  const payload: { role: "user" | "assistant"; content: string }[] = [];
+  for (const msg of messages) {
+    const content = flattenMessageForHistory(msg);
+    if (!content) continue;
+    if (msg.role === "user" || msg.role === "assistant") {
+      payload.push({ role: msg.role, content });
+    }
+  }
+  return payload.slice(-12);
+}

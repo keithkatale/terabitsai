@@ -15,6 +15,7 @@ const LEAF_TYPES = new Set([
   "text",
   "divider",
   "component",
+  "actionButton",
 ]);
 
 const LAYOUT_TYPES = new Set(["section", "grid"]);

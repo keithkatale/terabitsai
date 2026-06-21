@@ -153,6 +153,14 @@ body {
   color: var(--text-primary);
 }
 
+/** Inset main panel inside the app chrome (sidebar + top bar). */
+.app-main-stage {
+  border-radius: 20px;
+  border: 1px solid var(--terminal-border);
+  background: #000000;
+  box-shadow: var(--neo-soft);
+}
+
 .terminal-card {
   background: var(--terminal-surface);
   border: 1px solid var(--terminal-border);

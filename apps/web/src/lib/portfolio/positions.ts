@@ -163,6 +163,64 @@ export async function openPosition(input: {
   return data;
 }
 
+export async function reducePositionByExternalId(
+  accountId: string,
+  externalId: string,
+  closeSize: number,
+  closePrice: number,
+) {
+  const db = await portfolioDb();
+  const { data: existing, error: fetchError } = await db
+    .from("positions")
+    .select("*")
+    .eq("account_id", accountId)
+    .eq("external_id", externalId)
+    .eq("status", "open")
+    .maybeSingle();
+
+  if (fetchError) throw new Error(fetchError.message);
+  if (!existing) return null;
+
+  const side = existing.side as "long" | "short";
+  const quantity = toNumber(existing.quantity);
+  const entryPrice = toNumber(existing.entry_price);
+  const marginUsd = toNumber(existing.margin_usd);
+  const closeFraction = Math.min(1, closeSize / quantity);
+  const remainingQty = Math.max(0, quantity - closeSize);
+
+  if (remainingQty <= quantity * 0.0001) {
+    return closePositionByExternalId(accountId, externalId, closePrice);
+  }
+
+  const remainingMargin =
+    Math.round(marginUsd * (1 - closeFraction) * 100) / 100;
+  const { marketValueUsd, unrealizedPnlUsd } = computePositionMarketValue(
+    side,
+    remainingQty,
+    entryPrice,
+    closePrice,
+    remainingMargin,
+  );
+
+  const { data, error } = await db
+    .from("positions")
+    .update({
+      quantity: remainingQty,
+      margin_usd: remainingMargin,
+      cost_basis_usd: remainingQty * entryPrice,
+      current_price: closePrice,
+      market_value_usd: marketValueUsd,
+      unrealized_pnl_usd: unrealizedPnlUsd,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", existing.id)
+    .select("*")
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 export async function closePositionByExternalId(
   accountId: string,
   externalId: string,

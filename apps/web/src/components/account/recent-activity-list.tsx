@@ -12,9 +12,12 @@ export function RecentActivityList({
   loading?: boolean;
   emptyMessage?: string;
 }) {
-  if (loading) {
+  if (loading && entries.length === 0) {
     return (
-      <p className="text-[11px] text-zinc-500 animate-pulse">Loading activity…</p>
+      <p className="flex items-center justify-center gap-2 py-4 text-[11px] text-zinc-500">
+        <span className="inline-block size-3 animate-spin rounded-full border border-zinc-600 border-t-zinc-300" />
+        Loading activity…
+      </p>
     );
   }
 

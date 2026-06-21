@@ -50,41 +50,12 @@ export async function GET() {
   try {
     const { prisma } = await import("@quant/db");
 
-    const [logs, runs] = await Promise.all([
-      prisma.explainabilityLog.findMany({
-        orderBy: { createdAt: "desc" },
-        take: 40,
-      }),
-      prisma.agentRun.findMany({
-        orderBy: { startedAt: "desc" },
-        take: 10,
-        include: { proposals: { take: 1 } },
-      }),
-    ]);
-
-    const fromLogs = logs.map(mapExplainabilityToEvent);
-
-    const fromRuns: AgentEvent[] = runs.map((run) => {
-      const proposal = run.proposals[0];
-      const phase: AgentEvent["phase"] =
-        run.status === "RUNNING" ? "OBSERVE" : run.status === "FAILED" ? "ERROR" : "COMPLETE";
-      return {
-        id: `run-${run.id}`,
-        timestamp: (run.completedAt ?? run.startedAt).toISOString(),
-        agent: "portfolio_manager",
-        phase,
-        symbol: run.symbol,
-        message: proposal?.rationale?.slice(0, 240) ?? `Agent cycle ${run.status.toLowerCase()} on ${run.symbol}`,
-        side: (proposal?.side as AgentEvent["side"]) ?? "FLAT",
-        confidence: proposal?.confidence,
-      };
+    const logs = await prisma.explainabilityLog.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 50,
     });
 
-    const merged = [...fromRuns, ...fromLogs]
-      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-      .slice(0, 50);
-
-    return NextResponse.json(merged);
+    return NextResponse.json(logs.map(mapExplainabilityToEvent));
   } catch (e) {
     console.error("[engine/activity]", e);
     return NextResponse.json([]);

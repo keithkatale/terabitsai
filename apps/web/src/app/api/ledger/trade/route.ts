@@ -147,7 +147,16 @@ export async function POST(request: Request) {
     }
 
     try {
-      await capturePortfolioSnapshot(account.id, payload.mode);
+      const snapshotReason =
+        payload.action === "release"
+          ? "close"
+          : payload.action === "reserve"
+            ? "trade"
+            : "trade";
+      await capturePortfolioSnapshot(account.id, payload.mode, {
+        reason: snapshotReason,
+        force: true,
+      });
     } catch (snapshotError) {
       console.warn("[ledger/trade] snapshot capture failed:", snapshotError);
     }

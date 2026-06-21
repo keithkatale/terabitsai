@@ -22,6 +22,8 @@ function AuthenticatedAppShellInner() {
     openDeposit,
   } = useAppAccount();
 
+  const accountInitialLoading = accountLoading && balance == null;
+
   const [engineStatus, setEngineStatus] = useState<"idle" | "running" | "scanning">("idle");
   const hitlRequests = useHITLRequests();
   const [dismissedHitl, setDismissedHitl] = useState<Set<string>>(new Set());
@@ -77,7 +79,7 @@ function AuthenticatedAppShellInner() {
             tradingMode={tradingMode}
             onTradingModeChange={setTradingMode}
             walletAvailable={balance?.wallet_available ?? 0}
-            accountLoading={accountLoading}
+            accountLoading={accountInitialLoading}
             onDeposit={openDeposit}
             engineStatus={engineStatus}
             pendingHitl={pendingHitl.length}

@@ -29,6 +29,25 @@ export type CapitalCandle = {
   v: number;
 };
 
+export type CapitalOpenPosition = {
+  dealId: string;
+  epic: string;
+  direction: "BUY" | "SELL";
+  size: number;
+  entryPrice: number;
+  markPrice: number;
+  upl: number;
+  uplPct: number | null;
+  currency: string;
+};
+
+export type CapitalDealConfirm = {
+  dealId: string;
+  status: string;
+  level: number;
+  profit?: number;
+};
+
 class CapitalAdapter {
   private cstToken: string | null = null;
   private xSecurityToken: string | null = null;
@@ -184,9 +203,12 @@ class CapitalAdapter {
 
       // Poll for confirmation
       const confirm = await this.confirmDeal(dealReference);
+      if (!confirm.dealId) {
+        throw new Error("Capital.com accepted the trade but did not return a deal ID.");
+      }
       return {
         dealId: confirm.dealId,
-        price: confirm.level
+        price: confirm.level,
       };
     } catch (err) {
       console.error("[CapitalAdapter] createPosition error:", err);
@@ -197,7 +219,10 @@ class CapitalAdapter {
   /**
    * Close a position on Capital.com
    */
-  public async closePosition(dealId: string): Promise<boolean> {
+  public async closePosition(
+    dealId: string,
+    size?: number,
+  ): Promise<CapitalDealConfirm> {
     await this.checkSessionAndFallback();
 
     if (!this.cstToken || !this.xSecurityToken) {
@@ -212,7 +237,11 @@ class CapitalAdapter {
           "X-SECURITY-TOKEN": this.xSecurityToken,
           "X-CAP-API-KEY": CAPITAL_API_KEY!,
           "Content-Type": "application/json"
-        }
+        },
+        body:
+          size != null && size > 0
+            ? JSON.stringify({ size })
+            : undefined,
       });
 
       if (!res.ok) {
@@ -227,12 +256,10 @@ class CapitalAdapter {
       const data = await res.json();
       const dealReference = data.dealReference;
       if (!dealReference) {
-        return true;
+        return { dealId, status: "CLOSED", level: 0 };
       }
 
-      // Poll for confirmation of deletion
-      await this.confirmDeal(dealReference);
-      return true;
+      return await this.confirmDeal(dealReference);
     } catch (err) {
       console.error("[CapitalAdapter] closePosition error:", err);
       throw err;
@@ -242,7 +269,10 @@ class CapitalAdapter {
   /**
    * Helper to poll trade confirmations
    */
-  private async confirmDeal(dealReference: string, maxAttempts = 12): Promise<{ dealId: string; status: string; level: number }> {
+  private async confirmDeal(
+    dealReference: string,
+    maxAttempts = 12,
+  ): Promise<CapitalDealConfirm> {
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       await new Promise((resolve) => setTimeout(resolve, 500));
       const res = await fetch(`${CAPITAL_BASE_URL}/api/v1/confirms/${dealReference}`, {
@@ -254,8 +284,7 @@ class CapitalAdapter {
       });
       if (res.ok) {
         const data = await res.json();
-        console.log("[CapitalAdapter] confirmDeal full response data:", JSON.stringify(data));
-        
+
         const isSuccess =
           data.dealStatus === "ACCEPTED" ||
           data.status === "SUCCESS" ||
@@ -263,14 +292,16 @@ class CapitalAdapter {
           data.status === "CLOSED";
 
         if (isSuccess) {
+          const profitRaw = data.profit ?? data.affectedDeals?.[0]?.profit;
           return {
             dealId: data.affectedDeals?.[0]?.dealId || data.dealId || "",
-            status: data.status,
-            level: Number(data.level) || 0
+            status: data.status ?? data.dealStatus ?? "ACCEPTED",
+            level: Number(data.level) || 0,
+            profit: profitRaw != null ? Number(profitRaw) : undefined,
           };
         } else if (data.status && data.status !== "PENDING") {
           const detailMsg = data.errorMessage || data.errorCode || data.rejectReason || "Rejected";
-          throw new Error(`Trade failed at Capital.com: ${detailMsg} (Full details: ${JSON.stringify(data)})`);
+          throw new Error(`Trade failed at Capital.com: ${detailMsg}`);
         }
       }
     }
@@ -278,38 +309,109 @@ class CapitalAdapter {
   }
 
   /**
-   * Fetch all open positions directly from Capital.com
+   * Fetch all open positions directly from Capital.com (includes live P/L).
    */
-  public async getOpenPositions(): Promise<Array<{ dealId: string; epic: string; direction: "BUY" | "SELL"; size: number; level: number }>> {
+  public async getOpenPositions(): Promise<CapitalOpenPosition[]> {
     await this.checkSessionAndFallback();
 
     if (!this.cstToken || !this.xSecurityToken) {
-      return [];
+      throw new Error(
+        "Capital.com session is inactive. Cannot load broker positions.",
+      );
     }
 
-    try {
-      const res = await fetch(`${CAPITAL_BASE_URL}/api/v1/positions`, {
-        headers: {
-          "CST": this.cstToken,
-          "X-SECURITY-TOKEN": this.xSecurityToken,
-          "X-CAP-API-KEY": CAPITAL_API_KEY!
-        }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const positions = data.positions || [];
-        return positions.map((p: any) => ({
-          dealId: p.position?.dealId,
-          epic: p.position?.epic,
-          direction: p.position?.direction,
-          size: Number(p.position?.size) || 0,
-          level: Number(p.position?.level) || 0
-        }));
+    const res = await fetch(`${CAPITAL_BASE_URL}/api/v1/positions`, {
+      headers: {
+        "CST": this.cstToken,
+        "X-SECURITY-TOKEN": this.xSecurityToken,
+        "X-CAP-API-KEY": CAPITAL_API_KEY!
       }
-    } catch (e) {
-      console.warn("[CapitalAdapter] Failed to fetch open positions from Capital.com:", e);
+    });
+
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      throw new Error(
+        `Capital.com positions fetch failed: ${errBody.errorCode || res.status}`,
+      );
     }
-    return [];
+
+    const data = await res.json();
+    const positions = data.positions || [];
+
+    return positions
+      .map((row: { position?: Record<string, unknown>; market?: Record<string, unknown> }) => {
+        const pos = row.position ?? {};
+        const market = row.market ?? {};
+        const direction = String(pos.direction ?? "").toUpperCase() as "BUY" | "SELL";
+        const bid = Number(market.bid) || 0;
+        const offer = Number(market.offer) || 0;
+        const entryPrice = Number(pos.level) || 0;
+        const size = Number(pos.size) || 0;
+        const upl = Number(pos.upl) || 0;
+        const marginBasis = Math.abs(entryPrice * size);
+        const uplPct =
+          marginBasis > 0 ? Math.round((upl / marginBasis) * 10000) / 100 : null;
+
+        return {
+          dealId: String(pos.dealId ?? ""),
+          epic: String(market.epic ?? pos.epic ?? ""),
+          direction,
+          size,
+          entryPrice,
+          markPrice: direction === "BUY" ? bid : offer,
+          upl,
+          uplPct,
+          currency: String(pos.currency ?? "USD"),
+        } satisfies CapitalOpenPosition;
+      })
+      .filter((p: CapitalOpenPosition) => p.dealId && p.epic);
+  }
+
+  /**
+   * Live quote for order entry — never uses mock fallback.
+   */
+  public async fetchQuoteStrict(
+    symbol: string,
+    assetClass: string,
+  ): Promise<CapitalQuote> {
+    await this.checkSessionAndFallback();
+
+    if (!this.cstToken || !this.xSecurityToken) {
+      throw new Error("Capital.com session is inactive.");
+    }
+
+    const res = await fetch(`${CAPITAL_BASE_URL}/api/v1/markets/${encodeURIComponent(symbol)}`, {
+      headers: {
+        "CST": this.cstToken,
+        "X-SECURITY-TOKEN": this.xSecurityToken,
+        "X-CAP-API-KEY": CAPITAL_API_KEY!,
+        "Content-Type": "application/json"
+      }
+    });
+
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      throw new Error(errBody.errorCode || `Capital.com quote failed (HTTP ${res.status})`);
+    }
+
+    const data = await res.json();
+    const bid = Number(data.snapshot?.bid);
+    const ask = Number(data.snapshot?.offer);
+
+    if (isNaN(bid) || bid <= 0 || isNaN(ask) || ask <= 0) {
+      throw new Error(`Invalid price snapshot from Capital.com for ${symbol}`);
+    }
+
+    const spot = (bid + ask) / 2;
+    return {
+      symbol,
+      bid,
+      ask,
+      spot,
+      change24hPct: Number(data.snapshot?.netChangePercent) || null,
+      spread: ask - bid,
+      marketStatus: data.snapshot?.marketStatus ?? "TRADEABLE"
+    };
   }
 
   /**

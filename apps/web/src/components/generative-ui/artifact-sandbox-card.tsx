@@ -15,17 +15,25 @@ import {
   TriangleAlert,
   Loader2,
 } from "lucide-react";
+import { useChatWidgetAction } from "@/contexts/chat-widget-context";
+import type { WidgetAction } from "@/lib/chat/widget-actions";
 
 interface ArtifactSandboxCardProps {
   code: string;
   language?: string;
   title?: string;
+  onArtifactAction?: (action: WidgetAction) => void;
 }
 
 type SizePreset = "compact" | "default" | "tall";
 const SIZE_PX: Record<SizePreset, number> = { compact: 240, default: 340, tall: 520 };
 
-export function ArtifactSandboxCard({ code, language = "html", title = "Interactive Artifact" }: ArtifactSandboxCardProps) {
+export function ArtifactSandboxCard({
+  code,
+  language = "html",
+  title = "Interactive Artifact",
+  onArtifactAction,
+}: ArtifactSandboxCardProps) {
   const [activeTab, setActiveTab] = useState<"preview" | "code">("preview");
   const [copied, setCopied] = useState(false);
   const [size, setSize] = useState<SizePreset>("default");
@@ -34,19 +42,40 @@ export function ArtifactSandboxCard({ code, language = "html", title = "Interact
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const [runKey, setRunKey] = useState(0);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const contextAction = useChatWidgetAction();
 
-  // Unique token so we only react to messages from THIS sandboxed frame.
+  const emitAction = useCallback(
+    (action: WidgetAction) => {
+      onArtifactAction?.(action);
+      contextAction?.(action);
+    },
+    [contextAction, onArtifactAction],
+  );
+
   const token = React.useMemo(() => `qa_${Math.random().toString(36).slice(2, 11)}`, []);
 
   const isSvg = code.trim().startsWith("<svg") || (code.trim().startsWith("<?xml") && code.includes("<svg"));
 
-  // Error/ready bridge injected into the sandbox. The frame is sandboxed
-  // (allow-scripts only, origin "null"), so it talks back via postMessage.
   const bridgeScript = `
     <script>
       (function () {
         var T = ${JSON.stringify(token)};
-        function send(payload) { try { parent.postMessage(Object.assign({ __quantArtifact: T }, payload), "*"); } catch (e) {} }
+        var __quantSeq = 0;
+        window.__quantPending = {};
+        function send(payload) {
+          try { parent.postMessage(Object.assign({ __quantArtifact: T }, payload), "*"); } catch (e) {}
+        }
+        window.addEventListener("message", function (e) {
+          var d = e.data;
+          if (!d || d.__quantArtifact !== T) return;
+          if (d.kind === "complete_response") {
+            var pending = window.__quantPending[d.id];
+            if (!pending) return;
+            if (d.error) pending.reject(new Error(d.error));
+            else pending.resolve(d.text || "");
+            delete window.__quantPending[d.id];
+          }
+        });
         window.addEventListener("error", function (e) {
           send({ kind: "error", message: (e && e.message) ? e.message : "Script error" });
         });
@@ -55,6 +84,26 @@ export function ArtifactSandboxCard({ code, language = "html", title = "Interact
           send({ kind: "error", message: r ? (r.message || String(r)) : "Unhandled promise rejection" });
         });
         window.addEventListener("DOMContentLoaded", function () { send({ kind: "ready" }); });
+        window.__quant = {
+          sendPrompt: function (prompt) {
+            if (typeof prompt !== "string" || !prompt.trim()) return;
+            send({ kind: "prompt", prompt: prompt.trim() });
+          },
+          sendAction: function (action, data) {
+            send({ kind: "action", action: String(action || ""), data: data });
+          },
+          complete: function (prompt) {
+            return new Promise(function (resolve, reject) {
+              if (typeof prompt !== "string" || !prompt.trim()) {
+                reject(new Error("Prompt is required"));
+                return;
+              }
+              var id = "c" + (++__quantSeq);
+              window.__quantPending[id] = { resolve: resolve, reject: reject };
+              send({ kind: "complete_request", id: id, prompt: prompt.trim() });
+            });
+          }
+        };
       })();
     </script>`;
 
@@ -75,34 +124,73 @@ export function ArtifactSandboxCard({ code, language = "html", title = "Interact
         }
         * { box-sizing: border-box; }
         svg { max-width: 100%; }
+        button { cursor: pointer; }
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: #09090b; }
         ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 9999px; }
         ::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
       </style>`;
     return `<!DOCTYPE html><html><head>${head}</head><body>${code}</body></html>`;
-    // bridgeScript depends only on token (stable); code/isSvg drive recompiles.
   }, [code, isSvg, bridgeScript]);
+
+  const handleCompleteRequest = useCallback(
+    async (id: string, prompt: string) => {
+      const iframe = iframeRef.current;
+      const postBack = (payload: Record<string, unknown>) => {
+        iframe?.contentWindow?.postMessage({ __quantArtifact: token, ...payload }, "*");
+      };
+
+      try {
+        const res = await fetch("/api/chat/artifact-complete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt }),
+        });
+        const data = (await res.json()) as { text?: string; error?: string };
+        if (!res.ok) {
+          postBack({ kind: "complete_response", id, error: data.error ?? "Completion failed" });
+          return;
+        }
+        postBack({ kind: "complete_response", id, text: data.text ?? "" });
+      } catch (err) {
+        postBack({
+          kind: "complete_response",
+          id,
+          error: err instanceof Error ? err.message : "Completion failed",
+        });
+      }
+    },
+    [token],
+  );
 
   useEffect(() => {
     function onMessage(e: MessageEvent) {
       const data = e.data;
       if (!data || typeof data !== "object" || data.__quantArtifact !== token) return;
+
       if (data.kind === "ready") setLoading(false);
       if (data.kind === "error") {
         setRuntimeError(String(data.message || "Runtime error"));
         setLoading(false);
       }
+      if (data.kind === "prompt" && typeof data.prompt === "string") {
+        emitAction({ type: "prompt", prompt: data.prompt });
+      }
+      if (data.kind === "action" && typeof data.action === "string") {
+        emitAction({ type: "custom", action: data.action, data: data.data });
+      }
+      if (data.kind === "complete_request" && typeof data.id === "string" && typeof data.prompt === "string") {
+        void handleCompleteRequest(data.id, data.prompt);
+      }
     }
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [token]);
+  }, [emitAction, handleCompleteRequest, token]);
 
-  // Reset state whenever we (re)mount the frame.
   useEffect(() => {
     setLoading(true);
     setRuntimeError(null);
-    const t = setTimeout(() => setLoading(false), 4000); // safety: drop spinner even if no 'ready'
+    const t = setTimeout(() => setLoading(false), 4000);
     return () => clearTimeout(t);
   }, [runKey, compiledSrcDoc]);
 
@@ -196,7 +284,7 @@ export function ArtifactSandboxCard({ code, language = "html", title = "Interact
         <div className="size-2 animate-pulse rounded-full bg-cyan-500" />
         <span className="max-w-[200px] truncate text-xs font-bold text-zinc-100">{title}</span>
         <span className="rounded border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-zinc-500">
-          {isSvg ? "SVG" : "SANDBOXED HTML"}
+          {isSvg ? "SVG" : "INTERACTIVE"}
         </span>
       </div>
       {toolbar}
@@ -243,7 +331,7 @@ export function ArtifactSandboxCard({ code, language = "html", title = "Interact
                 </button>
               ))}
             </div>
-            <span className="text-[8px] font-mono uppercase tracking-widest text-zinc-600">sandboxed · isolated</span>
+            <span className="text-[8px] font-mono uppercase tracking-widest text-zinc-600">sandboxed · interactive</span>
           </div>
         </>
       ) : (

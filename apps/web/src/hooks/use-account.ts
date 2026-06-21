@@ -13,25 +13,34 @@ import {
   readCachedTradingMode,
   writeCachedTradingMode,
 } from "@/lib/account/user-app-preferences-client";
+import { readHomeTabCache, writeHomeTabCache } from "@/lib/portfolio/home-tab-cache";
 import type { User } from "@supabase/supabase-js";
 
 export function useAccount() {
   const [user, setUser] = useState<User | null>(null);
   const [tradingMode, setTradingModeState] = useState<TradingMode>(() => readCachedTradingMode());
-  const [summary, setSummary] = useState<LedgerSummaryResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [summary, setSummary] = useState<LedgerSummaryResponse | null>(() => {
+    return readHomeTabCache(readCachedTradingMode())?.summary ?? null;
+  });
+  const [loading, setLoading] = useState(() => summary == null);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = useCallback(async (modeOverride?: TradingMode) => {
+  const refresh = useCallback(async (modeOverride?: TradingMode, silent = false) => {
     const mode = modeOverride ?? tradingMode;
+    if (!silent) setRefreshing(true);
     setError(null);
     try {
       const data = await fetchLedgerSummary(mode);
       setSummary(data);
+      writeHomeTabCache(mode, { summary: data });
       return data;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load account");
       return null;
+    } finally {
+      if (!silent) setRefreshing(false);
+      setLoading(false);
     }
   }, [tradingMode]);
 
@@ -50,6 +59,14 @@ export function useAccount() {
     async (mode: TradingMode) => {
       setTradingModeState(mode);
       writeCachedTradingMode(mode);
+      const cached = readHomeTabCache(mode);
+      if (cached?.summary) {
+        setSummary(cached.summary);
+        setLoading(false);
+      } else {
+        setLoading(true);
+        setSummary(null);
+      }
       await patchTradingMode(mode);
       await refresh(mode);
     },
@@ -96,6 +113,7 @@ export function useAccount() {
     setTradingMode,
     summary,
     loading,
+    refreshing,
     error,
     refresh,
     signOut,

@@ -5,6 +5,8 @@ import * as LucideIcons from "lucide-react";
 import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { GenerativeUiRegistry } from "./registry";
+import { useChatWidgetAction } from "@/contexts/chat-widget-context";
+import type { WidgetAction } from "@/lib/chat/widget-actions";
 import {
   type GenUiAccent,
   type GenUiNode,
@@ -278,14 +280,26 @@ function MiniChart({
  * Node renderer
  * ────────────────────────────────────────────────────────────────────────── */
 
-function NodeView({ node, animate }: { node: GenUiNode; animate: boolean }) {
+function NodeView({
+  node,
+  animate,
+  onWidgetAction,
+}: {
+  node: GenUiNode;
+  animate: boolean;
+  onWidgetAction?: (action: WidgetAction) => void;
+}) {
+  const fireAction = (action: WidgetAction) => {
+    onWidgetAction?.(action);
+  };
+
   switch (node.type) {
     case "section":
       return (
         <div className="w-full rounded-lg border border-zinc-800/50 bg-zinc-950/20 p-3">
           {node.title ? <h3 className="text-sm font-semibold text-white">{node.title}</h3> : null}
           {node.subtitle ? <p className="mb-2 mt-0.5 text-[11px] text-zinc-500">{node.subtitle}</p> : <div className="mb-2" />}
-          <NodeList nodes={node.children} animate={animate} />
+          <NodeList nodes={node.children} animate={animate} onWidgetAction={onWidgetAction} />
         </div>
       );
 
@@ -296,7 +310,7 @@ function NodeView({ node, animate }: { node: GenUiNode; animate: boolean }) {
       return (
         <div className={cn("grid gap-2", colClass)}>
           {node.children.map((child, i) => (
-            <NodeView key={i} node={child} animate={animate} />
+            <NodeView key={i} node={child} animate={animate} onWidgetAction={onWidgetAction} />
           ))}
         </div>
       );
@@ -499,6 +513,30 @@ function NodeView({ node, animate }: { node: GenUiNode; animate: boolean }) {
     case "component":
       return <GenerativeUiRegistry name={node.name} props={node.props ?? {}} />;
 
+    case "actionButton": {
+      const isPrimary = node.variant !== "secondary";
+      return (
+        <button
+          type="button"
+          onClick={() => {
+            if (node.action === "prompt") {
+              fireAction({ type: "prompt", prompt: node.payload });
+            } else {
+              fireAction({ type: "custom", action: node.payload, data: { label: node.label } });
+            }
+          }}
+          className={cn(
+            "inline-flex items-center justify-center rounded-lg px-4 py-2 text-xs font-semibold transition-all duration-200 active:scale-[0.98]",
+            isPrimary
+              ? "border border-cyan-500/30 bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20 hover:text-white"
+              : "border border-zinc-700/60 bg-zinc-900/40 text-zinc-300 hover:border-zinc-600 hover:text-white",
+          )}
+        >
+          {node.label}
+        </button>
+      );
+    }
+
     default:
       return (
         <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-400">
@@ -508,12 +546,20 @@ function NodeView({ node, animate }: { node: GenUiNode; animate: boolean }) {
   }
 }
 
-function NodeList({ nodes, animate }: { nodes: GenUiNode[]; animate: boolean }) {
+function NodeList({
+  nodes,
+  animate,
+  onWidgetAction,
+}: {
+  nodes: GenUiNode[];
+  animate: boolean;
+  onWidgetAction?: (action: WidgetAction) => void;
+}) {
   return (
     <div className="space-y-3">
       {nodes.map((node, i) => (
         <div key={i} className={animate ? "genui-enter" : undefined} style={animate ? { animationDelay: `${Math.min(i * 70, 500)}ms` } : undefined}>
-          <NodeView node={node} animate={animate} />
+          <NodeView node={node} animate={animate} onWidgetAction={onWidgetAction} />
         </div>
       ))}
     </div>
@@ -524,9 +570,23 @@ function NodeList({ nodes, animate }: { nodes: GenUiNode[]; animate: boolean }) 
  * Public entry — renders a parsed ```genui payload
  * ────────────────────────────────────────────────────────────────────────── */
 
-export function GenUiRenderer({ payload }: { payload: unknown }) {
+export function GenUiRenderer({
+  payload,
+  onWidgetAction,
+}: {
+  payload: unknown;
+  onWidgetAction?: (action: WidgetAction) => void;
+}) {
   const nodes = React.useMemo(() => normalizeGenUiPayload(payload), [payload]);
   const [animate] = React.useState(true);
+  const contextAction = useChatWidgetAction();
+  const handleAction = React.useCallback(
+    (action: WidgetAction) => {
+      onWidgetAction?.(action);
+      contextAction?.(action);
+    },
+    [contextAction, onWidgetAction],
+  );
 
   if (!nodes || nodes.length === 0) {
     return (
@@ -538,7 +598,7 @@ export function GenUiRenderer({ payload }: { payload: unknown }) {
 
   return (
     <div className="my-2 w-full text-left">
-      <NodeList nodes={nodes} animate={animate} />
+      <NodeList nodes={nodes} animate={animate} onWidgetAction={handleAction} />
     </div>
   );
 }

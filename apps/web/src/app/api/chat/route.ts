@@ -190,6 +190,7 @@ Node vocabulary (every node has a \`type\`):
 - Viz: sparkline{data:number[],accent?,label?}, chart{variant?:line|area,series:[{name,data:number[],color?}],labels?:string[],title?}, gauge{value:0-100,label?,caption?,accent?}, progress{value:0-100,label?,caption?,accent?}, barlist{title?,items:[{label,value,accent?}],unit?}
 - Info: callout{variant:info|success|warning|danger,title?,text}, badge{text,accent?}, keyValue{items:[{label,value,accent?}]}, table{columns:string[],rows:(string|number)[][]}
 - Bridge to prebuilt widgets: component{name,props} where name is AssetCatalogGrid | AssetComparativeChart | PortfolioBreakdown | TransactionSummary | TradeConfirmationWidget
+- Interactive buttons: actionButton{label, action:"prompt"|"custom", payload, variant?:primary|secondary} — sends payload to chat when clicked
 accent is one of cyan|violet|emerald|rose|amber|sky|zinc. icon is any lucide icon name (e.g. "trending-up").
 
 Example for "How is Bitcoin doing?" — call get_asset_market_data, then paste the returned \`genui\` object:
@@ -202,6 +203,28 @@ For a trade ticket, use a component node: { "type": "component", "name": "TradeC
 
 2) HTML / SVG ARTIFACT — bespoke fully-custom interactive visuals ONLY.
 Use a fenced block with language \`html\` only when the genui vocabulary genuinely cannot express it (a novel custom interactive visual, a hand-drawn diagram, a one-off mini-app). It runs in a secured sandboxed iframe and must be fully self-contained (inline CSS/SVG/JS, no external scripts or network requests). Dark theme (#0b0d19 / #050508), cyan #38bdf8, buy-green #34d399, sell-red #f87171, glassmorphism. Prefer genui for ordinary charts and dashboards.
+
+INTERACTIVE HTML ARTIFACT API (injected automatically — use in onclick handlers):
+- \`window.__quant.sendPrompt("your message")\` — sends a user message to the chat (e.g. "Analyze BTCUSD with subagents").
+- \`window.__quant.sendAction("actionName", { ...data })\` — dispatches a custom app action.
+- \`await window.__quant.complete("short prompt")\` — runs a lightweight AI completion inside the artifact and returns plain text (for calculators, classifiers, mini-assistants).
+Example button: \`<button onclick="window.__quant.sendPrompt('Draft a trade plan for BTCUSD')">Ask agent</button>\`
+
+GENUI ACTION BUTTONS (preferred for simple chat actions inside structured layouts):
+{ "type": "actionButton", "label": "Run deeper analysis", "action": "prompt", "payload": "Spawn subagents to analyze BTCUSD", "variant": "primary" }
+Use action "prompt" to send payload as the next user message. Use action "custom" for app-specific actions.
+
+4) INTERACTIVE CLARIFICATION — when you need user input before proceeding (multi-step workflows, trade confirmations, scope choices):
+Append an \`<interactive-question>\` block at the END of your response. The UI replaces the composer with a structured form.
+
+<interactive-question id="unique_id" type="single-select">
+  <title>Short question title</title>
+  <description>One sentence explaining why you need this</description>
+  <option value="Full prompt sent when user taps">Button label</option>
+</interactive-question>
+
+Types: single-select (pick one), multi-select (pick many), input (free text — include <placeholder>...</placeholder>, no options required).
+Each option \`value\` must be a complete user prompt. IDs must be unique per question.
 
 3) PLAIN MARKDOWN — for concepts, definitions, and short answers. Keep it tight; you may still weave in a small genui block to highlight key numbers.
 

@@ -5,9 +5,26 @@ import { cn } from "@/lib/utils";
 
 export type ChartPoint = { time: number; close: number };
 
-const PAD_X = 10;
-const PAD_Y_TOP = 16;
-const PAD_Y_BOTTOM = 20;
+const PAD_X_RIGHT = 10;
+const PAD_Y_LEFT = 44;
+const PAD_Y_TOP = 12;
+/** Reserved band for x-axis time labels (below the plot). */
+const PAD_X_AXIS_HEIGHT = 16;
+/** Gap between the lowest plot point and the x-axis labels. */
+const PAD_PLOT_GAP = 10;
+
+function formatYTick(value: number): string {
+  if (value >= 10_000) {
+    return `$${(value / 1000).toFixed(0)}k`;
+  }
+  if (value >= 1000) {
+    return `$${(value / 1000).toFixed(1)}k`;
+  }
+  if (value >= 100) {
+    return `$${value.toFixed(0)}`;
+  }
+  return `$${value.toFixed(2)}`;
+}
 
 function smoothLinePath(pts: Array<{ x: number; y: number }>): string {
   if (pts.length === 0) return "";
@@ -47,12 +64,21 @@ export function SmoothAreaChart({
   points,
   className,
   height = 180,
-  accent = "neutral"
+  accent = "neutral",
+  showZeroWhenEmpty = false,
+  forcePriceScaleZero = false,
+  showYAxis = false,
+  tickIntervalSec,
 }: {
   points: ChartPoint[];
   className?: string;
   height?: number;
   accent?: "bullish" | "bearish" | "neutral" | "cyan";
+  showZeroWhenEmpty?: boolean;
+  forcePriceScaleZero?: boolean;
+  showYAxis?: boolean;
+  /** Preferred x-axis label spacing (e.g. 600 for 10-minute buckets). */
+  tickIntervalSec?: number;
 }) {
   const uid = useId().replace(/:/g, "");
   const gradId = `quant-fill-${uid}`;
@@ -89,54 +115,75 @@ export function SmoothAreaChart({
     return [...points].sort((a, b) => a.time - b.time);
   }, [points]);
 
+  const displayPoints = useMemo(() => {
+    if (sortedPoints.length >= 2) return sortedPoints;
+    if (!showZeroWhenEmpty) return sortedPoints;
+    const now = Math.floor(Date.now() / 1000);
+    const start = sortedPoints[0]?.time ?? now - 90 * 86_400;
+    const endVal = sortedPoints[sortedPoints.length - 1]?.close ?? 0;
+    return [
+      { time: Math.min(start, now - 86_400), close: 0 },
+      { time: now, close: endVal },
+    ];
+  }, [sortedPoints, showZeroWhenEmpty]);
+
   const spanSec = useMemo(() => {
-    if (sortedPoints.length < 2) return 86400;
-    return Math.max(60, sortedPoints[sortedPoints.length - 1]!.time - sortedPoints[0]!.time);
-  }, [sortedPoints]);
+    if (displayPoints.length < 2) return 86400;
+    return Math.max(60, displayPoints[displayPoints.length - 1]!.time - displayPoints[0]!.time);
+  }, [displayPoints]);
 
   const bounds = useMemo(() => {
-    if (sortedPoints.length === 0) return { minC: 0, maxC: 100 };
-    const cs = sortedPoints.map((p) => p.close);
-    return {
-      minC: Math.min(...cs),
-      maxC: Math.max(...cs)
-    };
-  }, [sortedPoints]);
+    if (displayPoints.length === 0) return { minC: 0, maxC: 100, yMin: 0, yMax: 100 };
+    const cs = displayPoints.map((p) => p.close);
+    const minC = Math.min(...cs);
+    const maxC = Math.max(...cs);
+    const padV = forcePriceScaleZero ? 0 : (maxC - minC) * 0.08 || Math.max(maxC * 0.002, 0.05);
+    const yMin = forcePriceScaleZero ? 0 : minC - padV;
+    const yMax = maxC + (forcePriceScaleZero ? maxC * 0.05 : padV);
+    return { minC, maxC, yMin, yMax };
+  }, [displayPoints, forcePriceScaleZero]);
+
+  const padLeft = showYAxis ? PAD_Y_LEFT : 0;
+
+  const layout = useMemo(() => {
+    const plotBottomY = size.h - PAD_X_AXIS_HEIGHT - PAD_PLOT_GAP;
+    const innerH = Math.max(plotBottomY - PAD_Y_TOP, 1);
+    const xLabelY = size.h - 4;
+    return { plotBottomY, innerH, xLabelY };
+  }, [size.h]);
 
   const mapped = useMemo(() => {
-    if (sortedPoints.length === 0 || size.w <= 20) return [];
-    const innerW = size.w - PAD_X * 2;
-    const innerH = size.h - PAD_Y_TOP - PAD_Y_BOTTOM;
-    const { minC, maxC } = bounds;
-    const padV = (maxC - minC) * 0.08 || Math.max(maxC * 0.002, 0.05);
-    const yMin = minC - padV;
-    const yMax = maxC + padV;
+    if (displayPoints.length === 0 || size.w <= 20) return [];
+    const innerW = size.w - padLeft - PAD_X_RIGHT;
+    const { innerH } = layout;
+    const { yMin, yMax } = bounds;
 
-    const t0 = sortedPoints[0]!.time;
-    const t1 = sortedPoints[sortedPoints.length - 1]!.time;
+    const t0 = displayPoints[0]!.time;
+    const t1 = displayPoints[displayPoints.length - 1]!.time;
     const spanT = Math.max(t1 - t0, 1);
 
-    return sortedPoints.map((p) => {
+    return displayPoints.map((p) => {
       const nx = (p.time - t0) / spanT;
       const ny = (p.close - yMin) / Math.max(yMax - yMin, 1e-9);
       return {
-        x: PAD_X + nx * innerW,
+        x: padLeft + nx * innerW,
         y: PAD_Y_TOP + innerH * (1 - ny),
         time: p.time,
-        close: p.close
+        close: p.close,
       };
     });
-  }, [sortedPoints, size.w, size.h, bounds]);
+  }, [displayPoints, size.w, size.h, bounds, padLeft, layout]);
 
-  const bottomY = size.h - PAD_Y_BOTTOM;
+  const { plotBottomY, xLabelY } = layout;
+  const clipId = `plot-clip-${uid}`;
 
   const areaPath = useMemo(() => {
     if (mapped.length === 0) return "";
     const line = smoothLinePath(mapped);
     const first = mapped[0]!;
     const last = mapped[mapped.length - 1]!;
-    return `${line} L ${last.x} ${bottomY} L ${first.x} ${bottomY} Z`;
-  }, [mapped, bottomY]);
+    return `${line} L ${last.x} ${plotBottomY} L ${first.x} ${plotBottomY} Z`;
+  }, [mapped, plotBottomY]);
 
   const linePath = useMemo(() => {
     return mapped.length ? smoothLinePath(mapped) : "";
@@ -197,13 +244,57 @@ export function SmoothAreaChart({
 
   const hoveredPt = hover != null ? mapped[hover.idx] : null;
 
+  const yTicks = useMemo(() => {
+    if (!showYAxis || mapped.length === 0) return [];
+    const { innerH } = layout;
+    const { yMin, yMax } = bounds;
+    const steps = 4;
+    return Array.from({ length: steps + 1 }, (_, i) => {
+      const frac = i / steps;
+      const value = yMin + (yMax - yMin) * frac;
+      return {
+        y: PAD_Y_TOP + innerH * (1 - frac),
+        label: formatYTick(value),
+      };
+    });
+  }, [showYAxis, mapped.length, layout, bounds]);
+
   const xTicks = useMemo(() => {
     if (mapped.length < 2) return [];
-    const picks = [0, Math.floor(mapped.length / 2), mapped.length - 1];
-    return [...new Set(picks)].map((i) => mapped[i]!);
-  }, [mapped]);
+    const interval = tickIntervalSec ?? Math.max(60, Math.floor(spanSec / 4));
+    const t0 = mapped[0]!.time;
+    const t1 = mapped[mapped.length - 1]!.time;
 
-  if (points.length < 2) {
+    const picks: typeof mapped = [];
+    let nextTick = Math.ceil(t0 / interval) * interval;
+    while (nextTick <= t1) {
+      let best = 0;
+      let bestD = Infinity;
+      for (let i = 0; i < mapped.length; i++) {
+        const d = Math.abs(mapped[i]!.time - nextTick);
+        if (d < bestD) {
+          bestD = d;
+          best = i;
+        }
+      }
+      const candidate = mapped[best]!;
+      if (!picks.some((p) => p.time === candidate.time)) {
+        picks.push(candidate);
+      }
+      nextTick += interval;
+    }
+
+    if (picks.length === 0) {
+      return [mapped[0]!, mapped[mapped.length - 1]!];
+    }
+    if (picks[0]!.time !== mapped[0]!.time) picks.unshift(mapped[0]!);
+    if (picks[picks.length - 1]!.time !== mapped[mapped.length - 1]!.time) {
+      picks.push(mapped[mapped.length - 1]!);
+    }
+    return picks;
+  }, [mapped, spanSec, tickIntervalSec]);
+
+  if (displayPoints.length < 2 && !showZeroWhenEmpty) {
     return (
       <div className={cn("flex flex-col items-center justify-center border border-zinc-900/60 bg-zinc-950/20 rounded-xl", className)} style={{ height }}>
         <p className="text-zinc-500 text-xs font-medium">Insufficient historical data</p>
@@ -223,50 +314,97 @@ export function SmoothAreaChart({
         onMouseLeave={onLeave}
       >
         <defs>
+          <clipPath id={clipId}>
+            <rect
+              x={padLeft}
+              y={PAD_Y_TOP}
+              width={Math.max(size.w - padLeft - PAD_X_RIGHT, 1)}
+              height={Math.max(plotBottomY - PAD_Y_TOP, 1)}
+            />
+          </clipPath>
           <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={palette.fillTop} />
             <stop offset="100%" stopColor={palette.fillBot} />
           </linearGradient>
         </defs>
 
+        {/* Plot floor — separates chart from x-axis labels */}
+        <line
+          x1={padLeft}
+          x2={size.w - PAD_X_RIGHT}
+          y1={plotBottomY}
+          y2={plotBottomY}
+          stroke="rgba(63, 63, 70, 0.2)"
+          strokeWidth={1}
+          vectorEffect="non-scaling-stroke"
+        />
+
         {/* Grid lines */}
-        {[0.25, 0.5, 0.75].map((f) => (
-          <line
-            key={f}
-            x1={PAD_X}
-            x2={size.w - PAD_X}
-            y1={PAD_Y_TOP + (size.h - PAD_Y_TOP - PAD_Y_BOTTOM) * f}
-            y2={PAD_Y_TOP + (size.h - PAD_Y_TOP - PAD_Y_BOTTOM) * f}
-            stroke="rgba(63, 63, 70, 0.15)"
-            strokeWidth={1}
-            vectorEffect="non-scaling-stroke"
-          />
+        {!showYAxis
+          ? [0.25, 0.5, 0.75].map((f) => (
+              <line
+                key={f}
+                x1={padLeft}
+                x2={size.w - PAD_X_RIGHT}
+                y1={PAD_Y_TOP + layout.innerH * f}
+                y2={PAD_Y_TOP + layout.innerH * f}
+                stroke="rgba(63, 63, 70, 0.15)"
+                strokeWidth={1}
+                vectorEffect="non-scaling-stroke"
+              />
+            ))
+          : null}
+
+        {/* Y axis ticks */}
+        {yTicks.map((tick, i) => (
+          <g key={`y-${i}`}>
+            <line
+              x1={padLeft}
+              x2={size.w - PAD_X_RIGHT}
+              y1={tick.y}
+              y2={tick.y}
+              stroke="rgba(63, 63, 70, 0.1)"
+              strokeWidth={1}
+              vectorEffect="non-scaling-stroke"
+            />
+            <text
+              x={padLeft - 6}
+              y={tick.y + 3}
+              textAnchor="end"
+              fill="#71717a"
+              fontSize={9}
+              fontWeight="500"
+              className="font-sans select-none tabular-nums"
+            >
+              {tick.label}
+            </text>
+          </g>
         ))}
 
-        {/* Gradient fill */}
-        {areaPath && (
-          <path d={areaPath} fill={`url(#${gradId})`} stroke="none" />
-        )}
-
-        {/* Continuous line */}
-        {linePath && (
-          <path
-            d={linePath}
-            fill="none"
-            stroke={palette.stroke}
-            strokeWidth={1.5}
-            strokeLinejoin="round"
-            strokeLinecap="round"
-            vectorEffect="non-scaling-stroke"
-          />
-        )}
+        {/* Gradient fill + line (clipped so splines never overlap x-axis) */}
+        <g clipPath={`url(#${clipId})`}>
+          {areaPath ? (
+            <path d={areaPath} fill={`url(#${gradId})`} stroke="none" />
+          ) : null}
+          {linePath ? (
+            <path
+              d={linePath}
+              fill="none"
+              stroke={palette.stroke}
+              strokeWidth={1.5}
+              strokeLinejoin="round"
+              strokeLinecap="round"
+              vectorEffect="non-scaling-stroke"
+            />
+          ) : null}
+        </g>
 
         {/* X Axis ticks */}
         {xTicks.map((p, i) => (
           <text
             key={`${p.time}-${i}`}
             x={p.x}
-            y={size.h - 4}
+            y={xLabelY}
             textAnchor={i === 0 ? "start" : i === xTicks.length - 1 ? "end" : "middle"}
             fill="#71717a"
             fontSize={9}
@@ -284,7 +422,7 @@ export function SmoothAreaChart({
               x1={hoveredPt.x}
               x2={hoveredPt.x}
               y1={PAD_Y_TOP}
-              y2={bottomY}
+              y2={plotBottomY}
               stroke={palette.stroke}
               strokeOpacity={0.3}
               strokeWidth={1}

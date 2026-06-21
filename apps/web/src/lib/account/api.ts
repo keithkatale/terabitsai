@@ -117,12 +117,16 @@ export async function fetchPortfolioHistory(mode: TradingMode): Promise<{
 export async function fetchOpenPositions(mode: TradingMode): Promise<
   Array<{
     id: string;
+    capitalDealId?: string;
     symbol: string;
     direction: "BUY" | "SELL";
     entryPrice: number;
+    markPrice?: number;
     size: number;
     leverage: number;
     margin: number;
+    pnl?: number;
+    pnlPct?: number | null;
     tp: null;
     sl: null;
     status: "OPEN";
@@ -137,6 +141,32 @@ export async function fetchOpenPositions(mode: TradingMode): Promise<
     throw new Error(data.error ?? "Failed to load positions");
   }
   return data.positions ?? [];
+}
+
+export async function closePositionAtMarket(
+  mode: TradingMode,
+  dealId: string,
+  options?: { percent?: number; size?: number },
+): Promise<{
+  ok: boolean;
+  capitalConfirmed: boolean;
+  dealId: string;
+  closePrice: number;
+  pnl: number;
+  partial?: boolean;
+  marginReleased?: number;
+}> {
+  const res = await fetch("/api/investing/close", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ mode, dealId, ...options }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error ?? "Failed to close position");
+  }
+  return data;
 }
 
 export async function postTradeLedger(
@@ -186,18 +216,22 @@ export async function purchaseAssetAtMarket(
   body: {
     symbol: string;
     side: "buy" | "sell";
-    size: number;
     leverage?: number;
+    size?: number;
+    allocationUsd?: number;
   },
 ): Promise<{
   ok: boolean;
+  capitalConfirmed: boolean;
   trade: {
     id: string;
+    capitalDealId: string;
     symbol: string;
     direction: "BUY" | "SELL";
     size: number;
     leverage: number;
     margin: number;
+    allocationUsd: number;
     entryPrice: number;
     notional: number;
     bid: number;
@@ -212,8 +246,8 @@ export async function purchaseAssetAtMarket(
     body: JSON.stringify({ mode, ...body }),
   });
   const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.error ?? "Purchase failed");
+  if (!res.ok || !data.capitalConfirmed) {
+    throw new Error(data.error ?? "Capital.com did not confirm the trade");
   }
   return data;
 }

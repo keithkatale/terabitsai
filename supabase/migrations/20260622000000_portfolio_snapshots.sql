@@ -10,6 +10,7 @@ create table if not exists public.portfolio_wealth_snapshots (
   savings_locked_usd numeric(20, 8) not null default 0,
   invested_value_usd numeric(20, 8) not null default 0,
   total_balance_usd numeric(20, 8) not null default 0,
+  reason text not null default 'periodic',
 
   recorded_at timestamptz not null default now(),
   created_at timestamptz not null default now()

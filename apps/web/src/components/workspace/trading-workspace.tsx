@@ -12,7 +12,11 @@ import { SmoothAreaChart } from "@/components/ui/smooth-area-chart";
 import { capitalAdapter } from "@/lib/execution/capital-adapter";
 import QuickTradeDialog from "@/components/ui/quick-trade-dialog";
 import { useAppAccount } from "@/contexts/app-account-context";
-import { postTradeLedger, fetchOpenPositions } from "@/lib/account/api";
+import { postTradeLedger, fetchOpenPositions, closePositionAtMarket } from "@/lib/account/api";
+import {
+  PositionActionsSheet,
+  type PositionActionRequest,
+} from "@/components/portfolio/position-actions-sheet";
 import { AccountPanel } from "@/components/account/account-panel";
 
 import { getCapitalAssetCatalog } from "@/lib/catalog/capital-assets";
@@ -43,8 +47,20 @@ import {
 } from "lucide-react";
 
 import { ChatMessage as ChatMessageBubble } from "@/components/ai-elements/message";
+import { FollowUpSuggestions } from "@/components/ai-elements/follow-up-suggestions";
+import { InteractiveQuestionForm } from "@/components/ai-elements/interactive-question-form";
 import type { ChatStreamEvent, ChatToolPod } from "@/lib/chat/stream-types";
-import { buildHistoryFromMessages } from "@/lib/chat/conversation-history";
+import {
+  buildHistoryFromMessages,
+  messagesToPredictPayload,
+} from "@/lib/chat/conversation-history";
+import type { ParsedInteractiveQuestion } from "@/lib/chat/interactive-question-helper";
+import {
+  hasInteractiveQuestionMarkup,
+  parseInteractiveQuestion,
+} from "@/lib/chat/interactive-question-helper";
+import { ChatWidgetProvider } from "@/contexts/chat-widget-context";
+import type { WidgetAction } from "@/lib/chat/widget-actions";
 
 import {
   Conversation,
@@ -52,7 +68,7 @@ import {
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
 import { MarketTerminal } from "@/components/terminal/market-terminal";
-import type { TerminalTabId } from "@/components/terminal/types";
+import type { TerminalTabId, TradeData } from "@/components/terminal/types";
 import { categoryForAsset } from "@/lib/catalog/asset-catalog";
 import type { LiveSignal } from "@/lib/market/market-intel-data";
 import { PageBackground } from "@/components/ui/page-background";
@@ -63,6 +79,10 @@ import {
 } from "@/components/workspace/chat-landing-hero";
 import { HomeSection } from "@/components/workspace/app-sections/home-section";
 import { InvestingSection } from "@/components/workspace/app-sections/investing-section";
+import { notifyPortfolioUpdated } from "@/lib/portfolio/portfolio-events";
+import { readHomeTabCache, writeHomeTabCache } from "@/lib/portfolio/home-tab-cache";
+import { readCachedTradingMode } from "@/lib/account/user-app-preferences-client";
+import { usePortfolioSnapshotPoll } from "@/hooks/use-portfolio-snapshot-poll";
 
 // Self-contained custom Figma SVG icon component
 const Figma = ({ className }: { className?: string }) => (
@@ -89,23 +109,6 @@ interface ChatMessage {
   liveStatus?: string;
   liveStatusDetail?: string;
 }
-
-interface TradeData {
-  id: string;
-  symbol: string;
-  direction: "BUY" | "SELL";
-  entryPrice: number;
-  closePrice?: number;
-  size: number;
-  leverage: number;
-  margin: number;
-  tp: number | null;
-  sl: number | null;
-  pnl?: number;
-  status: "OPEN" | "CLOSED";
-  timestamp: number;
-}
-
 
 // --- Asset Catalog Definitions (Fully dynamic, ported from capital-assets) ---
 const rawCapitalCatalog = getCapitalAssetCatalog();
@@ -216,7 +219,11 @@ export function TradingWorkspace() {
   const [value, setValue] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
+  const [followUpQuestion, setFollowUpQuestion] = useState<ParsedInteractiveQuestion | null>(null);
+  const [followUpLoading, setFollowUpLoading] = useState(false);
+  const [dismissedQuestionIds, setDismissedQuestionIds] = useState<string[]>([]);
   const pendingBootstrapped = useRef(false);
+  const followUpRequestId = useRef(0);
 
   const [activeTerminalTab, setActiveTerminalTab] = useState<TerminalTabId>("markets");
   const [pinnedAssetTabs, setPinnedAssetTabs] = useState<string[]>([]);
@@ -522,7 +529,12 @@ export function TradingWorkspace() {
   const [leftSidebarTab, setLeftSidebarTab] = useState<"markets" | "portfolio">("markets");
 
   // Simulated CFD Portfolios
-  const [positions, setPositions] = useState<TradeData[]>([]);
+  const [positions, setPositions] = useState<TradeData[]>(
+    () => readHomeTabCache(readCachedTradingMode())?.positions ?? [],
+  );
+  const [positionsRefreshing, setPositionsRefreshing] = useState(false);
+  const [activePositionId, setActivePositionId] = useState<string | null>(null);
+  const [positionActionBusy, setPositionActionBusy] = useState(false);
   const [isTradeOpen, setIsTradeOpen] = useState(false);
   const [tradeDirection, setTradeDirection] = useState<"BUY" | "SELL">("BUY");
   const [tradeSize, setTradeSize] = useState<number>(1);
@@ -532,6 +544,7 @@ export function TradingWorkspace() {
     user,
     summary,
     loading: accountLoading,
+    refreshing: accountRefreshing,
     refresh: refreshAccount,
     signOut,
     accountId,
@@ -541,6 +554,11 @@ export function TradingWorkspace() {
     openWithdraw,
     registerFundingHandlers,
   } = useAppAccount();
+
+  usePortfolioSnapshotPoll(
+    tradingMode,
+    isTabActive("home") || isTabActive("investing"),
+  );
 
   const [isAccountPanelOpen, setIsAccountPanelOpen] = useState(false);
   const [taggedAssets, setTaggedAssets] = useState<TaggedAsset[]>([]);
@@ -586,6 +604,7 @@ export function TradingWorkspace() {
         ],
       };
       setMessages((prev) => [...prev, receiptMessage]);
+      notifyPortfolioUpdated();
     },
     [refreshAccount, tradingMode],
   );
@@ -593,6 +612,7 @@ export function TradingWorkspace() {
   const handleWithdrawSuccess = useCallback(
     async (amt: number) => {
       await refreshAccount();
+      notifyPortfolioUpdated();
       const receiptMessage: ChatMessage = {
         id: Date.now().toString(),
         role: "assistant",
@@ -629,6 +649,7 @@ export function TradingWorkspace() {
     if (depositStatus === "success") {
       void refreshAccount().then((updated) => {
         const available = updated?.balance?.wallet_available ?? 0;
+        notifyPortfolioUpdated();
         setMessages((prev) => [
           ...prev,
           {
@@ -656,32 +677,54 @@ export function TradingWorkspace() {
     }
 
     let cancelled = false;
-    const loadPositions = async () => {
+    const loadPositions = async (silent = false) => {
+      if (!silent) setPositionsRefreshing(true);
       try {
         const rows = await fetchOpenPositions(tradingMode);
         if (!cancelled) {
           setPositions(rows as TradeData[]);
+          writeHomeTabCache(tradingMode, { positions: rows as TradeData[] });
         }
       } catch {
-        if (!cancelled) setPositions([]);
+        if (!cancelled && !silent) {
+          /* keep cached / current positions */
+        }
+      } finally {
+        if (!cancelled) setPositionsRefreshing(false);
       }
     };
 
-    void loadPositions();
+    void loadPositions(false);
     return () => {
       cancelled = true;
     };
   }, [user, tradingMode]);
 
-  const reloadPositions = useCallback(async () => {
+  const reloadPositions = useCallback(async (silent = false) => {
+    if (!silent) setPositionsRefreshing(true);
     try {
       const rows = await fetchOpenPositions(tradingMode);
       setPositions(rows as TradeData[]);
-      await refreshAccount();
+      writeHomeTabCache(tradingMode, { positions: rows as TradeData[] });
+      await refreshAccount(undefined, silent);
+      if (!silent) notifyPortfolioUpdated();
     } catch {
       /* keep current positions on refresh failure */
+    } finally {
+      if (!silent) setPositionsRefreshing(false);
     }
   }, [refreshAccount, tradingMode]);
+
+  useEffect(() => {
+    if (!user) return;
+    if (!isTabActive("home") && !isTabActive("investing")) return;
+
+    const interval = window.setInterval(() => {
+      void reloadPositions(true);
+    }, 15_000);
+
+    return () => window.clearInterval(interval);
+  }, [user, reloadPositions, isTabActive]);
 
   // --- Real-time Polling & Quote Sync ---
   
@@ -773,6 +816,7 @@ export function TradingWorkspace() {
         leverage: trade.leverage,
       });
       await refreshAccount();
+      notifyPortfolioUpdated();
     } catch (err) {
       console.error("Failed to post trade reserve:", err);
     }
@@ -822,56 +866,239 @@ export function TradingWorkspace() {
     const pos = positions.find((p) => p.id === id);
     if (!pos) return;
 
-    const currentSpot = sidebarQuotes[pos.symbol]?.spot || pos.entryPrice;
-    const finalPnl =
-      pos.direction === "BUY"
-        ? (currentSpot - pos.entryPrice) * pos.size
-        : (pos.entryPrice - currentSpot) * pos.size;
-
     setPositions((prev) => prev.filter((p) => p.id !== id));
 
     try {
-      await Promise.all([
-        postTradeLedger(tradingMode, {
-          action: "release",
-          amount: pos.margin,
-          symbol: pos.symbol,
-          tradeId: pos.id,
-          side: pos.direction.toLowerCase() as "buy" | "sell",
-          closePrice: currentSpot,
-        }),
-        postTradeLedger(tradingMode, {
-          action: "adjustment",
-          signedAmount: finalPnl,
-          symbol: pos.symbol,
-          tradeId: pos.id,
-          side: pos.direction.toLowerCase() as "buy" | "sell",
-          closePrice: currentSpot,
-        }),
-      ]);
+      const result = await closePositionAtMarket(tradingMode, id);
       await refreshAccount();
-    } catch (err) {
-      console.error("Failed to post trade release / adjustment:", err);
-    }
+      await reloadPositions();
+      notifyPortfolioUpdated();
 
-    const receiptMessage: ChatMessage = {
-      id: Date.now().toString(),
-      role: "assistant",
-      parts: [
-        {
-          type: "trade-execution",
-          text: JSON.stringify({
-            ...pos,
-            closePrice: currentSpot,
-            pnl: finalPnl,
-            status: "CLOSED",
-            timestamp: Math.floor(Date.now() / 1000),
+      const receiptMessage: ChatMessage = {
+        id: Date.now().toString(),
+        role: "assistant",
+        parts: [
+          {
+            type: "trade-execution",
+            text: JSON.stringify({
+              ...pos,
+              closePrice: result.closePrice,
+              pnl: result.pnl,
+              status: "CLOSED",
+              timestamp: Math.floor(Date.now() / 1000),
+            }),
+          },
+        ],
+      };
+      setMessages((prev) => [...prev, receiptMessage]);
+    } catch (err) {
+      console.error("Failed to close Capital.com position:", err);
+      await reloadPositions();
+      const errorMsg: ChatMessage = {
+        id: Date.now().toString(),
+        role: "assistant",
+        parts: [
+          {
+            type: "text",
+            text: `⚠️ **Close failed:** ${err instanceof Error ? err.message : "Capital.com did not confirm the close."}`,
+          },
+        ],
+      };
+      setMessages((prev) => [...prev, errorMsg]);
+    }
+  }, [positions, refreshAccount, reloadPositions, tradingMode]);
+
+  const activePositionRow = useMemo(() => {
+    if (!activePositionId) return null;
+    const pos = positions.find((p) => p.id === activePositionId);
+    if (!pos) return null;
+    const live = pos.markPrice ?? sidebarQuotes[pos.symbol]?.spot ?? pos.entryPrice;
+    const pnl =
+      pos.pnl ??
+      (pos.direction === "BUY"
+        ? (live - pos.entryPrice) * pos.size
+        : (pos.entryPrice - live) * pos.size);
+    const pnlPct = pos.pnlPct ?? (pos.margin > 0 ? (pnl / pos.margin) * 100 : 0);
+    const allocatedValue = Math.max(0, pos.margin + pnl);
+    return { pos, live, pnl, pnlPct, allocatedValue };
+  }, [activePositionId, positions, sidebarQuotes]);
+
+  const handlePositionAction = useCallback(
+    async (request: PositionActionRequest) => {
+      const pos = positions.find((p) => p.id === request.dealId);
+      if (!pos) return;
+
+      setPositionActionBusy(true);
+      const isFullClose = request.action !== "dilute";
+
+      if (isFullClose) {
+        setPositions((prev) => prev.filter((p) => p.id !== request.dealId));
+      }
+
+      try {
+        const result = await closePositionAtMarket(
+          tradingMode,
+          request.dealId,
+          request.action === "dilute" && request.percent
+            ? { percent: request.percent }
+            : undefined,
+        );
+        await refreshAccount();
+        await reloadPositions();
+        notifyPortfolioUpdated();
+        setActivePositionId(null);
+
+        if (request.action === "cash_out") {
+          openWithdraw();
+        }
+
+        const receiptMessage: ChatMessage = {
+          id: Date.now().toString(),
+          role: "assistant",
+          parts: [
+            {
+              type: "trade-execution",
+              text: JSON.stringify({
+                ...pos,
+                closePrice: result.closePrice,
+                pnl: result.pnl,
+                status: isFullClose ? "CLOSED" : "OPEN",
+                timestamp: Math.floor(Date.now() / 1000),
+              }),
+            },
+          ],
+        };
+        setMessages((prev) => [...prev, receiptMessage]);
+      } catch (err) {
+        console.error("Position action failed:", err);
+        await reloadPositions();
+        const errorMsg: ChatMessage = {
+          id: Date.now().toString(),
+          role: "assistant",
+          parts: [
+            {
+              type: "text",
+              text: `⚠️ **Action failed:** ${err instanceof Error ? err.message : "Capital.com did not confirm."}`,
+            },
+          ],
+        };
+        setMessages((prev) => [...prev, errorMsg]);
+      } finally {
+        setPositionActionBusy(false);
+      }
+    },
+    [positions, refreshAccount, reloadPositions, tradingMode, openWithdraw],
+  );
+
+  const buildScreenContext = useCallback(() => {
+    const parts = [
+      `Command tab · ${tradingMode} mode`,
+      `Active symbol: ${activeSymbol}`,
+    ];
+    if (positions.length > 0) {
+      parts.push(`Open positions: ${positions.map((p) => p.symbol).join(", ")}`);
+    }
+    if (balance?.wallet_available != null) {
+      parts.push(`Available margin: $${balance.wallet_available.toFixed(2)}`);
+    }
+    return parts.join(" · ");
+  }, [activeSymbol, balance?.wallet_available, positions, tradingMode]);
+
+  const loadFollowUpSuggestions = useCallback(
+    async (conversation: ChatMessage[]) => {
+      const predictMessages = messagesToPredictPayload(conversation);
+      if (predictMessages.length === 0) return;
+
+      const lastAssistant = [...predictMessages].reverse().find((m) => m.role === "assistant");
+      if (lastAssistant && hasInteractiveQuestionMarkup(lastAssistant.content)) {
+        return;
+      }
+
+      const requestId = ++followUpRequestId.current;
+      setFollowUpLoading(true);
+
+      try {
+        const response = await fetch("/api/chat/predict", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages: predictMessages,
+            screenContext: buildScreenContext(),
+            tradingMode,
+            activeSymbol,
+            openPositionSymbols: positions.map((p) => p.symbol),
+            walletAvailable: balance?.wallet_available,
           }),
-        },
-      ],
-    };
-    setMessages((prev) => [...prev, receiptMessage]);
-  }, [positions, sidebarQuotes, refreshAccount, tradingMode]);
+        });
+
+        if (requestId !== followUpRequestId.current) return;
+
+        if (response.ok) {
+          const data = (await response.json()) as { question?: ParsedInteractiveQuestion | null };
+          if (data.question?.options?.length) {
+            setFollowUpQuestion(data.question);
+          }
+        }
+      } catch (err) {
+        console.error("Follow-up predictor failed:", err);
+      } finally {
+        if (requestId === followUpRequestId.current) {
+          setFollowUpLoading(false);
+        }
+      }
+    },
+    [
+      activeSymbol,
+      balance?.wallet_available,
+      buildScreenContext,
+      positions,
+      tradingMode,
+    ],
+  );
+
+  const handleFollowUpSelect = useCallback(
+    (prompt: string) => {
+      setFollowUpQuestion(null);
+      void handleSendRef.current?.(prompt);
+    },
+    [],
+  );
+
+  const handleSendRef = useRef<
+    ((textToSend: string, pinnedForSend?: TaggedAsset[]) => Promise<void>) | null
+  >(null);
+
+  const activeQuestion = useMemo(() => {
+    if (loading) return null;
+    const lastMsg = messages[messages.length - 1];
+    if (!lastMsg || lastMsg.role !== "assistant") return null;
+    const textPart = lastMsg.parts.find((p) => p.type === "text");
+    return parseInteractiveQuestion(textPart?.text ?? "");
+  }, [loading, messages]);
+
+  const isQuestionActive = Boolean(
+    activeQuestion && !dismissedQuestionIds.includes(activeQuestion.id),
+  );
+
+  const handleWidgetAction = useCallback((action: WidgetAction) => {
+    if (action.type === "prompt" && action.prompt.trim()) {
+      void handleSendRef.current?.(action.prompt.trim());
+    }
+  }, []);
+
+  const handleQuestionSubmit = useCallback(
+    (answer: string) => {
+      if (!activeQuestion) return;
+      setDismissedQuestionIds((prev) => [...prev, activeQuestion.id]);
+      void handleSendRef.current?.(answer);
+    },
+    [activeQuestion],
+  );
+
+  const handleQuestionDismiss = useCallback(() => {
+    if (!activeQuestion) return;
+    setDismissedQuestionIds((prev) => [...prev, activeQuestion.id]);
+  }, [activeQuestion]);
 
   // --- Core AI Streaming Logic ---
   const handleSend = async (textToSend: string, pinnedForSend: TaggedAsset[] = []) => {
@@ -910,6 +1137,9 @@ export function TradingWorkspace() {
 
     setMessages((prev) => [...prev, newUserMessage, newAssistantMessage]);
     setValue("");
+    setFollowUpQuestion(null);
+    followUpRequestId.current += 1;
+    setFollowUpLoading(false);
     setLoading(true);
 
     try {
@@ -1050,8 +1280,16 @@ export function TradingWorkspace() {
       });
     } finally {
       setLoading(false);
+      setMessages((prev) => {
+        if (prev.length >= 2) {
+          void loadFollowUpSuggestions(prev);
+        }
+        return prev;
+      });
     }
   };
+
+  handleSendRef.current = handleSend;
 
   const handleActionClick = (label: string) => {
     let customizedPrompt = "";
@@ -1135,12 +1373,14 @@ Provide:
           summary={summary}
           userEmail={user?.email}
           accountLoading={accountLoading}
+          accountRefreshing={accountRefreshing}
+          positionsRefreshing={positionsRefreshing}
           tradingMode={tradingMode}
           positions={positions}
           sidebarQuotes={sidebarQuotes}
           onDeposit={openDeposit}
           onWithdraw={openWithdraw}
-          onClosePosition={closePosition}
+          onManagePosition={setActivePositionId}
         />
       </TabPanel>
 
@@ -1148,11 +1388,13 @@ Provide:
         <InvestingSection
           balance={balance}
           summary={summary}
-          accountLoading={accountLoading}
+          accountLoading={accountLoading && summary == null}
+          accountRefreshing={accountRefreshing}
+          positionsRefreshing={positionsRefreshing}
           tradingMode={tradingMode}
           positions={positions}
           sidebarQuotes={sidebarQuotes}
-          onClosePosition={closePosition}
+          onManagePosition={setActivePositionId}
           onRefresh={() => void reloadPositions()}
           isActive={isTabActive("investing")}
         />
@@ -1160,6 +1402,7 @@ Provide:
 
       <TabPanel tab="command" activeTab={mode}>
         {messages.length === 0 ? <PageBackground overlay="minimal" variant="orb" /> : null}
+        <ChatWidgetProvider onWidgetAction={handleWidgetAction}>
         <div className="relative mx-auto flex h-full w-full max-w-5xl flex-col overflow-hidden">
           {messages.length === 0 ? (
             <ChatLandingHero
@@ -1195,31 +1438,70 @@ Provide:
                       />
                     );
                   })}
+                  {!loading && !isQuestionActive ? (
+                    <FollowUpSuggestions
+                      question={followUpQuestion}
+                      loading={followUpLoading}
+                      disabled={loading}
+                      onSelect={handleFollowUpSelect}
+                      className="pb-2 pt-1"
+                    />
+                  ) : null}
                 </ConversationContent>
                 <ConversationScrollButton className="border-white/8 bg-[var(--terminal-surface)] text-zinc-300 hover:text-white" />
               </Conversation>
               <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-[var(--background)] via-[var(--background)]/95 to-transparent pb-3 pt-6">
-                <InputBar
-                  value={value}
-                  onChange={setValue}
-                  onSend={({ content }) => {
-                    const tags = [...taggedAssets];
-                    setTaggedAssets([]);
-                    handleSend(content, tags);
-                  }}
-                  disabled={loading}
-                  status={loading ? "streaming" : "ready"}
-                  placeholder="Continue the conversation…"
-                  variant="landing"
-                  taggedAssets={taggedAssets}
-                  onRemoveTaggedAsset={removeTaggedAsset}
-                  maxTaggedAssets={MAX_TAGGED_ASSETS}
-                />
+                <div className="relative">
+                  <InputBar
+                    value={value}
+                    onChange={setValue}
+                    onSend={({ content }) => {
+                      const tags = [...taggedAssets];
+                      setTaggedAssets([]);
+                      handleSend(content, tags);
+                    }}
+                    disabled={loading || isQuestionActive}
+                    status={loading ? "streaming" : "ready"}
+                    placeholder={
+                      isQuestionActive
+                        ? "Answer the question below…"
+                        : "Continue the conversation…"
+                    }
+                    variant="landing"
+                    taggedAssets={taggedAssets}
+                    onRemoveTaggedAsset={removeTaggedAsset}
+                    maxTaggedAssets={MAX_TAGGED_ASSETS}
+                  />
+                  {isQuestionActive && activeQuestion ? (
+                    <div className="absolute bottom-0 left-0 right-0 z-50 pointer-events-auto">
+                      <InteractiveQuestionForm
+                        question={activeQuestion}
+                        onSubmit={handleQuestionSubmit}
+                        onDismiss={handleQuestionDismiss}
+                      />
+                    </div>
+                  ) : null}
+                </div>
               </div>
             </div>
           )}
         </div>
+        </ChatWidgetProvider>
       </TabPanel>
+
+      {activePositionRow ? (
+        <PositionActionsSheet
+          position={activePositionRow.pos}
+          markPrice={activePositionRow.live}
+          pnl={activePositionRow.pnl}
+          pnlPct={activePositionRow.pnlPct}
+          allocatedValue={activePositionRow.allocatedValue}
+          open={activePositionId != null}
+          busy={positionActionBusy}
+          onClose={() => setActivePositionId(null)}
+          onConfirm={(request) => void handlePositionAction(request)}
+        />
+      ) : null}
 
       <AccountPanel
         open={isAccountPanelOpen}

@@ -2,25 +2,26 @@ import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Engine heartbeat for the app shell. Uses intel scan runs only —
+ * agent_runs (OPAR automation) is not migrated on this Supabase project.
+ */
 export async function GET() {
   try {
     const { prisma } = await import("@quant/db");
 
-    const [latestRun, latestScan, runningRuns] = await Promise.all([
-      prisma.agentRun.findFirst({ orderBy: { startedAt: "desc" } }),
-      prisma.intelScanRun.findFirst({ orderBy: { startedAt: "desc" } }),
-      prisma.agentRun.count({ where: { status: "RUNNING" } }),
-    ]);
+    const latestScan = await prisma.intelScanRun.findFirst({
+      orderBy: { startedAt: "desc" },
+    });
 
-    let mode: "idle" | "running" | "scanning" = "idle";
-    if (runningRuns > 0) mode = "running";
-    else if (latestScan?.status === "RUNNING") mode = "scanning";
+    const mode: "idle" | "running" | "scanning" =
+      latestScan?.status === "RUNNING" ? "scanning" : "idle";
 
     return NextResponse.json({
       mode,
-      lastOparCycleAt: latestRun?.completedAt?.toISOString() ?? latestRun?.startedAt.toISOString() ?? null,
+      lastOparCycleAt: null,
       lastIntelScanAt: latestScan?.startedAt.toISOString() ?? null,
-      watchlist: latestRun ? [latestRun.symbol] : [],
+      watchlist: [],
       pendingHitl: 0,
     });
   } catch (e) {

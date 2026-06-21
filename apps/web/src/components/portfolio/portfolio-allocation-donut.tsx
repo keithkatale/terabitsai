@@ -9,6 +9,7 @@ export type AllocationSegment = {
   label: string;
   value: number;
   color?: string;
+  changePct?: number;
 };
 
 function polarToCartesian(cx: number, cy: number, r: number, angleDeg: number) {
@@ -102,9 +103,11 @@ export function PortfolioAllocationDonut({
 export function AllocationLegend({
   segments,
   className,
+  onItemClick,
 }: {
   segments: AllocationSegment[];
   className?: string;
+  onItemClick?: (segment: AllocationSegment) => void;
 }) {
   const total = segments.reduce((sum, s) => sum + Math.max(0, s.value), 0);
 
@@ -113,16 +116,45 @@ export function AllocationLegend({
       {segments.map((segment, index) => {
         const pct = total > 0 ? (segment.value / total) * 100 : 0;
         const color = segment.color ?? SEGMENT_COLORS[index % SEGMENT_COLORS.length];
+        const change = segment.changePct;
+        const clickable = onItemClick && segment.label !== "Available cash";
         return (
-          <li key={segment.label} className="flex items-center gap-2">
-            <span
-              className="size-1.5 shrink-0 rounded-full"
-              style={{ backgroundColor: color }}
-            />
-            <span className="min-w-0 flex-1 truncate text-xs text-white">{segment.label}</span>
-            <span className="shrink-0 text-[10px] tabular-nums text-zinc-400">
-              {pct.toFixed(0)}%
-            </span>
+          <li key={segment.label}>
+            <button
+              type="button"
+              disabled={!clickable}
+              onClick={() => clickable && onItemClick(segment)}
+              className={cn(
+                "flex w-full items-center gap-2 rounded-lg px-1 py-0.5 text-left transition-colors",
+                clickable && "cursor-pointer hover:bg-white/[0.04]",
+                !clickable && "cursor-default",
+              )}
+            >
+              <span
+                className="size-1.5 shrink-0 rounded-full"
+                style={{ backgroundColor: color }}
+              />
+              <span className="min-w-0 flex-1 truncate text-xs text-white">{segment.label}</span>
+              <span className="shrink-0 text-right">
+                <span className="block text-[10px] tabular-nums text-zinc-300">
+                  ${segment.value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                </span>
+                <span className="block text-[9px] tabular-nums text-zinc-500">
+                  {pct.toFixed(0)}%
+                  {change != null ? (
+                    <span
+                      className={cn(
+                        " ml-1",
+                        change >= 0 ? "text-[var(--accent-green)]" : "text-[var(--accent-red)]",
+                      )}
+                    >
+                      {change >= 0 ? "+" : ""}
+                      {change.toFixed(1)}%
+                    </span>
+                  ) : null}
+                </span>
+              </span>
+            </button>
           </li>
         );
       })}

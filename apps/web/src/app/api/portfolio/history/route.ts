@@ -22,6 +22,7 @@ export async function GET(request: Request) {
     return Response.json({
       points: history.points,
       currentValue: history.currentValue,
+      liveValue: history.currentValue,
       changePct: history.changePct,
       accountStartedAt: history.accountStartedAt,
     });

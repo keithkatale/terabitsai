@@ -7,9 +7,13 @@ import { ASSET_CATALOG } from "@/lib/catalog/asset-catalog";
 import { AssetLogoIcon } from "@/components/ui/asset-logo";
 import { useLazyQuotes, type QuoteSnapshot } from "@/hooks/use-lazy-quotes";
 import { purchaseAssetAtMarket, type TradingMode } from "@/lib/account/api";
+import { notifyPortfolioUpdated } from "@/lib/portfolio/portfolio-events";
 
 const CATEGORIES = Object.keys(ASSET_CATALOG);
+const ALLOCATION_PRESETS = [25, 50, 100, 250, 500];
 const amountFont = "font-bold tabular-nums tracking-tight";
+
+type InputMode = "usd" | "units";
 
 function formatPrice(value: number) {
   if (value >= 1000) {
@@ -35,6 +39,8 @@ export function InvestingListingTab({
   const [search, setSearch] = useState("");
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const [side, setSide] = useState<"buy" | "sell">("buy");
+  const [inputMode, setInputMode] = useState<InputMode>("usd");
+  const [allocationUsd, setAllocationUsd] = useState("100");
   const [size, setSize] = useState("0.1");
   const [leverage, setLeverage] = useState(5);
   const [busy, setBusy] = useState(false);
@@ -68,21 +74,47 @@ export function InvestingListingTab({
     ? liveQuotes[selectedSymbol]
     : undefined;
 
+  const parsedAllocation = Number.parseFloat(allocationUsd);
   const parsedSize = Number.parseFloat(size);
   const executionPrice =
     side === "buy" ? selectedQuote?.ask : selectedQuote?.bid;
+
   const estimatedMargin =
-    executionPrice && Number.isFinite(parsedSize) && parsedSize > 0
-      ? (parsedSize * executionPrice) / leverage
+    inputMode === "usd"
+      ? Number.isFinite(parsedAllocation) && parsedAllocation > 0
+        ? parsedAllocation
+        : null
+      : executionPrice && Number.isFinite(parsedSize) && parsedSize > 0
+        ? (parsedSize * executionPrice) / leverage
+        : null;
+
+  const estimatedNotional =
+    estimatedMargin != null ? estimatedMargin * leverage : null;
+
+  const estimatedUnits =
+    executionPrice && estimatedNotional != null
+      ? estimatedNotional / executionPrice
       : null;
 
   const submitPurchase = async () => {
-    if (!selectedSymbol || !Number.isFinite(parsedSize) || parsedSize <= 0) {
-      setError("Enter a valid position size.");
+    if (!selectedSymbol || !executionPrice) {
+      setError("Waiting for Capital.com quote — try again in a moment.");
       return;
     }
-    if (!executionPrice) {
-      setError("Waiting for Capital.com quote — try again in a moment.");
+
+    if (inputMode === "usd") {
+      if (!Number.isFinite(parsedAllocation) || parsedAllocation <= 0) {
+        setError("Enter a valid dollar amount to allocate.");
+        return;
+      }
+      if (parsedAllocation > walletAvailable) {
+        setError(
+          `Insufficient funds. You have $${walletAvailable.toFixed(2)} available.`,
+        );
+        return;
+      }
+    } else if (!Number.isFinite(parsedSize) || parsedSize <= 0) {
+      setError("Enter a valid position size.");
       return;
     }
 
@@ -90,15 +122,26 @@ export function InvestingListingTab({
     setError(null);
     setSuccess(null);
     try {
-      const result = await purchaseAssetAtMarket(mode, {
-        symbol: selectedSymbol,
-        side,
-        size: parsedSize,
-        leverage,
-      });
-      setSuccess(
-        `${result.trade.direction} ${result.trade.size} ${result.trade.symbol} @ $${formatPrice(result.trade.entryPrice)}`,
+      const result = await purchaseAssetAtMarket(
+        mode,
+        inputMode === "usd"
+          ? {
+              symbol: selectedSymbol,
+              side,
+              leverage,
+              allocationUsd: parsedAllocation,
+            }
+          : {
+              symbol: selectedSymbol,
+              side,
+              leverage,
+              size: parsedSize,
+            },
       );
+      setSuccess(
+        `Capital.com confirmed: ${result.trade.direction} $${result.trade.allocationUsd.toFixed(2)} into ${result.trade.symbol} @ $${formatPrice(result.trade.entryPrice)} (deal ${result.trade.capitalDealId})`,
+      );
+      notifyPortfolioUpdated();
       onPurchased();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Purchase failed");
@@ -211,7 +254,7 @@ export function InvestingListingTab({
         <div>
           <h3 className="text-sm font-semibold text-white">Manual purchase</h3>
           <p className="mt-1 text-[11px] text-zinc-500">
-            Executes at Capital.com {side === "buy" ? "ask" : "bid"} · {mode} wallet
+            Allocate USD at Capital.com {side === "buy" ? "ask" : "bid"} · {mode} wallet
           </p>
         </div>
 
@@ -269,20 +312,81 @@ export function InvestingListingTab({
               ))}
             </div>
 
-            <label className="block space-y-1.5">
-              <span className="text-[11px] font-medium text-zinc-500">Size (units)</span>
-              <input
-                type="number"
-                min="0.0001"
-                step="0.0001"
-                value={size}
-                onChange={(e) => setSize(e.target.value)}
-                className={cn(
-                  "w-full rounded-xl border border-white/8 bg-black/30 px-3 py-2.5 text-zinc-100 outline-none focus:border-cyan-500/40",
-                  amountFont,
-                )}
-              />
-            </label>
+            <div className="flex gap-1 rounded-xl border border-white/8 bg-black/30 p-1">
+              {(
+                [
+                  ["usd", "Amount ($)"],
+                  ["units", "Units"],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setInputMode(id)}
+                  className={cn(
+                    "flex-1 rounded-lg py-1.5 text-[10px] font-semibold",
+                    inputMode === id
+                      ? "bg-cyan-500/15 text-cyan-300"
+                      : "text-zinc-500 hover:text-zinc-300",
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {inputMode === "usd" ? (
+              <>
+                <label className="block space-y-1.5">
+                  <span className="text-[11px] font-medium text-zinc-500">
+                    Allocate to {selectedAsset.symbol}
+                  </span>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={allocationUsd}
+                    onChange={(e) => setAllocationUsd(e.target.value)}
+                    className={cn(
+                      "w-full rounded-xl border border-white/8 bg-black/30 px-3 py-2.5 text-zinc-100 outline-none focus:border-cyan-500/40",
+                      amountFont,
+                    )}
+                  />
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {ALLOCATION_PRESETS.map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setAllocationUsd(String(preset))}
+                      className={cn(
+                        "rounded-lg border px-2.5 py-1 text-[10px] font-semibold",
+                        parsedAllocation === preset
+                          ? "border-cyan-500/30 bg-cyan-500/10 text-cyan-300"
+                          : "border-white/8 text-zinc-500 hover:text-zinc-300",
+                      )}
+                    >
+                      ${preset}
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <label className="block space-y-1.5">
+                <span className="text-[11px] font-medium text-zinc-500">Size (units)</span>
+                <input
+                  type="number"
+                  min="0.0001"
+                  step="0.0001"
+                  value={size}
+                  onChange={(e) => setSize(e.target.value)}
+                  className={cn(
+                    "w-full rounded-xl border border-white/8 bg-black/30 px-3 py-2.5 text-zinc-100 outline-none focus:border-cyan-500/40",
+                    amountFont,
+                  )}
+                />
+              </label>
+            )}
 
             <label className="block space-y-1.5">
               <span className="text-[11px] font-medium text-zinc-500">Leverage ({leverage}x)</span>
@@ -304,9 +408,15 @@ export function InvestingListingTab({
                 </span>
               </div>
               <div className="flex justify-between text-zinc-500">
-                <span>Est. margin</span>
+                <span>Your allocation</span>
                 <span className={cn("text-white", amountFont)}>
                   {estimatedMargin != null ? `$${estimatedMargin.toFixed(2)}` : "—"}
+                </span>
+              </div>
+              <div className="flex justify-between text-zinc-500">
+                <span>Est. units</span>
+                <span className={cn("text-white", amountFont)}>
+                  {estimatedUnits != null ? estimatedUnits.toFixed(4) : "—"}
                 </span>
               </div>
               <div className="flex justify-between text-zinc-500">
@@ -321,10 +431,13 @@ export function InvestingListingTab({
               type="button"
               disabled={busy || !executionPrice}
               onClick={submitPurchase}
-              className="terminal-btn terminal-btn-primary flex h-11 w-full items-center justify-center rounded-2xl text-sm font-semibold disabled:opacity-40"
+              className="terminal-btn terminal-btn-primary flex h-11 w-full items-center justify-center gap-2 rounded-2xl text-sm font-semibold disabled:opacity-40"
             >
               {busy ? (
-                <Loader2 className="size-5 animate-spin" />
+                <>
+                  <Loader2 className="size-5 animate-spin" />
+                  <span className="sr-only">Confirming on Capital.com…</span>
+                </>
               ) : (
                 `${side === "buy" ? "Buy" : "Sell"} ${selectedAsset.symbol}`
               )}

@@ -107,6 +107,13 @@ export type GenUiNode =
       height?: number;
       title?: string;
     }
+  | {
+      type: "actionButton";
+      label: string;
+      action: "prompt" | "custom";
+      payload: string;
+      variant?: "primary" | "secondary";
+    }
 
   // ── Bridge to the existing rich React widget registry ────────────────
   | { type: "component"; name: string; props?: Record<string, unknown> };
@@ -120,7 +127,7 @@ export type GenUiPayload = GenUiNode | GenUiView | GenUiNode[];
 
 const LEAF_TYPES = new Set([
   "stat", "metricCard", "sparkline", "gauge", "progress", "callout",
-  "badge", "keyValue", "barlist", "table", "chart", "text", "divider", "component",
+  "badge", "keyValue", "barlist", "table", "chart", "text", "divider", "component", "actionButton",
 ]);
 
 const LAYOUT_TYPES = new Set(["section", "grid"]);

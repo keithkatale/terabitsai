@@ -63,7 +63,7 @@ function CodeBlock({ language, code }: CodeBlockProps) {
 const KNOWN_GENUI_TYPES = new Set([
   "section", "grid", "divider", "text", "stat", "metricCard", "sparkline",
   "gauge", "progress", "callout", "badge", "keyValue", "barlist", "table",
-  "chart", "component",
+  "chart", "component", "actionButton",
 ]);
 
 /** Does a parsed JSON value plausibly describe a GenUI payload? */
