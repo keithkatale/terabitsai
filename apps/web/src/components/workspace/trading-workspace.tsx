@@ -80,6 +80,7 @@ import {
 } from "@/components/workspace/chat-landing-hero";
 import { HomeSection } from "@/components/workspace/app-sections/home-section";
 import { OrchestratorCycleControls } from "@/components/workspace/orchestrator-cycle-controls";
+import { WealthMonitorPanel } from "@/components/workspace/wealth-monitor-panel";
 import { InvestingSection } from "@/components/workspace/app-sections/investing-section";
 import { notifyPortfolioUpdated } from "@/lib/portfolio/portfolio-events";
 import { readHomeTabCache, writeHomeTabCache } from "@/lib/portfolio/home-tab-cache";
@@ -98,7 +99,7 @@ const Figma = ({ className }: { className?: string }) => (
 );
 
 interface MessagePart {
-  type: "reasoning" | "text" | "trade-execution" | "genui" | "quant-ui";
+  type: "reasoning" | "text" | "trade-execution" | "genui" | "quant-ui" | "monitor_directive" | "session_divider";
   text?: string;
   payload?: unknown;
 }
@@ -128,8 +129,24 @@ function mapPersistedParts(
     if (p.type === "trade-execution") {
       return { type: "trade-execution" as const, text: p.text };
     }
+    if (p.type === "monitor_directive") {
+      return { type: "monitor_directive" as const, text: p.text, payload: p.payload };
+    }
+    if (p.type === "session_divider") {
+      return { type: "session_divider" as const, text: p.text, payload: p.payload };
+    }
     return { type: "text" as const, text: p.text };
   });
+}
+
+function isVisibleChatMessage(msg: {
+  role: string;
+  parts: Array<{ type?: string }>;
+}): boolean {
+  if (msg.role === "system") {
+    return msg.parts.some((p) => p.type === "session_divider");
+  }
+  return msg.role === "user" || msg.role === "assistant";
 }
 
 // --- Asset Catalog Definitions (Fully dynamic, ported from capital-assets) ---
@@ -247,11 +264,55 @@ export function TradingWorkspace() {
   const followUpRequestId = useRef(0);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [sessionNumber, setSessionNumber] = useState<number | null>(null);
+  const [newSessionLoading, setNewSessionLoading] = useState(false);
   const sessionContextRef = useRef("");
   const conversationBootstrapped = useRef(false);
   const conversationIdRef = useRef<string | null>(null);
   const lastTaskPollRef = useRef(new Date().toISOString());
   const lastOrchestratorPollRef = useRef(new Date().toISOString());
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+  const lastUserMessageRef = useRef<HTMLDivElement | null>(null);
+  const pendingChatScrollRef = useRef(false);
+  const [responseSpacerHeight, setResponseSpacerHeight] = useState(0);
+
+  const scrollUserMessageIntoView = useCallback(() => {
+    const container = chatScrollRef.current;
+    const userEl = lastUserMessageRef.current;
+    if (!container || !userEl) return;
+
+    const topPadding = 12;
+    const targetScrollTop = userEl.offsetTop - topPadding;
+    container.scrollTo({ top: Math.max(0, targetScrollTop), behavior: "smooth" });
+  }, []);
+
+  const updateResponseSpacer = useCallback(() => {
+    const container = chatScrollRef.current;
+    const userEl = lastUserMessageRef.current;
+    if (!container) return;
+
+    const containerHeight = container.clientHeight;
+    const userHeight = userEl?.offsetHeight ?? 72;
+    const spacer = Math.max(240, containerHeight - userHeight - 32);
+    setResponseSpacerHeight(spacer);
+  }, []);
+
+  useEffect(() => {
+    if (!pendingChatScrollRef.current) return;
+    pendingChatScrollRef.current = false;
+
+    requestAnimationFrame(() => {
+      updateResponseSpacer();
+      requestAnimationFrame(() => {
+        scrollUserMessageIntoView();
+      });
+    });
+  }, [messages, loading, scrollUserMessageIntoView, updateResponseSpacer]);
+
+  useEffect(() => {
+    if (!loading) {
+      setResponseSpacerHeight(0);
+    }
+  }, [loading]);
 
   const [activeTerminalTab, setActiveTerminalTab] = useState<TerminalTabId>("markets");
   const [pinnedAssetTabs, setPinnedAssetTabs] = useState<string[]>([]);
@@ -652,12 +713,12 @@ export function TradingWorkspace() {
             };
             const loaded = msgJson.messages ?? [];
             if (loaded.length > 0) {
-              const visible = loaded.filter((m) => m.role !== "system");
+              const visible = loaded.filter(isVisibleChatMessage);
               if (visible.length > 0) {
                 setMessages(
                   visible.map((m) => ({
                     id: m.id,
-                    role: m.role as "user" | "assistant",
+                    role: m.role as ChatMessage["role"],
                     parts: mapPersistedParts(m.parts),
                     toolPods: m.toolPods as ChatToolPod[] | undefined,
                   })),
@@ -729,7 +790,7 @@ export function TradingWorkspace() {
             createdAt?: string;
           }>;
         };
-        const incoming = json.messages ?? [];
+        const incoming = (json.messages ?? []).filter(isVisibleChatMessage);
         if (incoming.length === 0) return;
 
         lastOrchestratorPollRef.current = new Date().toISOString();
@@ -739,7 +800,7 @@ export function TradingWorkspace() {
             .filter((m) => !existingIds.has(m.id))
             .map((m) => ({
               id: m.id,
-              role: "assistant" as const,
+              role: m.role as ChatMessage["role"],
               parts: mapPersistedParts(m.parts),
               toolPods: m.toolPods as ChatToolPod[] | undefined,
             }));
@@ -752,7 +813,7 @@ export function TradingWorkspace() {
     };
 
     void pollOrchestratorInbox();
-    const interval = window.setInterval(() => void pollOrchestratorInbox(), 30_000);
+    const interval = window.setInterval(() => void pollOrchestratorInbox(), 5_000);
     return () => window.clearInterval(interval);
   }, [user, tradingMode, conversationId]);
 
@@ -1361,6 +1422,39 @@ export function TradingWorkspace() {
     }
   }, []);
 
+  const handleNewSession = useCallback(async () => {
+    const convId = conversationIdRef.current;
+    if (!convId || newSessionLoading) return;
+    setNewSessionLoading(true);
+    try {
+      const res = await fetch(`/api/chat/conversations/${convId}/new-session`, {
+        method: "POST",
+      });
+      if (!res.ok) return;
+      const json = (await res.json()) as {
+        sessionNumber?: number;
+        dividerMessage?: {
+          id: string;
+          role: string;
+          parts: Array<{ type: string; text?: string; payload?: unknown }>;
+        };
+      };
+      if (json.sessionNumber) setSessionNumber(json.sessionNumber);
+      if (json.dividerMessage) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: json.dividerMessage!.id,
+            role: json.dividerMessage!.role as ChatMessage["role"],
+            parts: mapPersistedParts(json.dividerMessage!.parts),
+          },
+        ]);
+      }
+    } finally {
+      setNewSessionLoading(false);
+    }
+  }, [newSessionLoading]);
+
   useEffect(() => {
     const onWidgetEvent = (event: Event) => {
       const detail = (event as CustomEvent<WidgetAction>).detail;
@@ -1423,6 +1517,7 @@ export function TradingWorkspace() {
     setValue("");
     setFollowUpQuestion(null);
     followUpRequestId.current += 1;
+    pendingChatScrollRef.current = true;
     setLoading(true);
 
     try {
@@ -1722,17 +1817,27 @@ Provide:
       <TabPanel tab="command" activeTab={mode}>
         {messages.length === 0 ? <PageBackground overlay="minimal" variant="orb" /> : null}
         <ChatWidgetProvider onWidgetAction={handleWidgetAction}>
-        <div className="relative mx-auto flex h-full w-full max-w-5xl flex-col overflow-hidden">
+        <div className="relative flex h-full w-full overflow-hidden">
+          <div className="relative mx-auto flex h-full min-w-0 flex-1 flex-col overflow-hidden">
           <OrchestratorCycleControls />
           {sessionNumber ? (
-            <div className="shrink-0 px-4 pt-2 text-[10px] font-medium uppercase tracking-wider text-zinc-500">
-              Session {sessionNumber} · Continuing with memory from prior sessions
+            <div className="flex shrink-0 items-center justify-between gap-2 px-4 pt-2">
+              <p className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">
+                Session {sessionNumber} · Memory from prior sessions included
+              </p>
+              <button
+                type="button"
+                onClick={() => void handleNewSession()}
+                disabled={newSessionLoading || !conversationId}
+                className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-medium text-zinc-300 hover:bg-white/10 disabled:opacity-50"
+              >
+                {newSessionLoading ? "Saving…" : "New session"}
+              </button>
             </div>
           ) : null}
           {messages.length === 0 ? (
             <ChatLandingHero
               showBrandMark={false}
-              marketPreviewEnabled={isTabActive("command")}
               value={value}
               onChange={setValue}
               onSend={(content) => {
@@ -1749,10 +1854,17 @@ Provide:
             />
           ) : (
             <div className="relative flex min-h-0 flex-1 flex-col px-4 py-4">
-              <Conversation className="min-h-0 flex-1 overflow-y-auto pb-24">
-                <ConversationContent className="space-y-6 bg-transparent">
+              <Conversation className="min-h-0 flex-1 pb-24">
+                <ConversationContent
+                  ref={chatScrollRef}
+                  className="space-y-6 bg-transparent"
+                >
                   {messages.map((message, messageIndex) => {
                     const isLastMessage = messageIndex === messages.length - 1;
+                    const isActiveUserTurn =
+                      loading &&
+                      message.role === "user" &&
+                      messageIndex === messages.length - 2;
                     return (
                       <ChatMessageBubble
                         key={message.id}
@@ -1760,9 +1872,23 @@ Provide:
                         isAssistantStreaming={loading && isLastMessage}
                         livePrices={sidebarQuotes}
                         onClosePosition={closePosition}
+                        rootRef={
+                          isActiveUserTurn
+                            ? (el) => {
+                                lastUserMessageRef.current = el;
+                              }
+                            : undefined
+                        }
                       />
                     );
                   })}
+                  {loading && responseSpacerHeight > 0 ? (
+                    <div
+                      aria-hidden
+                      className="pointer-events-none shrink-0"
+                      style={{ minHeight: responseSpacerHeight }}
+                    />
+                  ) : null}
                   {!loading && !isQuestionActive ? (
                     <FollowUpSuggestions
                       question={followUpQuestion}
@@ -1811,6 +1937,8 @@ Provide:
               </div>
             </div>
           )}
+          </div>
+          <WealthMonitorPanel />
         </div>
         </ChatWidgetProvider>
       </TabPanel>

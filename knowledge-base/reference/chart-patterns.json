@@ -1,0 +1,444 @@
+{
+  "meta": {
+    "version": "1.0",
+    "sources": [
+      "B.Com(Hons) Technical Analysis - Dr. Kanu Jain",
+      "The Complete Guide to Trading - CFI",
+      "The ART of Trading - Bennett McDowell"
+    ]
+  },
+  "patterns": {
+    "head_and_shoulders": {
+      "id": "head_and_shoulders",
+      "name": "Head and Shoulders Top",
+      "type": "reversal",
+      "direction": "bearish",
+      "formation": [
+        "Three peaks: left shoulder, higher head, right shoulder",
+        "Neckline connects lows between shoulders and head",
+        "Volume typically highest on left shoulder, declining on head and right shoulder"
+      ],
+      "entry_rules": [
+        {
+          "condition": "Enter short on neckline break with volume confirmation",
+          "indicators": ["volume", "support_resistance"],
+          "confirmation": "Close below neckline on increased volume"
+        }
+      ],
+      "exit_rules": [
+        {
+          "condition": "Target = neckline to head distance projected below neckline",
+          "stop": "Above right shoulder high",
+          "target": "1:1 measured move from neckline"
+        }
+      ],
+      "reliability": 0.72,
+      "best_timeframes": ["4H", "Daily", "Weekly"],
+      "confirmation_signals": ["Volume spike on breakdown", "RSI bearish divergence at head"],
+      "source": "Technical Analysis - Dr. Kanu Jain"
+    },
+    "inverted_head_and_shoulders": {
+      "id": "inverted_head_and_shoulders",
+      "name": "Inverted Head and Shoulders",
+      "type": "reversal",
+      "direction": "bullish",
+      "formation": [
+        "Three troughs: left shoulder, lower head, right shoulder",
+        "Neckline connects highs between shoulders and head",
+        "Forms at end of downtrend"
+      ],
+      "entry_rules": [
+        {
+          "condition": "Enter long on neckline breakout with volume",
+          "confirmation": "Close above neckline on increased volume"
+        }
+      ],
+      "exit_rules": [
+        {
+          "condition": "Target = neckline to head distance projected above neckline",
+          "stop": "Below right shoulder low"
+        }
+      ],
+      "reliability": 0.74,
+      "best_timeframes": ["4H", "Daily", "Weekly"],
+      "confirmation_signals": ["Volume expansion on breakout", "RSI bullish divergence at head"],
+      "source": "Technical Analysis - Dr. Kanu Jain"
+    },
+    "double_top": {
+      "id": "double_top",
+      "name": "Double Top",
+      "type": "reversal",
+      "direction": "bearish",
+      "formation": [
+        "Two peaks at similar price level forming M shape",
+        "Valley (neckline) between the two peaks",
+        "Second peak on declining volume signals weakening buyers"
+      ],
+      "entry_rules": [
+        {
+          "condition": "Enter short on break below valley/neckline",
+          "confirmation": "Volume increase on breakdown"
+        }
+      ],
+      "exit_rules": [
+        {
+          "stop": "Above second peak",
+          "target": "Measured move = peak to neckline distance"
+        }
+      ],
+      "reliability": 0.68,
+      "best_timeframes": ["1H", "4H", "Daily"],
+      "confirmation_signals": ["RSI bearish divergence", "Decreasing volume on second peak"],
+      "source": "Technical Analysis - Dr. Kanu Jain"
+    },
+    "double_bottom": {
+      "id": "double_bottom",
+      "name": "Double Bottom",
+      "type": "reversal",
+      "direction": "bullish",
+      "formation": [
+        "Two troughs at similar price level forming W shape",
+        "Peak between troughs acts as resistance",
+        "Appears at end of bearish trend"
+      ],
+      "entry_rules": [
+        {
+          "condition": "Enter long on break above resistance between troughs",
+          "confirmation": "Volume expansion on breakout"
+        }
+      ],
+      "exit_rules": [
+        {
+          "stop": "Below second trough",
+          "target": "Measured move = trough to peak distance"
+        }
+      ],
+      "reliability": 0.70,
+      "best_timeframes": ["1H", "4H", "Daily"],
+      "confirmation_signals": ["RSI bullish divergence", "Support hold on second trough"],
+      "source": "Technical Analysis - Dr. Kanu Jain"
+    },
+    "ascending_triangle": {
+      "id": "ascending_triangle",
+      "name": "Ascending Triangle",
+      "type": "continuation",
+      "direction": "bullish",
+      "formation": [
+        "Flat resistance line at top",
+        "Rising support line (higher lows)",
+        "Price compresses toward apex"
+      ],
+      "entry_rules": [
+        {
+          "condition": "Enter long on breakout above flat resistance",
+          "confirmation": "Volume surge on breakout"
+        }
+      ],
+      "exit_rules": [
+        {
+          "stop": "Below most recent higher low",
+          "target": "Height of triangle projected from breakout"
+        }
+      ],
+      "reliability": 0.66,
+      "best_timeframes": ["1H", "4H", "Daily"],
+      "confirmation_signals": ["ADX rising", "Volume declining during formation then expanding on break"],
+      "source": "Technical Analysis - Dr. Kanu Jain"
+    },
+    "descending_triangle": {
+      "id": "descending_triangle",
+      "name": "Descending Triangle",
+      "type": "continuation",
+      "direction": "bearish",
+      "formation": [
+        "Flat support at bottom",
+        "Declining resistance line (lower highs)",
+        "Bearish bias until broken"
+      ],
+      "entry_rules": [
+        {
+          "condition": "Enter short on breakdown below flat support",
+          "confirmation": "Volume increase on breakdown"
+        }
+      ],
+      "exit_rules": [
+        {
+          "stop": "Above most recent lower high",
+          "target": "Triangle height projected downward"
+        }
+      ],
+      "reliability": 0.65,
+      "best_timeframes": ["1H", "4H", "Daily"],
+      "confirmation_signals": ["Bearish momentum", "Volume confirmation on break"],
+      "source": "Technical Analysis - Dr. Kanu Jain"
+    },
+    "symmetric_triangle": {
+      "id": "symmetric_triangle",
+      "name": "Symmetric Triangle",
+      "type": "continuation",
+      "direction": "neutral",
+      "formation": [
+        "Converging trendlines: lower highs and higher lows",
+        "Each peak lower than previous, each bottom higher than previous",
+        "Breakout direction follows prior trend"
+      ],
+      "entry_rules": [
+        {
+          "condition": "Enter in direction of breakout from apex",
+          "confirmation": "Wait for close outside triangle with volume"
+        }
+      ],
+      "exit_rules": [
+        {
+          "stop": "Opposite side of triangle",
+          "target": "Widest part of triangle projected from breakout"
+        }
+      ],
+      "reliability": 0.58,
+      "best_timeframes": ["1H", "4H", "Daily"],
+      "confirmation_signals": ["Prior trend direction", "Volume expansion on breakout"],
+      "source": "Technical Analysis - Dr. Kanu Jain"
+    },
+    "bull_flag": {
+      "id": "bull_flag",
+      "name": "Bull Flag",
+      "type": "continuation",
+      "direction": "bullish",
+      "formation": [
+        "Sharp rally (flagpole) followed by rectangular or parallelogram consolidation",
+        "Consolidation slopes slightly against trend",
+        "Volume declines during flag, expands on breakout"
+      ],
+      "entry_rules": [
+        {
+          "condition": "Enter long on breakout above flag upper boundary",
+          "confirmation": "Volume expansion"
+        }
+      ],
+      "exit_rules": [
+        {
+          "stop": "Below flag low",
+          "target": "Flagpole height projected from breakout"
+        }
+      ],
+      "reliability": 0.67,
+      "best_timeframes": ["15m", "1H", "4H"],
+      "confirmation_signals": ["Strong prior uptrend", "Low volume consolidation"],
+      "source": "Technical Analysis - Dr. Kanu Jain"
+    },
+    "bear_flag": {
+      "id": "bear_flag",
+      "name": "Bear Flag",
+      "type": "continuation",
+      "direction": "bearish",
+      "formation": [
+        "Sharp decline (flagpole) followed by upward-sloping consolidation",
+        "Brief pause before continuation lower"
+      ],
+      "entry_rules": [
+        {
+          "condition": "Enter short on breakdown below flag lower boundary"
+        }
+      ],
+      "exit_rules": [
+        {
+          "stop": "Above flag high",
+          "target": "Flagpole height projected downward"
+        }
+      ],
+      "reliability": 0.66,
+      "best_timeframes": ["15m", "1H", "4H"],
+      "confirmation_signals": ["Strong prior downtrend", "Volume pattern"],
+      "source": "Technical Analysis - Dr. Kanu Jain"
+    },
+    "breakaway_gap": {
+      "id": "breakaway_gap",
+      "name": "Breakaway Gap",
+      "type": "continuation",
+      "direction": "neutral",
+      "formation": [
+        "Price gaps out of congestion/trading range",
+        "Requires enthusiasm: many more buyers (up) or sellers (down)",
+        "Marks start of new trend leg"
+      ],
+      "entry_rules": [
+        {
+          "condition": "Enter in gap direction on first pullback to gap edge",
+          "confirmation": "Gap not filled quickly"
+        }
+      ],
+      "exit_rules": [
+        {
+          "stop": "Below gap low (bullish) or above gap high (bearish)",
+          "target": "Measured move from congestion range"
+        }
+      ],
+      "reliability": 0.70,
+      "best_timeframes": ["Daily", "4H"],
+      "confirmation_signals": ["High volume on gap day", "Clear range breakout"],
+      "source": "Technical Analysis - Dr. Kanu Jain"
+    },
+    "runaway_gap": {
+      "id": "runaway_gap",
+      "name": "Runaway (Measuring) Gap",
+      "type": "continuation",
+      "direction": "neutral",
+      "formation": [
+        "Gap mid-trend caused by increased interest",
+        "Represents panic buying (up) or panic selling (down)",
+        "Trend continues in gap direction until filled"
+      ],
+      "entry_rules": [
+        {
+          "condition": "Add to position in trend direction; gap acts as support/resistance"
+        }
+      ],
+      "exit_rules": [
+        {
+          "stop": "Gap violation (price fills gap)",
+          "target": "Equal distance from prior swing to gap, projected forward"
+        }
+      ],
+      "reliability": 0.62,
+      "best_timeframes": ["Daily", "4H"],
+      "confirmation_signals": ["Strong trend in place", "Increased volume"],
+      "source": "Technical Analysis - Dr. Kanu Jain"
+    },
+    "exhaustion_gap": {
+      "id": "exhaustion_gap",
+      "name": "Exhaustion Gap",
+      "type": "reversal",
+      "direction": "neutral",
+      "formation": [
+        "Occurs near end of extended trend",
+        "High volume and large price difference from prior close",
+        "Often first signal of trend exhaustion"
+      ],
+      "entry_rules": [
+        {
+          "condition": "Fade the gap direction after confirmation of reversal",
+          "confirmation": "Distinguish from runaway gap via exceptionally high volume"
+        }
+      ],
+      "exit_rules": [
+        {
+          "stop": "Beyond gap extreme",
+          "target": "Return to pre-gap consolidation"
+        }
+      ],
+      "reliability": 0.55,
+      "best_timeframes": ["Daily", "4H"],
+      "confirmation_signals": ["Climactic volume", "RSI extreme", "Subsequent reversal candle"],
+      "source": "Technical Analysis - Dr. Kanu Jain"
+    },
+    "cup_and_handle": {
+      "id": "cup_and_handle",
+      "name": "Cup and Handle",
+      "type": "continuation",
+      "direction": "bullish",
+      "formation": [
+        "Cup: rounded bottom after advance (bowl shape)",
+        "Handle: small consolidation on right side of cup",
+        "Breakout above handle signals continuation"
+      ],
+      "entry_rules": [
+        {
+          "condition": "Enter on breakout above handle resistance",
+          "confirmation": "Volume expansion on breakout"
+        }
+      ],
+      "exit_rules": [
+        {
+          "stop": "Below handle low",
+          "target": "Cup depth projected from breakout"
+        }
+      ],
+      "reliability": 0.68,
+      "best_timeframes": ["Daily", "Weekly"],
+      "confirmation_signals": ["U-shaped cup (not V-shaped)", "Handle drifts down on low volume"],
+      "source": "Technical Analysis - Dr. Kanu Jain"
+    },
+    "rounding_bottom": {
+      "id": "rounding_bottom",
+      "name": "Rounding Bottom (Saucer)",
+      "type": "reversal",
+      "direction": "bullish",
+      "formation": [
+        "Long-term gradual transition from bearish to bullish bias",
+        "Best identified on weekly charts",
+        "Volume typically lowest at bottom, increases on right side"
+      ],
+      "entry_rules": [
+        {
+          "condition": "Enter on break above saucer rim / resistance",
+          "confirmation": "Volume expansion"
+        }
+      ],
+      "exit_rules": [
+        {
+          "stop": "Below saucer low",
+          "target": "Saucer depth projected upward"
+        }
+      ],
+      "reliability": 0.65,
+      "best_timeframes": ["Weekly", "Daily"],
+      "confirmation_signals": ["Long consolidation period", "Volume pattern"],
+      "source": "Technical Analysis - Dr. Kanu Jain"
+    },
+    "pin_bar": {
+      "id": "pin_bar",
+      "name": "Pin Bar",
+      "type": "reversal",
+      "direction": "neutral",
+      "formation": [
+        "Long wick (tail) rejecting a price level",
+        "Small body at opposite end of wick",
+        "Bullish pin: long lower wick at support; Bearish pin: long upper wick at resistance"
+      ],
+      "entry_rules": [
+        {
+          "condition": "Enter on close above pin bar high (bullish) or below pin low (bearish)",
+          "confirmation": "At key support/resistance level"
+        }
+      ],
+      "exit_rules": [
+        {
+          "stop": "Beyond pin bar wick extreme",
+          "target": "1:2 minimum risk-reward"
+        }
+      ],
+      "reliability": 0.62,
+      "best_timeframes": ["1H", "4H", "Daily"],
+      "confirmation_signals": ["Key S/R level", "Trend exhaustion", "Volume spike"],
+      "source": "Complete Guide to Trading - CFI"
+    }
+  },
+  "support_resistance": {
+    "support": {
+      "definition": "Price level where demand is strong enough to prevent further decline",
+      "logic": "As price declines toward support, buyers become more inclined to buy and sellers less inclined to sell",
+      "trading_rules": [
+        "Buy at support with stop below level",
+        "Support becomes resistance after break",
+        "Multiple touches increase level significance"
+      ]
+    },
+    "resistance": {
+      "definition": "Price level where selling is strong enough to prevent further rise",
+      "logic": "As price advances toward resistance, sellers become more inclined to sell",
+      "trading_rules": [
+        "Sell or short at resistance with stop above level",
+        "Resistance becomes support after break",
+        "Volume rejection strengthens level"
+      ]
+    }
+  },
+  "reliability_by_timeframe": {
+    "5m": 0.40,
+    "15m": 0.48,
+    "1H": 0.65,
+    "4H": 0.72,
+    "Daily": 0.78,
+    "Weekly": 0.82
+  }
+}

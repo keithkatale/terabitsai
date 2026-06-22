@@ -1,0 +1,191 @@
+{
+  "meta": {
+    "version": "1.0",
+    "source": "The Handbook of Electronic Trading - Joseph Rosen (2008)"
+  },
+  "strategies": {
+    "vwap": {
+      "id": "vwap",
+      "name": "VWAP Execution",
+      "description": "Volume-Weighted Average Price algorithm slices large orders to match historical volume profile",
+      "objective": "Achieve average execution price close to VWAP benchmark; minimize market impact",
+      "parameters": {
+        "slice_size": "200-500 shares per child order",
+        "time_horizon": "Full trading session or specified window",
+        "participation_rate": "5-20% of market volume"
+      },
+      "best_for": [
+        "Institutional-sized orders",
+        "Benchmark-sensitive execution",
+        "Liquid equities and indices"
+      ],
+      "risks": [
+        "Information leakage if pattern detected",
+        "Underperformance in trending markets",
+        "Requires real-time volume data"
+      ]
+    },
+    "twap": {
+      "id": "twap",
+      "name": "TWAP Execution",
+      "description": "Time-Weighted Average Price algorithm distributes order evenly across time intervals",
+      "objective": "Minimize market impact by spreading execution over time regardless of volume",
+      "parameters": {
+        "intervals": "Equal time slices across execution window",
+        "slice_size": "Total order / number of intervals",
+        "cancel_replace": "Reprice unfilled slices at new levels"
+      },
+      "best_for": [
+        "Illiquid markets with predictable flow",
+        "Orders without volume benchmark requirement",
+        "Reducing timing risk"
+      ],
+      "risks": [
+        "Adverse selection in volatile periods",
+        "No volume adaptation",
+        "Predictable pattern exploitable by HFT"
+      ]
+    },
+    "implementation_shortfall": {
+      "id": "implementation_shortfall",
+      "name": "Implementation Shortfall (Arrival Price)",
+      "description": "Minimize difference between decision price and actual execution price",
+      "objective": "Balance market impact cost vs timing risk; aggressive when price moves favorably",
+      "parameters": {
+        "urgency": "High/medium/low — controls aggression",
+        "risk_aversion": "Trader-specific lambda parameter",
+        "front_loading": "More aggressive early in volatile markets"
+      },
+      "best_for": [
+        "Time-sensitive trades",
+        "Momentum-driven entries",
+        "When arrival price is the benchmark"
+      ],
+      "risks": [
+        "High market impact if too aggressive",
+        "Timing risk if too passive",
+        "Model sensitivity to volatility estimates"
+      ]
+    },
+    "smart_order_routing": {
+      "id": "smart_order_routing",
+      "name": "Smart Order Routing (SOR)",
+      "description": "Route orders across multiple venues to achieve best execution",
+      "objective": "Find best price and liquidity across fragmented markets (ECNs, ATSs, exchanges)",
+      "parameters": {
+        "venues": "Multiple ECNs, dark pools, exchanges",
+        "latency_requirement": "Milliseconds to microseconds",
+        "order_types": "Limit, IOC, hidden"
+      },
+      "best_for": [
+        "Fragmented equity markets",
+        "Best execution regulatory requirement",
+        "Large orders needing liquidity aggregation"
+      ],
+      "risks": [
+        "Latency arbitrage against slow routers",
+        "Dark pool adverse selection",
+        "Regulatory complexity (Reg NMS, MiFID)"
+      ]
+    },
+    "statistical_arbitrage_execution": {
+      "id": "stat_arb_execution",
+      "name": "Statistical Arbitrage (Black Box)",
+      "description": "High-frequency analysis of historical and real-time data for sub-second opportunities",
+      "objective": "Exploit temporary pricing inefficiencies and trend violations",
+      "parameters": {
+        "holding_period": "Seconds or less",
+        "data_inputs": "Historical + real-time tick data",
+        "strategies": "Pairs trading, mean reversion, momentum"
+      },
+      "best_for": [
+        "Highly liquid markets",
+        "Co-located infrastructure",
+        "Market making and HFT firms"
+      ],
+      "risks": [
+        "Technology failure",
+        "Regime change invalidates models",
+        "Competition erodes edge"
+      ]
+    },
+    "iceberg_orders": {
+      "id": "iceberg",
+      "name": "Iceberg / Hidden Orders",
+      "description": "Display only small portion of total order size to avoid signaling intent",
+      "objective": "Reduce market impact by hiding true order size",
+      "parameters": {
+        "display_size": "10-25% of total order",
+        "refresh": "Auto-replenish displayed portion as filled"
+      },
+      "best_for": [
+        "Large block orders",
+        "Thin markets",
+        "Avoiding front-running"
+      ],
+      "risks": [
+        "Partial fills in fast markets",
+        "Detection by sophisticated participants",
+        "Venue-specific availability"
+      ]
+    },
+    "pairs_trading_execution": {
+      "id": "pairs_execution",
+      "name": "Pairs Trading Execution",
+      "description": "Simultaneously long undervalued and short overvalued correlated securities",
+      "objective": "Market-neutral profit from convergence of correlated pair",
+      "parameters": {
+        "correlation_threshold": "> 0.75",
+        "divergence_entry": "> 2 standard deviations",
+        "exit": "Mean reversion to historical spread"
+      },
+      "best_for": [
+        "Market-neutral portfolios",
+        "Hedge fund strategies",
+        "Low directional risk exposure"
+      ],
+      "risks": [
+        "Correlation breakdown",
+        "Leg risk (one side fills, other doesn't)",
+        "Extended divergence before convergence"
+      ]
+    }
+  },
+  "market_structure": {
+    "order_types": {
+      "market": "Immediate execution at best available price",
+      "limit": "Execute at specified price or better",
+      "stop": "Triggered market order when price reaches level",
+      "stop_limit": "Triggered limit order when price reaches level"
+    },
+    "venue_types": {
+      "exchange": "Centralized matching, order book visible",
+      "ecn": "Electronic Communications Network — anonymous order matching",
+      "ats": "Alternative Trading System — broker-dealer operated",
+      "dark_pool": "Hidden liquidity, no pre-trade transparency"
+    },
+    "execution_quality_metrics": {
+      "fill_rate": "Percentage of order filled",
+      "slippage": "Difference between expected and actual fill price",
+      "market_impact": "Price movement caused by the order itself",
+      "latency": "Time from order submission to execution"
+    }
+  },
+  "algorithm_selection": {
+    "by_order_size": {
+      "small": "Direct market or limit order",
+      "medium": "TWAP or VWAP over 30-60 minutes",
+      "large": "Implementation shortfall with iceberg slices"
+    },
+    "by_urgency": {
+      "high": "Implementation shortfall or market order",
+      "medium": "VWAP over session",
+      "low": "TWAP or passive limit orders"
+    },
+    "by_market_condition": {
+      "trending": "Implementation shortfall (front-load)",
+      "range_bound": "VWAP or passive limits",
+      "volatile": "Smaller slices, wider limits, TWAP"
+    }
+  }
+}

@@ -323,6 +323,74 @@ export async function updateConversationSummary(
   if (error) throw new Error(error.message);
 }
 
+/** Append a new summary section to context_summary (accumulates across session saves). */
+export async function appendConversationSummarySection(
+  conversationId: string,
+  userId: string,
+  sectionTitle: string,
+  sectionBody: string,
+) {
+  const supabase = await createSupabaseServerClient();
+  const { data: conv } = await supabase
+    .from("conversations")
+    .select("context_summary, session_number")
+    .eq("id", conversationId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (!conv) throw new Error("Conversation not found");
+
+  const existing = (conv.context_summary as string | null)?.trim() ?? "";
+  const block = `## ${sectionTitle}\n${sectionBody.trim()}`;
+  const merged = existing ? `${existing}\n\n${block}` : block;
+  const nextSession = (conv.session_number ?? 1) + 1;
+
+  const { error } = await supabase
+    .from("conversations")
+    .update({
+      context_summary: merged.slice(0, 12_000),
+      session_number: nextSession,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", conversationId)
+    .eq("user_id", userId);
+
+  if (error) throw new Error(error.message);
+  return { contextSummary: merged.slice(0, 12_000), sessionNumber: nextSession };
+}
+
+/** Summarize current session segment, save to context_summary, insert visible divider — same conversation. */
+export async function archiveSessionInPlace(
+  conversationId: string,
+  userId: string,
+  summaryText: string,
+) {
+  const dividerId = randomUUID();
+  const now = new Date().toLocaleString();
+  const { sessionNumber } = await appendConversationSummarySection(
+    conversationId,
+    userId,
+    `Session saved ${now}`,
+    summaryText,
+  );
+
+  await appendConversationMessages(conversationId, userId, [
+    {
+      id: dividerId,
+      role: "system",
+      parts: [
+        {
+          type: "session_divider",
+          text: summaryText,
+          payload: { sessionNumber, savedAt: new Date().toISOString() },
+        },
+      ],
+    },
+  ]);
+
+  return { dividerId, sessionNumber, summary: summaryText };
+}
+
 export async function getActiveGoals(userId: string, mode: TradingMode) {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
@@ -373,7 +441,7 @@ export function buildSessionContextPrompt(context: Awaited<ReturnType<typeof get
       lines.push(`- Deadline: ${balanceGoal.deadline_at}`);
     }
     lines.push(
-      `- Autonomous trading: ${balanceGoal.autonomous_trading ? "ENABLED" : "disabled (proposals only)"}`,
+      `- Autonomous trading: ${balanceGoal.autonomous_trading ? "ENABLED — Command AI executes trades automatically" : "disabled (confirmation required)"}`,
     );
     lines.push(
       "Keep working toward this goal. User may ask side questions — answer them, but stay goal-aware.",
@@ -428,14 +496,16 @@ export function buildGoalMissionPrompt(
     const target =
       balanceGoal.target_balance ?? Number(balanceGoal.goal_value?.target ?? 0);
 
-    return `PRIMARY MISSION — GOAL-DRIVEN WEALTH MANAGER
+    return `PRIMARY MISSION — GOAL-DRIVEN WEALTH MANAGER (FULL AUTONOMY)
 Your #1 job is helping the user reach their balance target: $${initial.toFixed(2)} → $${target.toFixed(2)}.
 - Status: ${balanceGoal.status} | Progress: ${balanceGoal.progress_pct ?? 0}%
-- Every reply should advance this goal: progress update, next trade, risk check, or milestone.
-- Call manage_goals(check_progress) when discussing portfolio health; show the GoalProgressWidget.
-- Propose trades only when they meaningfully move toward the target.
-- Background cron monitors the goal every 2 minutes until achieved or failed.
-- User may ask side questions — answer them, but always tie back to the goal.
+- Autonomous trading: ${balanceGoal.autonomous_trading ? "ENABLED — you EXECUTE trades via broker_action without asking permission" : "disabled — propose trades only"}
+- When autonomous is ON: call broker_action (get_quote → place_order / close_position). Trades execute automatically within risk limits.
+- NEVER say you cannot execute trades, cannot access the brokerage, or need manual placement when autonomous is enabled.
+- Call get_account_state and manage_goals(check_progress) when discussing portfolio health.
+- Report what you DID (opened, closed, sized) — act first, explain after.
+- Background Wealth Monitor directs you every ~2 minutes — treat those messages as orders to execute.
+- User may ask side questions — answer them, but stay goal-aware.
 - When achieved, celebrate and prompt for a new balance target.`;
   }
 

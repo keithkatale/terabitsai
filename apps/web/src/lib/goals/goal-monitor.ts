@@ -1,16 +1,15 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { evaluateBalanceGoal } from "@/lib/goals/goal-evaluator";
-import { decideNextAction, toExtendedGoal } from "@/lib/autonomous/decide-next-action";
-import { runOrchestratorTurn } from "@/lib/autonomous/orchestrator";
-import { logAgentActivity } from "@/lib/autonomous/activity-log";
+import { toExtendedGoal } from "@/lib/autonomous/decide-next-action";
+import { runWealthMonitorCycle } from "@/lib/autonomous/wealth-monitor";
 import type {
   GoalEvaluationAction,
   GoalEvaluation,
   UserGoal,
 } from "@/lib/goals/types";
-import type { DecisionOutcome } from "@/lib/autonomous/types";
 
 const MAX_CONSECUTIVE_LOSSES = 3;
+const CYCLE_COOLDOWN_MS = 30_000;
 
 async function logGoalEvaluation(
   goalId: string,
@@ -76,20 +75,19 @@ async function applyGoalStatusUpdate(
   await admin.from("user_goals").update(updates).eq("id", goal.id);
 }
 
-function mapOutcomeToAction(
-  outcomeType: string,
-  tradeId?: string
-): { actionTaken: GoalEvaluationAction; tradeId?: string } {
-  switch (outcomeType) {
-    case "execute":
-      return { actionTaken: "trade_executed", tradeId };
-    case "queue_confirm":
-      return { actionTaken: "trade_proposed", tradeId };
-    case "paused":
-      return { actionTaken: "autonomous_paused" };
-    default:
-      return { actionTaken: "none" };
-  }
+async function isCycleCooldown(goalId: string): Promise<boolean> {
+  const admin = createSupabaseAdminClient();
+  const { data } = await admin
+    .from("agent_activity")
+    .select("created_at")
+    .eq("goal_id", goalId)
+    .eq("action", "cycle_start")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!data?.created_at) return false;
+  return Date.now() - new Date(data.created_at).getTime() < CYCLE_COOLDOWN_MS;
 }
 
 export async function processActiveGoals(limit = 50) {
@@ -106,7 +104,7 @@ export async function processActiveGoals(limit = 50) {
   let evaluated = 0;
   let achieved = 0;
   let failed = 0;
-  let tradesExecuted = 0;
+  let cyclesRun = 0;
 
   for (const row of goals ?? []) {
     const goal = toExtendedGoal(row as Record<string, unknown>);
@@ -114,7 +112,6 @@ export async function processActiveGoals(limit = 50) {
 
     let actionTaken: GoalEvaluationAction = "none";
     let reasoning = `Progress ${evaluation.progressPct.toFixed(1)}% — ${evaluation.status}`;
-    let tradeId: string | undefined;
 
     if (evaluation.status === "achieved") {
       actionTaken = "goal_achieved";
@@ -125,56 +122,34 @@ export async function processActiveGoals(limit = 50) {
       reasoning = evaluation.failureReason ?? "Goal failed";
       failed += 1;
     } else if (goal.autonomous_trading && goal.status !== "paused" && !goal.kill_switch) {
-      try {
-        let outcome: DecisionOutcome;
-        let narration: string;
-        let cycleId: string;
-
-        const cycleResult = await decideNextAction(row as Record<string, unknown>);
-        outcome = cycleResult.outcome;
-        narration = cycleResult.narration;
-        cycleId = cycleResult.cycleId;
-
-        const mapped = mapOutcomeToAction(outcome.type, "tradeId" in outcome ? outcome.tradeId : undefined);
-        actionTaken = mapped.actionTaken;
-        tradeId = mapped.tradeId;
-        reasoning = narration;
-        if (actionTaken === "trade_executed") tradesExecuted += 1;
-
-        await logAgentActivity({
-          userId: goal.user_id,
-          goalId: goal.id,
-          cycleId,
-          phase: "report",
-          action: "cycle_end",
-          reasoning: narration,
-        });
-
+      if (await isCycleCooldown(goal.id)) {
+        reasoning = "Monitor cycle already running";
+      } else {
         try {
-          await runOrchestratorTurn({
+          const result = await runWealthMonitorCycle({
             goalRow: row as Record<string, unknown>,
-            cycleId,
-            outcome,
-            narration,
           });
-        } catch (orchErr) {
-          console.warn("[goal-monitor] orchestrator turn failed:", orchErr);
+          reasoning = result.analysis?.summary ?? "Wealth monitor cycle complete";
+          cyclesRun += 1;
+        } catch (err) {
+          reasoning = err instanceof Error ? err.message : "Wealth monitor cycle failed";
+          actionTaken = "none";
         }
-      } catch (err) {
-        reasoning = err instanceof Error ? err.message : "Autonomous cycle failed";
-        actionTaken = "none";
       }
     }
 
-    await logGoalEvaluation(goal.id, evaluation, actionTaken, reasoning, tradeId);
+    await logGoalEvaluation(goal.id, evaluation, actionTaken, reasoning);
     await applyGoalStatusUpdate(goal, evaluation, actionTaken);
     evaluated += 1;
   }
 
-  return { evaluated, achieved, failed, tradesExecuted };
+  return { evaluated, achieved, failed, cyclesRun };
 }
 
-export async function processGoalById(goalId: string) {
+export async function processGoalById(
+  goalId: string,
+  options?: { userId?: string; force?: boolean },
+) {
   const admin = createSupabaseAdminClient();
   const { data: row, error } = await admin
     .from("user_goals")
@@ -185,20 +160,35 @@ export async function processGoalById(goalId: string) {
   if (error) throw new Error(error.message);
   if (!row) return null;
 
-  const { outcome, narration, cycleId } = await decideNextAction(row as Record<string, unknown>);
-
-  try {
-    await runOrchestratorTurn({
-      goalRow: row as Record<string, unknown>,
-      cycleId,
-      outcome,
-      narration,
-    });
-  } catch (orchErr) {
-    console.warn("[goal-monitor] orchestrator turn failed:", orchErr);
+  if (options?.userId && row.user_id !== options.userId) {
+    throw new Error("Unauthorized");
   }
 
-  return { outcome, narration };
+  const goal = toExtendedGoal(row as Record<string, unknown>);
+
+  if (!goal.autonomous_trading || goal.kill_switch || goal.status === "paused") {
+    return { skipped: true, reason: "Autonomous trading not active" };
+  }
+
+  if (!options?.force && (await isCycleCooldown(goalId))) {
+    return { skipped: true, reason: "Cycle already running" };
+  }
+
+  const evaluation = await evaluateBalanceGoal(goal);
+
+  const result = await runWealthMonitorCycle({
+    goalRow: row as Record<string, unknown>,
+  });
+
+  await logGoalEvaluation(
+    goal.id,
+    evaluation,
+    "none",
+    result.analysis?.summary ?? "Wealth monitor cycle",
+  );
+  await applyGoalStatusUpdate(goal, evaluation, "none");
+
+  return result;
 }
 
 export async function processPendingEvents(limit = 20) {

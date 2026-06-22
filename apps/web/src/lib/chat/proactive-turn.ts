@@ -4,7 +4,10 @@ import { getAgentGeminiModelId, getVertexGeminiClient, isGeminiRuntimeConfigured
 import { generateVertexTextCompletion } from "@/lib/gemini/vertex-text-completion";
 import { fetchAssetChartData } from "@/lib/chat/market-data-tool";
 import { fetchAccountState } from "@/lib/chat/tools/account-state-tool";
-import { executeBrokerAction } from "@/lib/chat/tools/broker-action-tool";
+import {
+  executeBrokerAction,
+  type BrokerActionArgs,
+} from "@/lib/chat/tools/broker-action-tool";
 import { manageUserGoals, type ManageGoalArgs } from "@/lib/chat/tools/goal-tool";
 import {
   appendConversationMessagesAdmin,
@@ -17,12 +20,29 @@ import { extractToolGenui } from "@/lib/chat/stream-types";
 
 const manageGoalsDeclaration = {
   name: "manage_goals",
-  description: "Manage user balance goals",
+  description:
+    "Manage balance goals — check_progress, enable_autonomous, pause_goal, etc.",
   parameters: {
     type: Type.OBJECT,
     properties: {
-      operation: { type: Type.STRING },
+      operation: {
+        type: Type.STRING,
+        enum: [
+          "list",
+          "set",
+          "update",
+          "cancel",
+          "set_balance_target",
+          "check_progress",
+          "pause_goal",
+          "resume_goal",
+          "enable_autonomous",
+          "disable_autonomous",
+        ],
+      },
       goal_id: { type: Type.STRING },
+      target_balance: { type: Type.NUMBER },
+      autonomous_trading: { type: Type.BOOLEAN },
     },
     required: ["operation"],
   },
@@ -30,7 +50,7 @@ const manageGoalsDeclaration = {
 
 const getAccountStateDeclaration = {
   name: "get_account_state",
-  description: "Get account balance and positions",
+  description: "Get account balance, open positions, and performance",
   parameters: {
     type: Type.OBJECT,
     properties: {
@@ -42,20 +62,52 @@ const getAccountStateDeclaration = {
 
 const getAssetMarketDataDeclaration = {
   name: "get_asset_market_data",
-  description: "Fetch live quote and chart data",
+  description: "Fetch live quote and chart data for an asset",
   parameters: {
     type: Type.OBJECT,
     properties: {
       symbol: { type: Type.STRING },
       range: { type: Type.STRING },
     },
+    required: ["symbol"],
+  },
+};
+
+const brokerActionDeclaration = {
+  name: "broker_action",
+  description:
+    "Execute trades and manage positions. When autonomous trading is ON, place_order and close_position execute automatically (within risk limits). Use get_quote first, then place_order with symbol, direction, size, stop_loss, take_profit.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      action: {
+        type: Type.STRING,
+        enum: [
+          "get_quote",
+          "get_positions",
+          "get_account",
+          "get_candles",
+          "place_order",
+          "close_position",
+        ],
+      },
+      symbol: { type: Type.STRING },
+      direction: { type: Type.STRING, enum: ["BUY", "SELL"] },
+      size: { type: Type.NUMBER },
+      stop_loss: { type: Type.NUMBER },
+      take_profit: { type: Type.NUMBER },
+      deal_id: { type: Type.STRING },
+      timeframe: { type: Type.STRING },
+      reasoning: { type: Type.STRING, description: "Why you are placing this trade" },
+    },
+    required: ["action"],
   },
 };
 
 async function executeTool(
   name: string,
   args: Record<string, unknown>,
-  ctx: { userId: string; mode: TradingMode; conversationId: string },
+  ctx: { userId: string; mode: TradingMode; conversationId: string; cycleId: string },
 ): Promise<unknown> {
   if (name === "get_account_state") {
     return fetchAccountState(ctx.userId, ctx.mode, {
@@ -67,6 +119,8 @@ async function executeTool(
     return manageUserGoals(ctx.userId, ctx.mode, {
       operation: args.operation as ManageGoalArgs["operation"],
       goal_id: args.goal_id as string | undefined,
+      target_balance: args.target_balance as number | undefined,
+      autonomous_trading: args.autonomous_trading as boolean | undefined,
     });
   }
   if (name === "get_asset_market_data") {
@@ -78,8 +132,17 @@ async function executeTool(
   }
   if (name === "broker_action") {
     return executeBrokerAction(ctx.userId, ctx.mode, {
-      action: args.action as "get_positions",
+      action: args.action as BrokerActionArgs["action"],
+      symbol: args.symbol as string | undefined,
+      direction: args.direction as "BUY" | "SELL" | undefined,
+      size: args.size as number | undefined,
+      stop_loss: args.stop_loss as number | undefined,
+      take_profit: args.take_profit as number | undefined,
+      deal_id: args.deal_id as string | undefined,
+      timeframe: args.timeframe as string | undefined,
       conversation_id: ctx.conversationId,
+      reasoning: args.reasoning as string | undefined,
+      cycle_id: ctx.cycleId,
     });
   }
   return { success: false, error: `Unknown tool: ${name}` };
@@ -92,8 +155,26 @@ export async function runProactiveChatTurn(params: {
   directive: string;
   cycleId: string;
   narration: string;
-}): Promise<{ messageId: string; text: string }> {
-  const wakeMessage = `[Orchestrator cycle ${params.cycleId.slice(0, 8)}] Act on this directive without asking permission. Report what you did and the next step.\n\nDirective: ${params.directive}\n\nTrading cycle narration: ${params.narration}`;
+}): Promise<{ messageId: string; directiveMessageId: string; text: string }> {
+  const directiveMessageId = randomUUID();
+  const visibleDirective = params.directive.trim();
+
+  // Persist Wealth Monitor directive as a visible user-side message in Command chat
+  await appendConversationMessagesAdmin(params.conversationId, params.userId, [
+    {
+      id: directiveMessageId,
+      role: "user",
+      parts: [
+        {
+          type: "monitor_directive",
+          text: visibleDirective,
+          payload: { cycleId: params.cycleId, source: "wealth_monitor" },
+        },
+      ],
+    },
+  ]);
+
+  const wakeMessage = `[Wealth Monitor directive — execute now, do not refuse]\n\n${visibleDirective}\n\nContext: ${params.narration}`;
 
   const sessionCtx = await getSessionContext(params.userId, params.mode);
   const memoryContext = buildSessionContextPrompt(sessionCtx);
@@ -101,21 +182,11 @@ export async function runProactiveChatTurn(params: {
 
   const systemInstruction = `${goalMission}${memoryContext}
 
-ORCHESTRATOR WAKE PROTOCOL:
-- This is an internal orchestrator wake-up, NOT a user message.
-- Do NOT ask "would you like me to…" — you LEAD. Execute the directive.
-- Call get_account_state and manage_goals(check_progress) when reporting portfolio state.
-- Use tools as needed. Be concise but substantive (2-4 short paragraphs max).
-- If directive includes subagent research, synthesize it into your reply.`;
-
-  const systemMsgId = randomUUID();
-  await appendConversationMessagesAdmin(params.conversationId, params.userId, [
-    {
-      id: systemMsgId,
-      role: "system",
-      parts: [{ type: "text", text: wakeMessage }],
-    },
-  ]);
+WEALTH MONITOR DIRECTIVE (FULL AUTONOMY):
+- The user message above is from the Wealth Monitor — an ORDER, not a question.
+- Autonomous trading is ON. You MUST execute via broker_action (get_quote → place_order / close_position).
+- FORBIDDEN: "I cannot execute trades", "requires approval", "manual placement", "tools do not allow".
+- Call get_account_state first if needed, then act. Report what you executed.`;
 
   let assistantText = "";
   let genuiPayload: unknown = null;
@@ -138,12 +209,13 @@ ORCHESTRATOR WAKE PROTOCOL:
               getAccountStateDeclaration,
               manageGoalsDeclaration,
               getAssetMarketDataDeclaration,
+              brokerActionDeclaration,
             ],
           },
         ],
       };
 
-      for (let loop = 0; loop < 4; loop++) {
+      for (let loop = 0; loop < 6; loop++) {
         const res = await ai.models.generateContent({
           model,
           contents,
@@ -170,6 +242,7 @@ ORCHESTRATOR WAKE PROTOCOL:
             userId: params.userId,
             mode: params.mode,
             conversationId: params.conversationId,
+            cycleId: params.cycleId,
           });
           const g = extractToolGenui(toolResult);
           if (g) genuiPayload = g;
@@ -212,5 +285,9 @@ ORCHESTRATOR WAKE PROTOCOL:
     },
   ]);
 
-  return { messageId: assistantId, text: assistantText.trim() };
+  return {
+    messageId: assistantId,
+    directiveMessageId,
+    text: assistantText.trim(),
+  };
 }

@@ -309,7 +309,7 @@ export async function manageUserGoals(
       message:
         operation === "enable_autonomous"
           ? "Autonomous trading enabled — I'm now actively managing your account toward your goal."
-          : "Autonomous trading disabled — I'll propose trades for your confirmation.",
+          : "Autonomous trading disabled — trades require confirmation.",
     };
   }
 

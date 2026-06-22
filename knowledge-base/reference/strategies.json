@@ -140,6 +140,128 @@
       }
     }
   },
+  "pdf_sourced_strategies": {
+    "dow_theory_trend": {
+      "description": "Trade in direction of primary Dow trend; use secondary corrections for entries",
+      "entry": {
+        "indicators": ["trend identification", "support/resistance"],
+        "conditions": ["Primary trend confirmed", "Enter on secondary correction completion"]
+      },
+      "exit": {
+        "stops": "Below secondary correction low (bullish)",
+        "targets": "Prior primary trend extension"
+      },
+      "win_rate": 0.55,
+      "best_in": ["Established trends"],
+      "timeframe": "Daily+",
+      "markets": ["Stocks", "Indices", "Forex"],
+      "source": "Technical Analysis - Dr. Kanu Jain"
+    },
+    "elliott_wave_3": {
+      "description": "Enter at end of wave 2 for wave 3 extension — strongest impulse wave",
+      "entry": {
+        "indicators": ["Fibonacci retracement", "wave count"],
+        "conditions": ["Wave 2 complete at 50-61.8% retracement", "Reversal confirmation"]
+      },
+      "exit": {
+        "stops": "Below wave 2 low",
+        "targets": "161.8% extension of wave 1"
+      },
+      "win_rate": 0.58,
+      "best_in": ["Clear impulse structure"],
+      "timeframe": "4H+",
+      "markets": ["Stocks", "Forex", "Crypto"]
+    },
+    "art_trend_trading": {
+      "description": "ART pyramid point (P/MP) entries in trend direction with higher-timeframe filter",
+      "entry": {
+        "indicators": ["ART pyramid points", "volume", "price bars"],
+        "conditions": ["P signal in trend direction", "Higher timeframe aligned"]
+      },
+      "exit": {
+        "stops": "ATR-based or below reversal bar",
+        "targets": "Next pyramid point or trailing stop"
+      },
+      "win_rate": 0.52,
+      "best_in": ["Trending markets"],
+      "timeframe": "15m - Daily",
+      "markets": ["Stocks", "Futures", "Forex", "Crypto"],
+      "source": "ART of Trading - McDowell"
+    },
+    "art_countertrend": {
+      "description": "1B/2B reversal bar signals at support/resistance for counter-trend entries",
+      "entry": {
+        "indicators": ["ART reversal bars", "support/resistance"],
+        "conditions": ["1B or 2B signal at key level", "Not against strong trend without filter"]
+      },
+      "exit": {
+        "stops": "Beyond reversal bar extreme",
+        "targets": "Opposite side of range or next S/R"
+      },
+      "win_rate": 0.48,
+      "best_in": ["Range-bound markets", "Clear S/R levels"],
+      "timeframe": "15m - 4H",
+      "markets": ["All chartable markets"],
+      "source": "ART of Trading - McDowell"
+    },
+    "art_scalping": {
+      "description": "Quick trades on minor ART signals within established trend",
+      "entry": {
+        "indicators": ["Minor pyramid points", "1B signals"],
+        "conditions": ["Trend context confirmed", "Tight risk defined"]
+      },
+      "exit": {
+        "stops": "Very tight — 1 ATR or reversal bar",
+        "targets": "Quick 1:1 to 1:2"
+      },
+      "win_rate": 0.55,
+      "best_in": ["Liquid markets", "Active sessions"],
+      "timeframe": "1m - 15m",
+      "markets": ["Forex", "Crypto", "Indices"],
+      "source": "ART of Trading - McDowell"
+    },
+    "pin_bar_scalping": {
+      "description": "Scalp reversals at key levels using pin bar rejection wicks",
+      "entry": {
+        "indicators": ["pin bar", "support/resistance"],
+        "conditions": ["Pin bar at S/R", "Enter on break of pin high/low"]
+      },
+      "exit": {
+        "stops": "Beyond pin wick",
+        "targets": "1:2 minimum"
+      },
+      "win_rate": 0.58,
+      "best_in": ["Key levels", "Session opens"],
+      "timeframe": "15m - 1H",
+      "markets": ["Forex", "Crypto", "Commodities"],
+      "source": "Complete Guide to Trading - CFI"
+    },
+    "three_trend_following": {
+      "description": "Simplest trend following: MA crossover, breakout, and higher-high/higher-low",
+      "variants": {
+        "ma_crossover": "Fast MA crosses slow MA",
+        "breakout": "Price breaks N-period high/low",
+        "structure": "Series of higher highs and higher lows"
+      },
+      "win_rate": 0.45,
+      "best_in": ["Strong trends"],
+      "timeframe": "4H+",
+      "source": "Complete Guide to Trading - CFI"
+    },
+    "vwap_execution": {
+      "description": "Slice large orders to match volume profile — institutional execution",
+      "entry": {
+        "indicators": ["VWAP", "volume profile"],
+        "conditions": ["Participation rate 5-20% of volume"]
+      },
+      "exit": {
+        "stops": "N/A — execution strategy",
+        "targets": "VWAP benchmark"
+      },
+      "best_in": ["Large orders", "Liquid markets"],
+      "source": "Handbook of Electronic Trading"
+    }
+  },
   "strategy_comparison": {
     "by_win_rate": [
       {"strategy": "Pairs trading", "win_rate": 0.70},

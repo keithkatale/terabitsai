@@ -124,6 +124,54 @@
         "optimal_timeframe": ["4H", "Daily"],
         "combinations": ["Moving Averages", "Support/Resistance"]
       }
+    },
+    "adx": {
+      "name": "Average Directional Index",
+      "formula": "ADX measures trend strength regardless of direction; +DI and -DI show direction",
+      "parameters": {
+        "period": "Typically 14"
+      },
+      "signals": {
+        "strong_trend": "ADX > 25 indicates trending market",
+        "very_strong_trend": "ADX > 40 indicates powerful trend",
+        "weak_trend": "ADX < 20 indicates range/choppy market",
+        "bullish": "+DI crosses above -DI with ADX rising",
+        "bearish": "-DI crosses above +DI with ADX rising"
+      },
+      "best_for": ["Trend strength filter", "Regime detection", "Strategy selection"],
+      "interpretation": {
+        "trending": "ADX > 25 — use trend-following strategies",
+        "ranging": "ADX < 20 — use mean-reversion strategies"
+      },
+      "win_rate": 0.60,
+      "optimal_timeframe": ["1H", "4H", "Daily"],
+      "combinations": ["EMA", "MACD", "Support/Resistance"],
+      "source": "Complete Guide to Trading - CFI"
+    },
+    "trin": {
+      "name": "TRIN (Arms Index)",
+      "description": "Ratio of advancing/declining issues to advancing/declining volume",
+      "signals": {
+        "oversold": "TRIN > 1.5 — potential market bottom",
+        "overbought": "TRIN < 0.7 — potential market top",
+        "neutral": "TRIN near 1.0"
+      },
+      "best_for": ["Market breadth analysis", "Short-term sentiment"],
+      "optimal_timeframe": ["Intraday", "Daily"],
+      "source": "Complete Guide to Trading - CFI"
+    },
+    "crossover": {
+      "name": "Indicator Crossover",
+      "description": "Point where price or indicator intersects another line",
+      "signals": {
+        "ma_crossover_bullish": "Fast MA crosses above slow MA",
+        "ma_crossover_bearish": "Fast MA crosses below slow MA",
+        "macd_crossover": "MACD line crosses signal line",
+        "rsi_50_cross": "RSI crosses 50 — momentum shift"
+      },
+      "best_for": ["Trend change detection", "Entry timing"],
+      "false_signals": "Many whipsaws in ranging markets — filter with ADX > 25",
+      "source": "Technical Analysis - Dr. Kanu Jain"
     }
   },
   "indicator_combinations": {

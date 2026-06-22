@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { loadConversationMessages } from "@/lib/chat/conversation-persistence";
 
 export const dynamic = "force-dynamic";
 
@@ -32,36 +31,45 @@ export async function GET(request: Request) {
     return NextResponse.json({ messages: [], cycleEvents: [] });
   }
 
-  let msgQuery = supabase
+  let query = supabase
     .from("chat_messages")
     .select("id, role, parts, tool_pods, sequence, created_at")
     .eq("conversation_id", activeConvId)
-    .eq("role", "assistant")
     .order("created_at", { ascending: true });
 
   if (since) {
-    msgQuery = msgQuery.gt("created_at", since);
+    query = query.gt("created_at", since);
   }
 
-  const [{ data: messages }, { data: cycleEvents }] = await Promise.all([
-    msgQuery,
+  const [{ data: rows }, { data: cycleEvents }] = await Promise.all([
+    query,
     supabase
       .from("agent_activity")
       .select("id, action, reasoning, created_at, cycle_id")
       .eq("user_id", user.id)
-      .in("action", ["orchestrator_wake", "orchestrator_skip", "cycle_end"])
+      .in("action", [
+        "orchestrator_wake",
+        "orchestrator_skip",
+        "cycle_end",
+        "monitor_directive",
+        "monitor_followup",
+      ])
       .order("created_at", { ascending: false })
       .limit(since ? 10 : 3),
   ]);
 
-  const filtered = (messages ?? []).filter((m) => {
+  const messages = (rows ?? []).filter((m) => {
     if (!since) return false;
-    return new Date(m.created_at).getTime() > new Date(since).getTime();
+    const parts = (m.parts ?? []) as Array<{ type?: string }>;
+    if (m.role === "assistant") return true;
+    if (m.role === "user" && parts.some((p) => p.type === "monitor_directive")) return true;
+    if (m.role === "system" && parts.some((p) => p.type === "session_divider")) return true;
+    return false;
   });
 
   return NextResponse.json({
     conversationId: activeConvId,
-    messages: filtered.map((m) => ({
+    messages: messages.map((m) => ({
       id: m.id,
       role: m.role,
       parts: m.parts,

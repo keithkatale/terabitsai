@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, Loader2, Pause, Play, Power, Settings2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatCountdown } from "@/lib/autonomous/cycle-config";
+import { triggerWealthMonitorCycle } from "@/lib/autonomous/trigger-client";
 import { useAppTab } from "@/contexts/app-tab-context";
 
 type AttentionPayload = {
@@ -11,8 +12,11 @@ type AttentionPayload = {
   cycleIntervalLabel: string;
   lastAttentionAt: string | null;
   nextCycleAt: string | null;
+  nextWakeAt?: string | null;
   remainingMs: number;
+  remainingLabel?: string;
   attentionState: "inactive" | "watching" | "checking" | "paused" | "stale";
+  monitorRunning?: boolean;
   autonomousActive: boolean;
   workerStatus: string;
   goal?: { id: string; status: string; autonomousTrading: boolean; killSwitch: boolean } | null;
@@ -26,6 +30,7 @@ export function OrchestratorCycleControls() {
   const [open, setOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const tickFiredRef = useRef(false);
+  const triggerInFlightRef = useRef(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
   const refreshAttention = useCallback(async () => {
@@ -48,7 +53,7 @@ export function OrchestratorCycleControls() {
         /* ignore */
       }
     };
-    const poll = window.setInterval(() => void refreshAttention(), 30_000);
+    const poll = window.setInterval(() => void refreshAttention(), 5_000);
     return () => {
       es.close();
       window.clearInterval(poll);
@@ -72,9 +77,19 @@ export function OrchestratorCycleControls() {
       const rem = Math.max(0, nextMs - Date.now());
       setRemainingMs(rem);
       setProgress(Math.min(100, ((interval - rem) / interval) * 100));
-      if (rem <= 0 && !tickFiredRef.current) {
+      if (
+        rem <= 0 &&
+        !tickFiredRef.current &&
+        !triggerInFlightRef.current &&
+        attention.autonomousActive
+      ) {
         tickFiredRef.current = true;
-        void refreshAttention();
+        triggerInFlightRef.current = true;
+        void triggerWealthMonitorCycle(attention.goal?.id)
+          .then(() => void refreshAttention())
+          .finally(() => {
+            triggerInFlightRef.current = false;
+          });
       }
     };
 
@@ -165,9 +180,11 @@ export function OrchestratorCycleControls() {
         }
         title={
           isChecking
-            ? "Orchestrator checking markets"
+            ? attention.monitorRunning
+              ? "Wealth Monitor analyzing & directing Command"
+              : "Orchestrator checking markets"
             : showCountdown
-              ? `Next cycle in ${formatCountdown(remainingMs)}`
+              ? `Next wake in ${formatCountdown(remainingMs)}`
               : "Autonomous trading paused"
         }
       >

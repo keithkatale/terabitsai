@@ -16,7 +16,7 @@ import { AssetLogoIcon } from "@/components/ui/asset-logo";
 import type { ChatToolPod } from "@/lib/chat/stream-types";
 
 export interface MessagePart {
-  type: "reasoning" | "text" | "trade-execution" | "genui" | "quant-ui";
+  type: "reasoning" | "text" | "trade-execution" | "genui" | "quant-ui" | "monitor_directive" | "session_divider";
   text?: string;
   payload?: unknown;
 }
@@ -320,11 +320,48 @@ export function ChatMessage({
   guestSignInCta?: boolean;
   rootRef?: React.Ref<HTMLDivElement | null>;
 }) {
+  const sessionDivider = message.parts.find((p) => p.type === "session_divider");
+  if (sessionDivider?.text) {
+    const sessionNum = (sessionDivider.payload as { sessionNumber?: number })?.sessionNumber;
+    return (
+      <div ref={rootRef} className="my-6 w-full animate-fade-in">
+        <div className="flex items-center gap-3">
+          <div className="h-px flex-1 bg-gradient-to-r from-transparent via-cyan-500/40 to-transparent" />
+          <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-cyan-400/80">
+            {sessionNum ? `Session ${sessionNum} saved` : "Session saved"}
+          </span>
+          <div className="h-px flex-1 bg-gradient-to-r from-transparent via-cyan-500/40 to-transparent" />
+        </div>
+        <p className="mx-auto mt-2 max-w-md text-center text-[11px] leading-relaxed text-zinc-500">
+          {sessionDivider.text.slice(0, 280)}
+          {sessionDivider.text.length > 280 ? "…" : ""}
+        </p>
+      </div>
+    );
+  }
+
   if (message.role === "user") {
-    const userText = message.parts
-      .filter((p) => p.type === "text")
-      .map((p) => p.text ?? "")
-      .join("");
+    const monitorPart = message.parts.find((p) => p.type === "monitor_directive");
+    const userText = monitorPart?.text
+      ? monitorPart.text
+      : message.parts
+          .filter((p) => p.type === "text")
+          .map((p) => p.text ?? "")
+          .join("");
+
+    if (monitorPart) {
+      return (
+        <div ref={rootRef} className="flex justify-end w-full animate-fade-in">
+          <div className="max-w-[85%] sm:max-w-[640px] rounded-xl border border-cyan-500/30 bg-cyan-950/40 px-3.5 py-2.5 text-sm leading-relaxed text-zinc-100">
+            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-cyan-400">
+              Wealth Monitor → Command
+            </p>
+            <div className="whitespace-pre-wrap">{userText}</div>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div ref={rootRef} className="flex justify-end w-full animate-fade-in">
         <div className="max-w-[85%] sm:max-w-[640px] whitespace-pre-wrap rounded-xl border border-zinc-800 bg-zinc-900/60 px-3.5 py-2.5 text-sm leading-relaxed text-zinc-200">

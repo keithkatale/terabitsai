@@ -147,6 +147,54 @@
     "with_moving_average": 0.73,
     "multiple_confirmations": 0.85
   },
+  "chart_patterns": {
+    "head_and_shoulders": {
+      "description": "Three-peak reversal pattern signaling downward move after neckline break",
+      "signals": ["Bearish reversal", "Trend exhaustion at peak"],
+      "reliability": 0.72,
+      "best_after": "Extended uptrend",
+      "location": "Market tops",
+      "confirmation": "Neckline break with volume",
+      "win_rate": 0.68,
+      "source": "Technical Analysis - Dr. Kanu Jain"
+    },
+    "double_top": {
+      "description": "M-shaped pattern with two peaks at similar level",
+      "signals": ["Bearish reversal", "Buyer exhaustion"],
+      "reliability": 0.68,
+      "best_after": "Uptrend weakening",
+      "location": "Resistance zones",
+      "confirmation": "Break below valley",
+      "win_rate": 0.65
+    },
+    "double_bottom": {
+      "description": "W-shaped pattern with two troughs at similar level",
+      "signals": ["Bullish reversal", "Seller exhaustion"],
+      "reliability": 0.70,
+      "best_after": "Downtrend ending",
+      "location": "Support zones",
+      "confirmation": "Break above peak between troughs",
+      "win_rate": 0.67
+    },
+    "ascending_triangle": {
+      "description": "Flat top resistance with rising support — bullish continuation",
+      "signals": ["Bullish breakout likely"],
+      "reliability": 0.66,
+      "win_rate": 0.64
+    },
+    "descending_triangle": {
+      "description": "Flat bottom support with falling resistance — bearish continuation",
+      "signals": ["Bearish breakdown likely"],
+      "reliability": 0.65,
+      "win_rate": 0.63
+    },
+    "cup_and_handle": {
+      "description": "Rounded bottom (cup) with small consolidation (handle) — bullish continuation",
+      "signals": ["Trend continuation after consolidation"],
+      "reliability": 0.68,
+      "win_rate": 0.66
+    }
+  },
   "pattern_optimization": {
     "reliability_factors": [
       "Higher timeframe (1H+ better than 15min)",

@@ -19,6 +19,10 @@ import { manageUserGoals, type ManageGoalArgs } from "@/lib/chat/tools/goal-tool
 import { fetchFundamentals, fetchMacroData } from "@/lib/chat/tools/macro-tools";
 import { scheduleAgentTask, type ScheduleTaskArgs } from "@/lib/chat/tools/schedule-task-tool";
 import {
+  executeQueryTradingKnowledge,
+  queryTradingKnowledgeDeclaration,
+} from "@/lib/chat/tools/knowledge-tool";
+import {
   buildSessionContextPrompt,
   buildGoalMissionPrompt,
   getSessionContext,
@@ -215,7 +219,7 @@ const getAccountStateDeclaration = {
 const brokerActionDeclaration = {
   name: "broker_action",
   description:
-    "Interact with Capital.com: quotes, candles, broker account, positions. place_order/close_position return a confirmation proposal — never execute without user confirmation.",
+    "Interact with Capital.com: quotes, candles, positions. place_order/close_position auto-execute when autonomous trading is ON (within risk limits); otherwise returns a confirmation proposal.",
   parameters: {
     type: Type.OBJECT,
     properties: {
@@ -501,16 +505,20 @@ PINNED ASSETS:
 - Always call get_asset_details and get_asset_market_data for every pinned symbol before synthesizing your answer.
 
 AUTONOMOUS WEALTH MANAGER (you LEAD — user MONITORS):
-- You are the user's financial wealth manager. When a balance goal exists with autonomous_trading ON, you EXECUTE trades and REPORT what you did — never ask "would you like me to propose a trade?"
-- ORCHESTRATOR WAKE: When a user message starts with "[Orchestrator cycle", this is an internal 2-minute cycle wake-up — NOT a user question. Execute the directive immediately, call tools as needed, report what you did and the next step. Do not ask permission. Use spawn_subagents when the directive requires multi-faceted research.
+- You are the user's financial wealth manager with FULL AUTONOMY when autonomous_trading is ON.
+- You HAVE broker_action, get_account_state, and manage_goals — use them. You CAN open/close trades, read positions, and manage the account.
+- FORBIDDEN when autonomous is ON: saying "I cannot execute trades", "requires your approval", "manual placement", or "tools do not allow execution".
+- ORCHESTRATOR WAKE: Messages from Wealth Monitor (monitor_directive) or starting with "[Wealth Monitor]" are ORDERS — execute immediately via broker_action, then report results.
+- When a balance goal exists with autonomous_trading ON, EXECUTE trades and REPORT what you did — never ask "would you like me to propose a trade?"
 - After goal approval or enable_autonomous: narrate what you're doing ("I'm scanning markets…", "I opened a position on…") — act first, explain after.
 - Use manage_goals(set_balance_target) with autonomous_trading:true when user approves a plan — this kicks off immediate autonomous management.
 - Trades within the risk threshold execute automatically; larger trades queue for one-tap confirmation.
 - Use get_account_state to report portfolio state; use GoalProgressWidget via manage_goals(check_progress).
 - NEVER end a message with a menu of options like "would you like me to propose a trade?" — you are in charge.
-- broker_action place_order/close_position: when autonomous trading is ON, these still log proposals — prefer manage_goals flow and autonomous cycle for execution.
+- broker_action place_order/close_position: when autonomous trading is ON, trades execute automatically within risk limits; larger trades queue for one-tap confirmation. Always use broker_action to open/close positions — never claim you cannot trade.
 - Use schedule_task only for reminders, not for trading decisions you should make yourself.
 - Use get_macro_data and get_fundamentals for context you weave into narration.
+- Use query_trading_knowledge for chart patterns, strategies, indicators, risk rules, and trading psychology from the structured knowledge base.
 - Risk rule: respect max_risk_per_trade on the goal; never exceed confirmation_threshold without queueing.${memoryContext}`;
 
     const encoder = new TextEncoder();
@@ -558,6 +566,7 @@ AUTONOMOUS WEALTH MANAGER (you LEAD — user MONITORS):
                     manageGoalsDeclaration,
                     getMacroDataDeclaration,
                     getFundamentalsDeclaration,
+                    queryTradingKnowledgeDeclaration,
                   ]
                 }
               ]
@@ -764,6 +773,11 @@ AUTONOMOUS WEALTH MANAGER (you LEAD — user MONITORS):
                     toolResult = await fetchMacroData(indicators);
                   } else if (name === "get_fundamentals") {
                     toolResult = await fetchFundamentals(String(args?.symbol ?? ""));
+                  } else if (name === "query_trading_knowledge") {
+                    toolResult = await executeQueryTradingKnowledge({
+                      query: args?.query as string | undefined,
+                      category: args?.category as string | undefined,
+                    });
                   } else {
                     toolResult = { success: false, error: "Unknown tool name" };
                   }

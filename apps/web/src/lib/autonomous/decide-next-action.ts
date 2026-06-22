@@ -40,6 +40,8 @@ function toExtendedGoal(row: Record<string, unknown>): ExtendedUserGoal {
     trades_today: Number(row.trades_today ?? 0),
     trades_today_reset_at: row.trades_today_reset_at as string | null,
     achieved_at: row.achieved_at as string | null,
+    goal_profile_md: (row.goal_profile_md as string | null) ?? null,
+    next_wake_at: (row.next_wake_at as string | null) ?? null,
     created_at: String(row.created_at),
     updated_at: String(row.updated_at),
   };

@@ -9,7 +9,8 @@ export type AgentActivityPhase =
   | "act"
   | "report"
   | "manage"
-  | "orchestrate";
+  | "orchestrate"
+  | "monitor";
 
 export type AgentActivityAction =
   | "cycle_start"
@@ -26,7 +27,12 @@ export type AgentActivityAction =
   | "goal_failed"
   | "error"
   | "orchestrator_wake"
-  | "orchestrator_skip";
+  | "orchestrator_skip"
+  | "monitor_analyze"
+  | "monitor_directive"
+  | "monitor_review"
+  | "monitor_followup"
+  | "monitor_goal_update";
 
 export type OrchestratorDirective = {
   summary: string;
@@ -34,6 +40,23 @@ export type OrchestratorDirective = {
   shouldSpeak: boolean;
   subagentTasks: Array<{ role: string; asset: string; instruction: string }>;
   priority: "low" | "normal" | "high";
+};
+
+export type MonitorAnalysis = {
+  reasoning: string;
+  summary: string;
+  goalProfileMd: string;
+  chatDirective: string;
+  shouldDispatchChat: boolean;
+  nextWakeMs: number;
+};
+
+export type MonitorReview = {
+  reasoning: string;
+  taskComplete: boolean;
+  followUpDirective: string | null;
+  nextWakeMs: number;
+  goalProfilePatch: string | null;
 };
 
 export type ExtendedUserGoal = {
@@ -64,6 +87,8 @@ export type ExtendedUserGoal = {
   trades_today: number;
   trades_today_reset_at: string | null;
   achieved_at: string | null;
+  goal_profile_md: string | null;
+  next_wake_at: string | null;
   created_at: string;
   updated_at: string;
 };

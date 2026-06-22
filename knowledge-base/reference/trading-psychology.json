@@ -1,0 +1,188 @@
+{
+  "meta": {
+    "version": "1.0",
+    "source": "The ART of Trading - Bennett A. McDowell"
+  },
+  "art_pie": {
+    "description": "Four slices required for trading success — master all four",
+    "slices": [
+      {
+        "id": "risk_capital",
+        "name": "Risk Capital",
+        "description": "Only trade with money you can afford to lose",
+        "application": "Use dedicated risk capital separate from living expenses; emotional trading increases when capital is irreplaceable"
+      },
+      {
+        "id": "trading_system",
+        "name": "Trading and Investing System",
+        "description": "A defined, repeatable methodology for entries, exits, and risk",
+        "application": "ART provides structure via signals (P/MP pyramid points, 1B/2B reversal bars); customize to your style"
+      },
+      {
+        "id": "money_management",
+        "name": "Money Management",
+        "description": "Position sizing, stop-loss placement, and portfolio risk limits",
+        "application": "Calculate trade size from stop distance; never risk more than 1-2% per trade; use ATR-based stops"
+      },
+      {
+        "id": "psychology",
+        "name": "Psychology",
+        "description": "Trader mindset, discipline, and emotional control",
+        "application": "Obtain the trader's mind-set before live trading; align personality with chosen system via ART Profile"
+      }
+    ]
+  },
+  "core_concepts": [
+    {
+      "id": "no_prediction",
+      "principle": "No One Can Predict Markets Consistently",
+      "description": "Markets cannot be predicted with true consistency — accept uncertainty",
+      "application": "Focus on reacting to current price action rather than forecasting",
+      "common_mistakes": [
+        "Believing in guaranteed prediction systems",
+        "Holding losing positions based on original thesis",
+        "Ignoring current market reality for opinions"
+      ],
+      "source": "ART of Trading"
+    },
+    {
+      "id": "market_reality",
+      "principle": "Trade Current Market Reality",
+      "description": "Look at what the market is doing now, not theories about what will happen",
+      "application": "Use price and volume as undistorted truth; ART confirms or denies entries based on live data",
+      "common_mistakes": [
+        "Trading on news distortion or exaggeration",
+        "Panic-selling on poor earnings when stock rallies",
+        "Following commentator opinions over chart data"
+      ],
+      "source": "ART of Trading"
+    },
+    {
+      "id": "market_tells_you",
+      "principle": "The Market Tells You How to Trade",
+      "description": "Price and volume communicate entry/exit if you know how to listen",
+      "application": "Let ART signals (pyramid points, reversal bars) guide decisions rather than forcing trades",
+      "common_mistakes": [
+        "Forcing trades when no signal exists",
+        "Overriding system signals with gut feeling",
+        "Ignoring volume confirmation"
+      ],
+      "source": "ART of Trading"
+    },
+    {
+      "id": "money_management_essential",
+      "principle": "Money Management Is Essential",
+      "description": "Risk control is non-negotiable for long-term survival",
+      "application": "Always set stop-loss before entry; size positions from stop distance; use ATR for volatility-adjusted stops",
+      "common_mistakes": [
+        "Trading without stops",
+        "Using arbitrary dollar stops instead of market-structure stops",
+        "Oversizing after wins"
+      ],
+      "source": "ART of Trading"
+    },
+    {
+      "id": "trader_mindset",
+      "principle": "Obtain the Trader's Mind-Set",
+      "description": "Psychological readiness is prerequisite for any system to work",
+      "application": "Paper-trade until consistent; develop discipline; accept losses as cost of business",
+      "common_mistakes": [
+        "Going live before mastering paper trading",
+        "Revenge trading after losses",
+        "FOMO entries without signals"
+      ],
+      "source": "ART of Trading"
+    },
+    {
+      "id": "align_personality",
+      "principle": "Align Personality with System",
+      "description": "Your unique personality must match your trading style",
+      "application": "Use ART Profile exercise to determine trend vs scalp vs countertrend preference",
+      "common_mistakes": [
+        "Copying another trader's style",
+        "Scalping when personality suits position trading",
+        "Ignoring personal risk tolerance"
+      ],
+      "source": "ART of Trading"
+    }
+  ],
+  "trading_styles": {
+    "trend_trading": {
+      "id": "art_trend",
+      "principle": "Trend Trading Rules",
+      "description": "Trade in direction of established trend using ART pyramid points",
+      "application": "Enter on P (pyramid) signals in trend direction; use higher-timeframe filter; trail stops",
+      "common_mistakes": [
+        "Counter-trend entries in strong trends",
+        "Exiting winners too early",
+        "Ignoring higher-timeframe trend"
+      ]
+    },
+    "countertrend_trading": {
+      "id": "art_countertrend",
+      "principle": "Countertrend Trading Rules",
+      "description": "Trade reversals at extremes using 1B/2B reversal bar signals",
+      "application": "Only countertrend at clear support/resistance with reversal bar confirmation; tighter stops",
+      "common_mistakes": [
+        "Fading strong trends without confirmation",
+        "Countertrend in middle of range",
+        "Oversized positions on reversal bets"
+      ]
+    },
+    "scalping": {
+      "id": "art_scalping",
+      "principle": "Scalping Rules",
+      "description": "Quick in-and-out trades on minor signals within larger trend",
+      "application": "Use minor pyramid points and 1B signals on lower timeframes; strict time stops",
+      "common_mistakes": [
+        "Holding scalps too long",
+        "Scalping without trend context",
+        "Ignoring transaction costs"
+      ]
+    }
+  },
+  "cfi_psychology": {
+    "winning_mindset": {
+      "id": "cfi_mindset",
+      "principle": "Winning Trading Mindset",
+      "description": "Be forever skeptical — when you think the market must go one way, it often goes the opposite",
+      "application": "Maintain humility; use stops; never assume certainty about direction",
+      "common_mistakes": [
+        "Overconfidence after winning streak",
+        "Doubling down on losing positions",
+        "Believing 'this time is different'"
+      ],
+      "source": "Complete Guide to Trading - CFI"
+    },
+    "master_trader_skills": {
+      "id": "cfi_master_skills",
+      "principle": "Six Essential Skills of Master Traders",
+      "description": "Discipline, patience, adaptability, risk management, continuous learning, emotional control",
+      "application": "Review trades weekly; journal decisions; adapt strategy to regime changes",
+      "common_mistakes": [
+        "Skipping trade journal",
+        "Same parameters in all market conditions",
+        "Letting emotions override rules"
+      ],
+      "source": "Complete Guide to Trading - CFI"
+    }
+  },
+  "biases": {
+    "confirmation_bias": {
+      "description": "Seeking information that confirms existing beliefs",
+      "mitigation": "Actively look for contradicting evidence before entering"
+    },
+    "loss_aversion": {
+      "description": "Holding losers too long, cutting winners too short",
+      "mitigation": "Predefined stops and targets; never move stop against position"
+    },
+    "recency_bias": {
+      "description": "Overweighting recent events in decision making",
+      "mitigation": "Review longer-term charts and statistics"
+    },
+    "greater_fool_theory": {
+      "description": "Buying at any price assuming someone will pay more",
+      "mitigation": "Always assess value via technical structure and risk-reward"
+    }
+  }
+}

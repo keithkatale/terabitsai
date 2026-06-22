@@ -2,6 +2,7 @@ import { getLatestCatalystBrief, getMacroRegime } from "@quant/market-intel";
 import type { TradeSetup } from "@quant/strategy";
 import { generateVertexTextCompletion } from "@/lib/gemini/vertex-text-completion";
 import { fetchFundamentals } from "@/lib/chat/tools/macro-tools";
+import { buildKnowledgeContextForSetup } from "@/lib/knowledge/knowledge-loader";
 import type { JudgmentResult } from "./types";
 
 function parseJudgment(raw: string): JudgmentResult | null {
@@ -50,6 +51,17 @@ export async function judgeTradeSetup(
     fundamentals = "Fundamentals unavailable";
   }
 
+  let knowledgeContext = "";
+  try {
+    knowledgeContext = await buildKnowledgeContextForSetup({
+      regime: setup.regime,
+      rationale: setup.rationale,
+      direction: setup.direction,
+    });
+  } catch {
+    knowledgeContext = "Knowledge base unavailable";
+  }
+
   const systemInstruction = `You are a senior portfolio manager judging a trade setup.
 Respond with ONLY valid JSON:
 {
@@ -62,6 +74,8 @@ Respond with ONLY valid JSON:
 Rules:
 - Approve only when technical confluence AND context align.
 - Reject if news/macro strongly contradicts the trade direction.
+- Use TRADING KNOWLEDGE to assess pattern/strategy fit for the current regime.
+- Validate risk-reward against knowledge-base risk rules.
 - Be decisive — you are the wealth manager, not an advisor asking permission.`;
 
   const userPrompt = `Trade setup:
@@ -81,6 +95,9 @@ Progress: ${goalContext.progressPct.toFixed(1)}%
 Catalyst: ${catalyst}
 Macro: ${macro}
 Fundamentals: ${fundamentals}
+
+Trading knowledge (patterns, strategies, risk rules):
+${knowledgeContext}
 
 Approve or reject this trade.`;
 

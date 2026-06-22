@@ -17,17 +17,21 @@ export function Conversation({ className, children, ...props }: ConversationProp
   );
 }
 
-export function ConversationContent({ className, children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+export const ConversationContent = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(function ConversationContent({ className, children, ...props }, ref) {
   return (
     <div
+      ref={ref}
       data-conversation-scroll
-      className={cn("flex-1 overflow-y-auto space-y-4 pr-1", className)}
+      className={cn("flex-1 overflow-y-auto space-y-4 pr-1 scrollbar-none", className)}
       {...props}
     >
       {children}
     </div>
   );
-}
+});
 
 interface ConversationEmptyStateProps extends React.HTMLAttributes<HTMLDivElement> {
   title?: string;

@@ -393,3 +393,5 @@ export const ConvictionDashboardSchema = z.object({
 })
 
 export type ConvictionDashboard = z.infer<typeof ConvictionDashboardSchema>
+
+export * from "./knowledge"

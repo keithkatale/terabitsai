@@ -13,6 +13,7 @@ import { logAgentActivity } from "./activity-log";
 import type { DecisionOutcome, OrchestratorDirective } from "./types";
 import { toExtendedGoal } from "./decide-next-action";
 import { runProactiveChatTurn } from "@/lib/chat/proactive-turn";
+import { buildOrchestratorKnowledgeContext } from "@/lib/knowledge/knowledge-loader";
 
 function parseDirective(raw: string): OrchestratorDirective | null {
   const match = raw.trim().match(/\{[\s\S]*\}/);
@@ -159,6 +160,15 @@ export async function runOrchestratorTurn(params: {
 
   const conversationSummary = summarizeMessages(convMessages ?? []);
 
+  let knowledgeContext = "";
+  try {
+    knowledgeContext = await buildOrchestratorKnowledgeContext(
+      params.outcome.type === "hold" ? "ranging" : "trending",
+    );
+  } catch {
+    knowledgeContext = "";
+  }
+
   const systemInstruction = `You are the orchestrator for an autonomous wealth manager. Synthesize app state and decide if Command chat should speak proactively.
 
 Respond with ONLY valid JSON:
@@ -174,7 +184,8 @@ Rules:
 - shouldSpeak=true when: trade executed/queued, goal milestone, risk event, pending confirmation, or meaningful portfolio change.
 - shouldSpeak=false when: hold with no change for 2+ cycles (routine monitoring only).
 - chatDirective must be actionable — tell Command AI exactly what to do (call tools, report progress, spawn subagents).
-- subagentTasks only when multi-faceted research is needed (max 3).`;
+- subagentTasks only when multi-faceted research is needed (max 3).
+- Use TRADING KNOWLEDGE context to recommend regime-appropriate strategies and discipline reminders in chatDirective.`;
 
   const userPrompt = `Goal: $${goal.initial_balance ?? 0} → $${goal.target_balance ?? 0} (${goalProgress.progressPct.toFixed(1)}% progress, status ${goalProgress.status})
 Autonomous: ${goal.autonomous_trading} | Kill switch: ${goal.kill_switch}
@@ -183,6 +194,7 @@ Wallet: $${accountState.balance?.wallet_available?.toFixed(2) ?? "?"} | Position
 Open positions: ${JSON.stringify(accountState.positions?.slice(0, 5) ?? [])}
 Pending confirmations: ${JSON.stringify(pendingTrades.data ?? [])}
 Recent activity: ${JSON.stringify(recentActivity.data ?? [])}
+Trading knowledge: ${knowledgeContext || "N/A"}
 Recent conversation:
 ${conversationSummary || "(no messages yet)"}`;
 

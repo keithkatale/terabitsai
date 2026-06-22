@@ -13,6 +13,182 @@ import type { TradeProposal, PortfolioState, RiskConfig } from "@quant/contracts
 import type { TradeSetup } from "@quant/strategy";
 import type { ExtendedUserGoal } from "./types";
 import { logAgentActivity } from "./activity-log";
+import { toExtendedGoal } from "./decide-next-action";
+
+export async function getActiveAutonomousGoal(
+  userId: string,
+  mode: "demo" | "live",
+): Promise<ExtendedUserGoal | null> {
+  const admin = createSupabaseAdminClient();
+  const { data } = await admin
+    .from("user_goals")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("mode", mode)
+    .eq("goal_type", "balance_target")
+    .eq("autonomous_trading", true)
+    .eq("kill_switch", false)
+    .in("status", ["active", "in_progress"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!data) return null;
+  return toExtendedGoal(data as Record<string, unknown>);
+}
+
+function buildSetupFromBrokerArgs(params: {
+  symbol: string;
+  direction: "BUY" | "SELL";
+  entry: number;
+  stop_loss?: number;
+  take_profit?: number;
+  reasoning?: string;
+}): TradeSetup {
+  const { symbol, direction, entry } = params;
+  const stopDistance =
+    params.stop_loss != null
+      ? Math.abs(entry - params.stop_loss)
+      : entry * 0.02;
+  const atrStop =
+    params.stop_loss ??
+    (direction === "BUY" ? entry - stopDistance : entry + stopDistance);
+  const defaultTarget =
+    direction === "BUY" ? entry * 1.04 : entry * 0.96;
+
+  return {
+    symbol: symbol.toUpperCase(),
+    direction,
+    entry,
+    atrStop,
+    stopDistance,
+    targets: [params.take_profit ?? defaultTarget],
+    confluenceScore: 70,
+    rationale: [params.reasoning ?? "Command AI trade"],
+    regime: "trend",
+    timeframeBias: direction === "BUY" ? "bullish" : "bearish",
+    timeframeSetup: direction === "BUY" ? "bullish" : "bearish",
+    timeframeTrigger: direction === "BUY" ? "bullish" : "bearish",
+  };
+}
+
+/** Execute a broker place_order when autonomous trading is enabled. */
+export async function executeAutonomousBrokerOrder(params: {
+  userId: string;
+  mode: "demo" | "live";
+  symbol: string;
+  direction: "BUY" | "SELL";
+  size?: number;
+  stop_loss?: number;
+  take_profit?: number;
+  conversation_id?: string;
+  reasoning?: string;
+  cycleId?: string;
+}) {
+  const goal = await getActiveAutonomousGoal(params.userId, params.mode);
+  if (!goal) return null;
+
+  const symbol = params.symbol.toUpperCase();
+  const assetClass = assetClassForSymbol(symbol);
+  const quote = await capitalAdapter.fetchQuoteStrict(symbol, assetClass);
+  const entry = params.direction === "BUY" ? quote.ask : quote.bid;
+  const setup = buildSetupFromBrokerArgs({
+    symbol,
+    direction: params.direction,
+    entry,
+    stop_loss: params.stop_loss,
+    take_profit: params.take_profit,
+    reasoning: params.reasoning,
+  });
+
+  const cycleId = params.cycleId ?? `chat-${Date.now()}`;
+  const result = await executeTradeSetup({
+    goal,
+    setup,
+    reasoning: params.reasoning ?? `Autonomous ${params.direction} ${symbol}`,
+    cycleId,
+    queueIfAboveThreshold: true,
+  });
+
+  if (result.executed) {
+    return {
+      success: true,
+      executed: true,
+      autonomous: true,
+      trade_id: result.tradeId,
+      deal_id: result.dealId,
+      message: result.message,
+      symbol,
+      direction: params.direction,
+    };
+  }
+
+  if (result.queued) {
+    return {
+      success: true,
+      executed: false,
+      queued: true,
+      autonomous: true,
+      trade_id: result.tradeId,
+      requires_confirmation: true,
+      message: result.message,
+      genui: {
+        type: "component",
+        name: "TradeConfirmationWidget",
+        props: {
+          symbol,
+          direction: params.direction,
+          size: params.size ?? 0.1,
+          leverage: 5,
+          estimatedPrice: entry,
+          mode: params.mode,
+          tradeLogId: result.tradeId,
+        },
+      },
+    };
+  }
+
+  return {
+    success: false,
+    autonomous: true,
+    error: result.message,
+  };
+}
+
+/** Close a position when autonomous trading is enabled. */
+export async function executeAutonomousBrokerClose(params: {
+  userId: string;
+  mode: "demo" | "live";
+  deal_id?: string;
+  symbol?: string;
+  reasoning?: string;
+  cycleId?: string;
+}) {
+  const goal = await getActiveAutonomousGoal(params.userId, params.mode);
+  if (!goal) return null;
+
+  const account = await resolvePlatformAccount(params.userId, params.mode);
+  const positions = await listOpenPositions(account.id);
+
+  let dealId = params.deal_id;
+  if (!dealId && params.symbol) {
+    const sym = params.symbol.toUpperCase();
+    dealId = positions.find((p) => p.symbol.toUpperCase() === sym)?.external_id;
+  }
+  if (!dealId) {
+    return { success: false, autonomous: true, error: "Position not found to close" };
+  }
+
+  const cycleId = params.cycleId ?? `chat-${Date.now()}`;
+  const result = await closePositionForGoal({
+    goal,
+    dealId,
+    reasoning: params.reasoning ?? "Command AI close",
+    cycleId,
+  });
+
+  return { ...result, autonomous: true, executed: result.success, deal_id: dealId };
+}
 
 export function computePositionSize(
   accountBalance: number,
