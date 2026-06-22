@@ -4,13 +4,17 @@ import React, { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Check, Copy } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { ArtifactSandboxCard } from "@/components/generative-ui/artifact-sandbox-card";
 import { ArtifactSkeleton } from "@/components/generative-ui/artifact-skeleton";
 import { GenerativeUiRegistry } from "@/components/generative-ui/registry";
 import { GenUiRenderer } from "@/components/generative-ui/genui-renderer";
+import { QuantUiRenderer } from "@/components/quant-ui/quant-ui-renderer";
+import { QuantUiFailure } from "@/components/quant-ui/quant-ui-failure";
 import { normalizeGenUiPayload } from "@/components/generative-ui/genui-types";
 import { parseGenUiPayload } from "@/lib/genui/parse-genui-json";
+import { splitMarkdownIntoArtifactSegments, type ArtifactSegment } from "@/lib/chat/artifact-segments";
+
+const ARTIFACT_LANGS = new Set(["quant", "genui", "html", "svg", "xml"]);
 
 interface CodeBlockProps {
   language?: string;
@@ -66,7 +70,6 @@ const KNOWN_GENUI_TYPES = new Set([
   "chart", "component", "actionButton",
 ]);
 
-/** Does a parsed JSON value plausibly describe a GenUI payload? */
 function looksLikeGenui(parsed: unknown): boolean {
   if (Array.isArray(parsed)) {
     return parsed.some((n) => !!n && typeof n === "object" && KNOWN_GENUI_TYPES.has((n as { type?: string }).type ?? ""));
@@ -89,24 +92,15 @@ function extractCodeString(children: React.ReactNode): string {
   return String(children).replace(/\n$/, "");
 }
 
-function GenUiParseError({ raw }: { raw: string }) {
+function GenUiParseError() {
   return (
-    <div className="my-2 rounded-lg border border-amber-500/20 bg-amber-950/20 px-3 py-2 text-[11px] text-amber-300">
-      Could not render this interface — the model returned invalid JSON. Try asking again or request a simpler layout.
-      <details className="mt-1.5">
-        <summary className="cursor-pointer text-[10px] text-amber-400/80">Raw payload</summary>
-        <pre className="mt-1 max-h-32 overflow-auto font-mono text-[10px] text-zinc-500">{raw.slice(0, 800)}</pre>
-      </details>
-    </div>
+    <QuantUiFailure
+      title="Could not display this dashboard"
+      reason="The assistant returned an invalid layout. Try asking again or request a simpler view."
+    />
   );
 }
 
-/**
- * Try to render a structured block (genui DSL or legacy component JSON).
- * `strict` (used for plain ```json fences) requires the payload to clearly
- * look like GenUI, so ordinary JSON snippets still render as code.
- * Returns null if the string isn't a recognizable structured payload.
- */
 function renderStructured(codeString: string, strict: boolean): React.ReactNode | null {
   const result = parseGenUiPayload(codeString);
   if (!result) return null;
@@ -135,29 +129,30 @@ function renderStructured(codeString: string, strict: boolean): React.ReactNode 
   return null;
 }
 
-/** Languages whose blocks must NOT be rendered until fully streamed in. */
-const DEFERRED_LANGS = new Set(["html", "svg", "xml", "genui"]);
+const DEFERRED_LANGS = new Set(["html", "svg", "xml", "genui", "quant"]);
 
-/** Split markdown into alternating prose + fenced genui/html blocks. */
-const FENCE_RE = /```(genui|json|html|svg|xml)\s*\n?([\s\S]*?)```/gi;
-
-function renderGenuiFence(body: string, lang: string): React.ReactNode {
-  if (lang === "html" || lang === "svg" || (lang === "xml" && body.includes("<svg"))) {
-    return (
-      <ArtifactSandboxCard
-        code={body}
-        language={lang}
-        title={lang === "svg" ? "Vector Visualisation" : "Interactive Artifact"}
-      />
-    );
+function renderArtifactSegment(segment: ArtifactSegment, key: string): React.ReactNode {
+  switch (segment.kind) {
+    case "quant-ui":
+      return <QuantUiRenderer key={key} markup={segment.markup} />;
+    case "genui": {
+      const structured = renderStructured(segment.body, false);
+      return structured ?? <GenUiParseError key={key} />;
+    }
+    case "html":
+      return (
+        <ArtifactSandboxCard
+          key={key}
+          code={segment.body}
+          language={segment.lang}
+          title={segment.lang === "svg" ? "Vector Visualisation" : "Interactive Artifact"}
+        />
+      );
+    case "prose":
+      return <MarkdownSegment key={key} markdown={segment.markdown} />;
+    default:
+      return null;
   }
-
-  const structured = renderStructured(body, lang === "json");
-  if (structured) return structured;
-  if (lang === "genui" || lang === "json") {
-    return <GenUiParseError raw={body} />;
-  }
-  return <CodeBlock language={lang} code={body} />;
 }
 
 function MarkdownSegment({ markdown }: { markdown: string }) {
@@ -169,41 +164,6 @@ function MarkdownSegment({ markdown }: { markdown: string }) {
   );
 }
 
-function renderMarkdownWithFences(markdown: string): React.ReactNode[] {
-  const nodes: React.ReactNode[] = [];
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-  FENCE_RE.lastIndex = 0;
-
-  while ((match = FENCE_RE.exec(markdown)) !== null) {
-    const [full, lang, body] = match;
-    const before = markdown.slice(lastIndex, match.index);
-    if (before.trim()) {
-      nodes.push(<MarkdownSegment key={`md-${lastIndex}`} markdown={before} />);
-    }
-
-    const langLower = lang.toLowerCase();
-
-    nodes.push(
-      <div key={`fence-${match.index}`} className="w-full">
-        {renderGenuiFence(body, langLower)}
-      </div>
-    );
-    lastIndex = match.index + full.length;
-  }
-
-  const tail = markdown.slice(lastIndex);
-  if (tail.trim()) {
-    nodes.push(<MarkdownSegment key={`md-tail-${lastIndex}`} markdown={tail} />);
-  }
-
-  return nodes;
-}
-
-/**
- * If the markdown ends with an unterminated fenced code block, split it off so
- * we can show a skeleton instead of rendering broken partial HTML / JSON.
- */
 function splitTrailingFence(md: string): { safe: string; pendingLang: string | null } {
   const lines = md.split("\n");
   let openIdx = -1;
@@ -227,6 +187,30 @@ function splitTrailingFence(md: string): { safe: string; pendingLang: string | n
   return { safe: lines.slice(0, openIdx).join("\n"), pendingLang: openLang };
 }
 
+/** Safety net: if artifact fences leak into ReactMarkdown, render UI — never raw code. */
+function renderArtifactCodeBlock(lang: string, codeString: string): React.ReactNode | null {
+  const normalized = lang.trim().toLowerCase();
+  if (normalized === "quant") return <QuantUiRenderer markup={codeString} />;
+  if (normalized === "genui") {
+    const structured = renderStructured(codeString, false);
+    return structured ?? <GenUiParseError />;
+  }
+  if (normalized === "html" || normalized === "svg" || (normalized === "xml" && codeString.includes("<svg"))) {
+    return (
+      <ArtifactSandboxCard
+        code={codeString}
+        language={normalized}
+        title={normalized === "svg" ? "Vector Visualisation" : "Interactive Artifact"}
+      />
+    );
+  }
+  if (normalized === "json") {
+    const structured = renderStructured(codeString, true);
+    if (structured) return structured;
+  }
+  return null;
+}
+
 const MD_COMPONENTS = {
   a: ({ node: _n, ...props }: any) => (
     <a
@@ -236,8 +220,20 @@ const MD_COMPONENTS = {
       rel="noreferrer"
     />
   ),
+  pre: ({ node, children, ...props }: any) => {
+    const child = Array.isArray(children) ? children[0] : children;
+    if (child && typeof child === "object" && "props" in child) {
+      const className = (child as { props?: { className?: string } }).props?.className ?? "";
+      const match = /language-([\w-]+)/.exec(className);
+      const lang = match?.[1] ?? "";
+      const codeString = extractCodeString((child as { props?: { children?: React.ReactNode } }).props?.children);
+      const rendered = renderArtifactCodeBlock(lang, codeString);
+      if (rendered) return <div className="w-full">{rendered}</div>;
+    }
+    return <pre {...props}>{children}</pre>;
+  },
   code: ({ node: _n, className, children, ...props }: any) => {
-    const match = /language-(\w+)/.exec(className || "");
+    const match = /language-([\w-]+)/.exec(className || "");
     const inline = !className;
     const codeString = extractCodeString(children);
 
@@ -252,28 +248,15 @@ const MD_COMPONENTS = {
       );
     }
 
-    const lang = match ? match[1] : "";
+    const lang = match?.[1] ?? "";
+    const artifact = renderArtifactCodeBlock(lang, codeString);
+    if (artifact) return artifact;
 
-    // Approach A: sandboxed custom HTML/SVG artifact
-    if (lang === "html" || lang === "svg" || (lang === "xml" && codeString.includes("<svg"))) {
-      return (
-        <ArtifactSandboxCard
-          code={codeString}
-          language={lang}
-          title={lang === "svg" ? "Vector Visualisation" : "Interactive Artifact"}
-        />
-      );
+    if (ARTIFACT_LANGS.has(lang.trim().toLowerCase())) {
+      return <QuantUiFailure reason="This interface could not be rendered." />;
     }
 
-    // Approach B: declarative Generative-UI engine (preferred) + legacy component JSON.
-    // genui fence = liberal; plain json fence = strict (so ordinary JSON stays code).
-    if (lang === "genui" || lang === "json") {
-      const structured = renderStructured(codeString, lang === "json");
-      if (structured) return structured;
-      if (lang === "genui") return <GenUiParseError raw={codeString} />;
-    }
-
-    return <CodeBlock language={match ? match[1] : undefined} code={codeString} />;
+    return <CodeBlock language={lang} code={codeString} />;
   },
   ul: ({ node: _n, ...props }: any) => (
     <ul {...props} className="list-disc space-y-1.5 pl-5 text-[13.5px] sm:text-sm text-zinc-300 leading-relaxed text-left" />
@@ -315,8 +298,6 @@ const MD_COMPONENTS = {
 export function MarkdownContent({ markdown, isStreaming = false }: { markdown: string; isStreaming?: boolean }) {
   if (!markdown) return null;
 
-  // While streaming, hold back an unterminated deferred block (html/svg/genui)
-  // and show a skeleton instead of rendering broken partial output.
   let safeMarkdown = markdown;
   let pendingKind: "artifact" | "interface" | null = null;
 
@@ -324,13 +305,15 @@ export function MarkdownContent({ markdown, isStreaming = false }: { markdown: s
     const { safe, pendingLang } = splitTrailingFence(markdown);
     if (pendingLang !== null && DEFERRED_LANGS.has(pendingLang)) {
       safeMarkdown = safe;
-      pendingKind = pendingLang === "genui" ? "interface" : "artifact";
+      pendingKind = pendingLang === "genui" || pendingLang === "quant" ? "interface" : "artifact";
     }
   }
 
+  const segments = splitMarkdownIntoArtifactSegments(safeMarkdown);
+
   return (
     <div className="w-full space-y-3">
-      {renderMarkdownWithFences(safeMarkdown)}
+      {segments.map((segment, i) => renderArtifactSegment(segment, `seg-${i}`))}
       {pendingKind ? <ArtifactSkeleton kind={pendingKind === "artifact" ? "artifact" : "interface"} /> : null}
     </div>
   );

@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@google/genai": "^2.8.0",
+    "@quant/broker": "*",
     "@quant/contracts": "*",
     "@quant/db": "*",
     "@quant/hitl": "*",
@@ -18,6 +19,7 @@
     "@quant/memory": "*",
     "@quant/rag-engine": "*",
     "@quant/risk": "*",
+    "@quant/strategy": "*",
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.108.2",
     "clsx": "^2.1.1",

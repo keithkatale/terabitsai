@@ -1,0 +1,326 @@
+import { assetClassForSymbol } from "@/lib/market/watchlist";
+import { capitalAdapter } from "@/lib/execution/capital-adapter";
+import {
+  getAccountBalance,
+  reserveFunds,
+  resolvePlatformAccount,
+} from "@/lib/ledger/ledger-service";
+import { capturePortfolioSnapshot } from "@/lib/portfolio/capture-snapshot";
+import { openPosition, listOpenPositions } from "@/lib/portfolio/positions";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { theCage } from "@quant/risk";
+import type { TradeProposal, PortfolioState, RiskConfig } from "@quant/contracts";
+import type { TradeSetup } from "@quant/strategy";
+import type { ExtendedUserGoal } from "./types";
+import { logAgentActivity } from "./activity-log";
+
+export function computePositionSize(
+  accountBalance: number,
+  setup: TradeSetup,
+  goal: ExtendedUserGoal
+): { marginUsd: number; riskPct: number } {
+  const riskPct = goal.max_risk_per_trade ?? 5;
+  const maxPositionPct = goal.max_position_pct ?? 10;
+  const riskAmount = accountBalance * (riskPct / 100);
+  const stopDistance = setup.stopDistance || setup.entry * 0.01;
+  let marginUsd = stopDistance > 0 ? riskAmount / (stopDistance / setup.entry) : riskAmount;
+  marginUsd = Math.min(marginUsd, accountBalance * (maxPositionPct / 100));
+  marginUsd = Math.max(Math.min(marginUsd, accountBalance * 0.25), 1);
+  const actualRiskPct = accountBalance > 0 ? (marginUsd / accountBalance) * 100 : 0;
+  return { marginUsd, riskPct: actualRiskPct };
+}
+
+function buildProposal(setup: TradeSetup, reasoning: string): TradeProposal {
+  const stopPct = setup.entry > 0 ? setup.stopDistance / setup.entry : 0.01;
+  return {
+    symbol: setup.symbol,
+    side: setup.direction,
+    confidence: setup.confluenceScore / 100,
+    timeHorizon: "swing",
+    rationale: reasoning,
+    agentVotes: [],
+    suggestedStopPct: stopPct,
+    suggestedSizeHint: 0.05,
+  };
+}
+
+export async function executeTradeSetup(params: {
+  goal: ExtendedUserGoal;
+  setup: TradeSetup;
+  reasoning: string;
+  cycleId: string;
+  queueIfAboveThreshold?: boolean;
+}): Promise<{
+  executed: boolean;
+  queued: boolean;
+  tradeId?: string;
+  dealId?: string;
+  message: string;
+}> {
+  const { goal, setup, reasoning, cycleId } = params;
+  const account = await resolvePlatformAccount(goal.user_id, goal.mode);
+  const balance = await getAccountBalance(account.id, "USD");
+  const accountBalance = balance.available ?? 0;
+
+  const { marginUsd, riskPct } = computePositionSize(accountBalance, setup, goal);
+  const threshold = goal.confirmation_threshold_pct ?? 3;
+
+  const openPositions = await listOpenPositions(account.id);
+  if (openPositions.length >= (goal.max_concurrent_positions ?? 3)) {
+    return { executed: false, queued: false, message: "Max concurrent positions reached" };
+  }
+
+  const portfolio: PortfolioState = {
+    accountBalance,
+    availableMargin: balance.available ?? accountBalance,
+    dailyPnl: 0,
+    openPositions: openPositions.map((p) => ({
+      symbol: p.symbol,
+      side: p.side === "long" ? "BUY" : "SELL",
+      volume: p.quantity,
+      entryPrice: p.entry_price,
+      unrealizedPnl: p.unrealized_pnl_usd ?? 0,
+      dealId: p.external_id,
+    })),
+    consecutiveLosses: goal.consecutive_losses ?? 0,
+    dataStale: false,
+  };
+
+  const proposal = buildProposal(setup, reasoning);
+  const riskConfig: RiskConfig = {
+    maxRiskPerTradePct: (goal.max_risk_per_trade ?? 5) / 100,
+    maxDailyLossPct: (goal.daily_loss_limit_pct ?? 5) / 100,
+    maxPositionSizePct: (goal.max_position_pct ?? 10) / 100,
+    maxTotalExposurePct: 0.5,
+    maxLeverage: 10,
+    minStopPct: 0.005,
+    maxOpenPositions: goal.max_concurrent_positions ?? 3,
+    maxConsecutiveLosses: 3,
+    killSwitchActive: goal.kill_switch,
+    liveExecutionEnabled: process.env.LIVE_EXECUTION_ENABLED === "true",
+  };
+
+  const cageResult = theCage.evaluate({
+    proposal,
+    portfolio,
+    config: riskConfig,
+    currentPrice: setup.entry,
+    lastQuoteAgeMs: 0,
+  });
+
+  if (!cageResult.approved) {
+    return { executed: false, queued: false, message: cageResult.reasons.join("; ") };
+  }
+
+  const admin = createSupabaseAdminClient();
+  const clientOrderId = `goal-${goal.id}-${cycleId}-${setup.symbol}`;
+  const symbol = setup.symbol.toUpperCase();
+  const direction = setup.direction;
+  const leverage = 5;
+
+  if (params.queueIfAboveThreshold !== false && riskPct > threshold) {
+    const { data: tradeRow } = await admin
+      .from("ai_trade_log")
+      .insert({
+        user_id: goal.user_id,
+        mode: goal.mode,
+        action: "open",
+        symbol,
+        direction,
+        reasoning: `[Goal ${goal.id}] ${reasoning}`,
+        status: "pending",
+        risk_assessment: { setup, cycleId, clientOrderId, marginUsd },
+      })
+      .select("id")
+      .single();
+
+    await admin.from("trade_decisions").insert({
+      user_id: goal.user_id,
+      goal_id: goal.id,
+      cycle_id: cycleId,
+      symbol,
+      direction,
+      confluence_score: setup.confluenceScore,
+      conviction_score: setup.confluenceScore,
+      approved: true,
+      executed: false,
+      rationale: setup.rationale,
+      trade_setup: setup,
+      trade_id: tradeRow?.id,
+    });
+
+    await logAgentActivity({
+      userId: goal.user_id,
+      goalId: goal.id,
+      cycleId,
+      phase: "act",
+      action: "trade_queued",
+      symbol,
+      reasoning: `Above ${threshold}% threshold — awaiting confirmation`,
+      payload: { tradeId: tradeRow?.id, riskPct },
+    });
+
+    return {
+      executed: false,
+      queued: true,
+      tradeId: tradeRow?.id,
+      message: `Queued for confirmation (${riskPct.toFixed(1)}% > ${threshold}%)`,
+    };
+  }
+
+  try {
+    const assetClass = assetClassForSymbol(symbol);
+    const quote = await capitalAdapter.fetchQuoteStrict(symbol, assetClass);
+    const indicativePrice = direction === "BUY" ? quote.ask : quote.bid;
+    const notional = marginUsd * leverage;
+    const size = Math.round((notional / indicativePrice) * 1_000_000) / 1_000_000;
+
+    const { data: logRow, error: logError } = await admin
+      .from("ai_trade_log")
+      .insert({
+        user_id: goal.user_id,
+        mode: goal.mode,
+        action: "open",
+        symbol,
+        direction,
+        reasoning: `[Goal ${goal.id}] ${reasoning}`,
+        status: "pending",
+        risk_assessment: { setup, cycleId, clientOrderId, marginUsd, autonomous: true },
+      })
+      .select("id")
+      .single();
+
+    if (logError || !logRow) {
+      return { executed: false, queued: false, message: logError?.message ?? "Log failed" };
+    }
+
+    const capitalResult = await capitalAdapter.createPosition(symbol, direction, size);
+    const entryPrice = capitalResult.price > 0 ? capitalResult.price : indicativePrice;
+    const margin = Math.round(((size * entryPrice) / leverage) * 100) / 100;
+
+    await reserveFunds(account.id, margin, "trade", capitalResult.dealId, {
+      symbol,
+      side: direction === "BUY" ? "buy" : "sell",
+      timestamp: new Date().toISOString(),
+      quantity: size,
+      entry_price: entryPrice,
+      leverage,
+      source: "autonomous_manager",
+      goal_id: goal.id,
+      cycle_id: cycleId,
+    });
+
+    await openPosition({
+      accountId: account.id,
+      mode: goal.mode,
+      externalId: capitalResult.dealId,
+      symbol,
+      side: direction === "BUY" ? "long" : "short",
+      quantity: size,
+      entryPrice,
+      leverage,
+      marginUsd: margin,
+    });
+
+    await admin
+      .from("ai_trade_log")
+      .update({
+        status: "executed",
+        confirmed_by_user: false,
+        executed_at: new Date().toISOString(),
+        execution_result: capitalResult,
+      })
+      .eq("id", logRow.id);
+
+    await admin.from("trade_decisions").insert({
+      user_id: goal.user_id,
+      goal_id: goal.id,
+      cycle_id: cycleId,
+      symbol,
+      direction,
+      confluence_score: setup.confluenceScore,
+      conviction_score: setup.confluenceScore,
+      approved: true,
+      executed: true,
+      rationale: setup.rationale,
+      trade_setup: setup,
+      trade_id: logRow.id,
+    });
+
+    const today = new Date().toISOString().slice(0, 10);
+    await admin
+      .from("user_goals")
+      .update({
+        trades_today: (goal.trades_today_reset_at === today ? goal.trades_today : 0) + 1,
+        trades_today_reset_at: today,
+        peak_balance: Math.max(goal.peak_balance ?? accountBalance, accountBalance),
+        last_evaluated_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", goal.id);
+
+    await capturePortfolioSnapshot(account.id, goal.mode, { reason: "trade", force: true }).catch(() => {});
+
+    await logAgentActivity({
+      userId: goal.user_id,
+      goalId: goal.id,
+      cycleId,
+      phase: "act",
+      action: "trade_executed",
+      symbol,
+      reasoning,
+      payload: { dealId: capitalResult.dealId, marginUsd: margin, tradeId: logRow.id },
+    });
+
+    return {
+      executed: true,
+      queued: false,
+      tradeId: logRow.id,
+      dealId: capitalResult.dealId,
+      message: `Executed ${direction} ${symbol} @ ${entryPrice}`,
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Execution failed";
+    await logAgentActivity({
+      userId: goal.user_id,
+      goalId: goal.id,
+      cycleId,
+      phase: "act",
+      action: "error",
+      symbol: setup.symbol,
+      reasoning: message,
+    });
+    return { executed: false, queued: false, message };
+  }
+}
+
+export async function closePositionForGoal(params: {
+  goal: ExtendedUserGoal;
+  dealId: string;
+  percent?: number;
+  reasoning: string;
+  cycleId: string;
+}) {
+  const { goal, dealId, percent, reasoning, cycleId } = params;
+  const account = await resolvePlatformAccount(goal.user_id, goal.mode);
+  const positions = await listOpenPositions(account.id);
+  const pos = positions.find((p) => p.external_id === dealId);
+  if (!pos) return { success: false, message: "Position not found" };
+
+  const closeSize = percent != null && percent < 100 ? (pos.quantity * percent) / 100 : undefined;
+  await capitalAdapter.closePosition(dealId, closeSize);
+
+  await logAgentActivity({
+    userId: goal.user_id,
+    goalId: goal.id,
+    cycleId,
+    phase: "manage",
+    action: "position_closed",
+    symbol: pos.symbol,
+    reasoning,
+    payload: { dealId, percent },
+  });
+
+  await capturePortfolioSnapshot(account.id, goal.mode, { reason: "close", force: true }).catch(() => {});
+  return { success: true, message: `Closed ${pos.symbol}` };
+}

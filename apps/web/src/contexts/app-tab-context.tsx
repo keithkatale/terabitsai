@@ -25,6 +25,9 @@ const TAB_ALIASES: Record<string, AppTab> = {
   news: "command",
   signals: "command",
   engine: "command",
+  autonomous: "command",
+  manager: "command",
+  wealth: "command",
 };
 
 export function parseAppTab(value: string | null | undefined): AppTab {

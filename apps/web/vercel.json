@@ -7,6 +7,14 @@
     {
       "path": "/api/cron/scheduled-tasks",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/autonomous/cycle",
+      "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/cron/goal-monitor",
+      "schedule": "*/10 * * * *"
     }
   ]
 }

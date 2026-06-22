@@ -7,10 +7,11 @@ import { MarketPreviewQueue } from "@/components/market/market-preview-queue";
 import { LandingPromptChips } from "@/components/ai-elements/follow-up-suggestions";
 
 export const CHAT_LANDING_PROMPT_SUGGESTIONS = [
+  "Set my balance goal — help me grow my account",
+  "What balance target should I aim for with my current funds?",
   "What is the agent team watching today?",
   "Browse markets and propose a swing trade on BTCUSD",
   "Show engine status and active signals",
-  "Summarize intel that could move my portfolio",
 ];
 
 export const CHAT_LANDING_MAX_TAGGED_ASSETS = 3;
@@ -56,7 +57,7 @@ export function ChatLandingHero({
         Your Wealth Engine
       </h1>
       <p className="mb-7 max-w-md text-sm leading-relaxed text-zinc-300/85">
-        AI agent teams observe markets, plan trades, pass risk checks, and help you grow capital on autopilot — starting in demo mode.
+        Set a balance goal and your agent team works toward it on autopilot — checking markets every 2 minutes, executing trades, and reporting progress in this chat.
       </p>
       <div className="w-full max-w-xl">
         <InputBar
@@ -65,7 +66,7 @@ export function ChatLandingHero({
           onSend={({ content }) => onSend(content)}
           disabled={loading}
           status={loading ? "streaming" : "ready"}
-          placeholder="Steer your agent team or ask for a trade plan…"
+          placeholder="Set a balance goal or ask your agent team…"
           placeholderSuggestions={placeholderSuggestions}
           variant="landing"
           taggedAssets={taggedAssets}

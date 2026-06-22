@@ -8,6 +8,7 @@ import { TradeBlotter, useTradeBlotter } from "@/components/terminal/trade-blott
 import { AssetLogoIcon } from "@/components/ui/asset-logo";
 import { PortfolioGrowthChart } from "@/components/portfolio/portfolio-growth-chart";
 import { SummaryCard } from "@/components/portfolio/summary-card";
+import { AutonomousSettingsPanel } from "@/components/workspace/app-sections/autonomous-settings-panel";
 import type { TradeData } from "@/components/terminal/types";
 import type { LedgerSummaryResponse, TradingMode } from "@/lib/account/api";
 
@@ -37,7 +38,7 @@ export function InvestingSection({
   onClosePosition: (dealId: string) => void;
 }) {
   const blotterEntries = useTradeBlotter();
-  const simLabel = tradingMode === "demo" ? "Simulated · Demo" : "Simulated · Live";
+  const accountLabel = tradingMode === "demo" ? "Demo account" : "Live account";
   const [changePct, setChangePct] = useState(0);
 
   const walletAvailable = balance?.wallet_available ?? summary?.balance.wallet_available ?? 0;
@@ -65,7 +66,7 @@ export function InvestingSection({
           <div>
             <h1 className="text-sm font-extrabold text-white">Investing</h1>
             <p className="text-[11px] text-zinc-500">
-              {simLabel} portfolio growth, open positions, and agent trades.
+              {accountLabel} portfolio growth, open positions, and agent trades.
             </p>
           </div>
         </div>
@@ -89,7 +90,7 @@ export function InvestingSection({
               {changePct.toFixed(2)}%
             </span>
             <span className="rounded-md bg-zinc-800/80 px-1.5 py-0.5 text-[9px] font-bold uppercase text-zinc-400">
-              {simLabel}
+              {accountLabel}
             </span>
           </div>
 
@@ -116,6 +117,8 @@ export function InvestingSection({
               loading={accountLoading}
             />
           </div>
+
+          <AutonomousSettingsPanel tradingMode={tradingMode} />
         </div>
 
         <AccountTab

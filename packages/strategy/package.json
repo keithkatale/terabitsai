@@ -1,0 +1,19 @@
+{
+  "name": "@quant/strategy",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@quant/broker": "*",
+    "@quant/db": "*",
+    "@quant/indicators": "*",
+    "@quant/market-intel": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.16",
+    "typescript": "^5.3.3"
+  }
+}

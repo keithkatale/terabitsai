@@ -29,13 +29,52 @@ steps:
       - --port
       - "8080"
 
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - Dockerfile.wealth-manager
+      - -t
+      - ${_WEALTH_IMAGE}
+      - .
+
+  - name: gcr.io/cloud-builders/docker
+    args: [push, ${_WEALTH_IMAGE}]
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_WEALTH_SERVICE}
+      - --image
+      - ${_WEALTH_IMAGE}
+      - --region
+      - ${_REGION}
+      - --platform
+      - managed
+      - --no-allow-unauthenticated
+      - --port
+      - "8081"
+      - --min-instances
+      - "1"
+      - --max-instances
+      - "1"
+      - --cpu
+      - "1"
+      - --memory
+      - "512Mi"
+
 images:
   - ${_IMAGE}
+  - ${_WEALTH_IMAGE}
 
 substitutions:
   _SERVICE: ai-agent-platform-web
+  _WEALTH_SERVICE: ai-agent-platform-wealth-manager
   _REGION: us-central1
   _IMAGE: us-central1-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/ai-agent-platform-web:latest
+  _WEALTH_IMAGE: us-central1-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/ai-agent-platform-wealth-manager:latest
   _NEXT_PUBLIC_SUPABASE_URL: ""
   _NEXT_PUBLIC_SUPABASE_ANON_KEY: ""
 

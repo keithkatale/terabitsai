@@ -1,0 +1,42 @@
+# Wealth Manager — always-on autonomous trading worker for Cloud Run
+FROM node:20-alpine AS base
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
+
+FROM base AS deps
+COPY package.json package-lock.json ./
+COPY apps/wealth-manager/package.json ./apps/wealth-manager/
+COPY packages/strategy/package.json ./packages/strategy/
+COPY packages/broker/package.json ./packages/broker/
+COPY packages/contracts/package.json ./packages/contracts/
+COPY packages/db/package.json ./packages/db/
+COPY packages/indicators/package.json ./packages/indicators/
+COPY packages/market-intel/package.json ./packages/market-intel/
+COPY packages/model-router/package.json ./packages/model-router/
+COPY packages/rag-engine/package.json ./packages/rag-engine/
+COPY packages/risk/package.json ./packages/risk/
+RUN npm ci
+
+FROM base AS builder
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN npm run build -w @quant/contracts && \
+    npm run build -w @quant/indicators && \
+    npm run build -w @quant/risk && \
+    npm run build -w @quant/db && \
+    npm run build -w @quant/broker && \
+    npm run build -w @quant/market-intel && \
+    npm run build -w @quant/strategy
+
+FROM base AS runner
+ENV NODE_ENV=production
+ENV PORT=8081
+
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/apps/wealth-manager ./apps/wealth-manager
+COPY --from=builder /app/packages ./packages
+
+WORKDIR /app/apps/wealth-manager
+EXPOSE 8081
+CMD ["npx", "tsx", "src/index.ts"]

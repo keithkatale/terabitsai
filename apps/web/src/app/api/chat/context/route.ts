@@ -1,6 +1,7 @@
 import {
   buildSessionContextPrompt,
   getSessionContext,
+  hasActiveBalanceGoal,
 } from "@/lib/chat/conversation-persistence";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -19,7 +20,11 @@ export async function GET(request: Request) {
   try {
     const context = await getSessionContext(user.id, mode);
     const prompt = buildSessionContextPrompt(context);
-    return Response.json({ ...context, prompt });
+    return Response.json({
+      ...context,
+      prompt,
+      hasBalanceGoal: hasActiveBalanceGoal(context),
+    });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Failed to load context";
     return Response.json({ error: message }, { status: 500 });

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { AssetLogoIcon } from "./asset-logo";
 import { X, ShieldAlert, ArrowUpRight, ArrowDownRight, CheckCircle2, DollarSign, Percent, TrendingUp } from "lucide-react";
+import { useAppAccount } from "@/contexts/app-account-context";
 
 interface QuickTradeDialogProps {
   isOpen: boolean;
@@ -36,6 +37,8 @@ export default function QuickTradeDialog({
   change24hPct,
   onExecute,
 }: QuickTradeDialogProps) {
+  const { tradingMode } = useAppAccount();
+  const isLive = tradingMode === "live";
   const [direction, setDirection] = useState<"BUY" | "SELL">("BUY");
   const [size, setSize] = useState<number>(1);
   const [leverage, setLeverage] = useState<number>(10);
@@ -283,10 +286,14 @@ export default function QuickTradeDialog({
           </div>
         </div>
 
-        {/* Simulated Warning */}
+        {/* Risk notice */}
         <div className="flex gap-2 p-3 bg-cyan-500/5 rounded-xl border border-cyan-500/10 text-[10px] text-zinc-400/90 leading-normal">
           <ShieldAlert className="size-4 shrink-0 text-cyan-400" />
-          <span>This is a simulated transaction powered by Quant's local paper-trading engine. No actual capital is exposed or placed on real exchanges.</span>
+          <span>
+            {isLive
+              ? "This order executes on your live Capital.com account using real margin from your available balance."
+              : "This is a paper trade on your demo account. No real capital is placed on live markets."}
+          </span>
         </div>
 
         {/* Submit Button */}
@@ -302,10 +309,10 @@ export default function QuickTradeDialog({
           {isExecuting ? (
             <>
               <div className="size-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-              Transmitting simulated contract...
+              {isLive ? "Submitting live order..." : "Submitting paper trade..."}
             </>
           ) : (
-            `Execute Simulated ${direction} CFD`
+            isLive ? `Execute Live ${direction} CFD` : `Execute Paper ${direction} CFD`
           )}
         </button>
 

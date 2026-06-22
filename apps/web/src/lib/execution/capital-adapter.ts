@@ -697,6 +697,80 @@ class CapitalAdapter {
   }
 
   /**
+   * Live OHLCV history — never uses mock fallback.
+   */
+  public async fetchCandlesStrict(
+    symbol: string,
+    _assetClass: string,
+    rangeDays: number,
+  ): Promise<CapitalCandle[]> {
+    await this.checkSessionAndFallback();
+
+    if (!this.cstToken || !this.xSecurityToken) {
+      throw new Error(`Capital.com session is inactive. Cannot fetch candles for ${symbol}.`);
+    }
+
+    let resolution = "MINUTE_5";
+    let max = 288;
+
+    if (rangeDays <= 1) {
+      resolution = "MINUTE_5";
+      max = 288;
+    } else if (rangeDays <= 7) {
+      resolution = "MINUTE_15";
+      max = 672;
+    } else if (rangeDays <= 30) {
+      resolution = "HOUR";
+      max = 720;
+    } else {
+      resolution = "DAY";
+      max = Math.min(1000, rangeDays);
+    }
+
+    const res = await fetch(
+      `${CAPITAL_BASE_URL}/api/v1/prices/${encodeURIComponent(symbol)}?resolution=${resolution}&max=${max}`,
+      {
+        headers: {
+          CST: this.cstToken,
+          "X-SECURITY-TOKEN": this.xSecurityToken,
+          "X-CAP-API-KEY": CAPITAL_API_KEY!,
+        },
+      },
+    );
+
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      throw new Error(
+        `Capital.com prices fetch failed for ${symbol}: ${(errBody as { errorCode?: string }).errorCode || res.status}`,
+      );
+    }
+
+    const data = await res.json();
+    const prices = data.prices || [];
+
+    if (!Array.isArray(prices) || prices.length === 0) {
+      throw new Error(`Capital.com returned no candle data for ${symbol}.`);
+    }
+
+    return prices.map((p: Record<string, unknown>) => {
+      const snapshotTime = String(p.snapshotTime ?? "");
+      const t = Math.floor(new Date(`${snapshotTime}Z`).getTime() / 1000) || 0;
+      const openPrice = p.openPrice as { bid?: number; ask?: number } | undefined;
+      const highPrice = p.highPrice as { bid?: number; ask?: number } | undefined;
+      const lowPrice = p.lowPrice as { bid?: number; ask?: number } | undefined;
+      const closePrice = p.closePrice as { bid?: number; ask?: number } | undefined;
+      const mid = (bid?: number, ask?: number) =>
+        bid != null && ask != null ? (Number(bid) + Number(ask)) / 2 : 0;
+      const o = mid(openPrice?.bid, openPrice?.ask);
+      const h = mid(highPrice?.bid, highPrice?.ask);
+      const l = mid(lowPrice?.bid, lowPrice?.ask);
+      const c = mid(closePrice?.bid, closePrice?.ask);
+      const v = Number(p.lastTradedVolume) || 0;
+      return { t, o, h, l, c, v };
+    });
+  }
+
+  /**
    * Fetch account details directly from Capital.com
    */
   public async getAccounts(): Promise<Array<{ accountId: string; balance: number; currency: string; available: number; profitLoss: number }>> {

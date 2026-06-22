@@ -1,4 +1,5 @@
 import { resolvePlatformAccount } from "@/lib/ledger/ledger-service";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { randomUUID } from "crypto";
 
@@ -35,6 +36,11 @@ export type UserGoalRow = {
   description: string | null;
   status: string;
   progress_pct: number | null;
+  initial_balance?: number | null;
+  target_balance?: number | null;
+  deadline_at?: string | null;
+  autonomous_trading?: boolean;
+  failure_reason?: string | null;
   created_at: string;
 };
 
@@ -91,6 +97,28 @@ export async function createConversation(userId: string, mode: TradingMode) {
   return data as ConversationRow;
 }
 
+export async function getActiveConversation(userId: string, mode: TradingMode) {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("conversations")
+    .select("id, session_number, mode, title, context_summary, is_active, created_at, updated_at")
+    .eq("user_id", userId)
+    .eq("mode", mode)
+    .eq("is_active", true)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  return data as ConversationRow | null;
+}
+
+export async function getOrCreateActiveConversation(userId: string, mode: TradingMode) {
+  const existing = await getActiveConversation(userId, mode);
+  if (existing) return existing;
+  return createConversation(userId, mode);
+}
+
 export async function listConversations(userId: string, mode: TradingMode, limit = 20) {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
@@ -130,6 +158,7 @@ export async function loadConversationMessages(conversationId: string, userId: s
     role: row.role as PersistedChatMessage["role"],
     parts: (row.parts ?? []) as PersistedMessagePart[],
     toolPods: row.tool_pods ?? undefined,
+    createdAt: row.created_at as string | undefined,
   }));
 }
 
@@ -187,6 +216,98 @@ export async function appendConversationMessages(
   await supabase.from("conversations").update(updates).eq("id", conversationId);
 }
 
+/** Background jobs (orchestrator) — bypass RLS via service role. */
+export async function appendConversationMessagesAdmin(
+  conversationId: string,
+  userId: string,
+  messages: PersistedChatMessage[],
+) {
+  if (messages.length === 0) return;
+
+  const admin = createSupabaseAdminClient();
+
+  const { data: conv } = await admin
+    .from("conversations")
+    .select("id")
+    .eq("id", conversationId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (!conv) throw new Error("Conversation not found");
+
+  const { data: lastRow } = await admin
+    .from("chat_messages")
+    .select("sequence")
+    .eq("conversation_id", conversationId)
+    .order("sequence", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  let sequence = (lastRow?.sequence ?? 0) + 1;
+
+  const rows = messages.map((msg) => ({
+    id: toPersistedMessageId(msg.id),
+    conversation_id: conversationId,
+    role: msg.role,
+    parts: msg.parts,
+    tool_pods: msg.toolPods ?? null,
+    sequence: sequence++,
+  }));
+
+  const { error } = await admin.from("chat_messages").insert(rows);
+  if (error) throw new Error(error.message);
+
+  await admin
+    .from("conversations")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", conversationId);
+}
+
+export async function getActiveConversationAdmin(userId: string, mode: TradingMode) {
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin
+    .from("conversations")
+    .select("id, session_number, mode, title, context_summary, is_active, created_at, updated_at")
+    .eq("user_id", userId)
+    .eq("mode", mode)
+    .eq("is_active", true)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  return data as ConversationRow | null;
+}
+
+export async function loadConversationMessagesAdmin(conversationId: string, userId: string) {
+  const admin = createSupabaseAdminClient();
+
+  const { data: conv } = await admin
+    .from("conversations")
+    .select("id")
+    .eq("id", conversationId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (!conv) return null;
+
+  const { data, error } = await admin
+    .from("chat_messages")
+    .select("id, role, parts, tool_pods, sequence, created_at")
+    .eq("conversation_id", conversationId)
+    .order("sequence", { ascending: true });
+
+  if (error) throw new Error(error.message);
+
+  return (data ?? []).map((row) => ({
+    id: String(row.id),
+    role: row.role as PersistedChatMessage["role"],
+    parts: (row.parts ?? []) as PersistedMessagePart[],
+    toolPods: row.tool_pods ?? undefined,
+    created_at: row.created_at as string,
+  }));
+}
+
 export async function updateConversationSummary(
   conversationId: string,
   userId: string,
@@ -206,10 +327,12 @@ export async function getActiveGoals(userId: string, mode: TradingMode) {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("user_goals")
-    .select("id, goal_type, goal_value, description, status, progress_pct, created_at")
+    .select(
+      "id, goal_type, goal_value, description, status, progress_pct, initial_balance, target_balance, deadline_at, autonomous_trading, failure_reason, created_at",
+    )
     .eq("user_id", userId)
     .eq("mode", mode)
-    .eq("status", "active")
+    .in("status", ["active", "in_progress", "paused"])
     .order("created_at", { ascending: false });
 
   if (error) throw new Error(error.message);
@@ -236,12 +359,36 @@ export async function getSessionContext(userId: string, mode: TradingMode) {
 export function buildSessionContextPrompt(context: Awaited<ReturnType<typeof getSessionContext>>): string {
   const lines: string[] = [];
 
-  if (context.goals.length > 0) {
+  const balanceGoal = context.goals.find((g) => g.goal_type === "balance_target");
+
+  if (balanceGoal) {
+    const initial =
+      balanceGoal.initial_balance ?? Number(balanceGoal.goal_value?.initial ?? 0);
+    const target =
+      balanceGoal.target_balance ?? Number(balanceGoal.goal_value?.target ?? 0);
+    lines.push("ACTIVE BALANCE GOAL (monitored every 2 minutes by background agent):");
+    lines.push(`- Grow $${initial} → $${target} (${balanceGoal.progress_pct ?? 0}% progress)`);
+    lines.push(`- Status: ${balanceGoal.status}`);
+    if (balanceGoal.deadline_at) {
+      lines.push(`- Deadline: ${balanceGoal.deadline_at}`);
+    }
+    lines.push(
+      `- Autonomous trading: ${balanceGoal.autonomous_trading ? "ENABLED" : "disabled (proposals only)"}`,
+    );
+    lines.push(
+      "Keep working toward this goal. User may ask side questions — answer them, but stay goal-aware.",
+    );
+  } else if (context.goals.length > 0) {
     lines.push("ACTIVE USER GOALS:");
     for (const goal of context.goals) {
       const desc = goal.description ?? goal.goal_type;
       lines.push(`- ${desc}: ${JSON.stringify(goal.goal_value)}`);
     }
+  } else {
+    lines.push("NO ACTIVE GOAL SET.");
+    lines.push(
+      "The user has not set a balance target yet. Early in the conversation, ask them to set one (e.g. grow $20 to $50). Use manage_goals with operation set_balance_target once they agree.",
+    );
   }
 
   if (context.previousSessions.length > 0) {
@@ -258,4 +405,51 @@ export function buildSessionContextPrompt(context: Awaited<ReturnType<typeof get
   if (lines.length === 0) return "";
 
   return `\n\nPERSISTENT MEMORY (across prior sessions — treat as factual user context):\n${lines.join("\n")}`;
+}
+
+export function hasActiveBalanceGoal(
+  context: Awaited<ReturnType<typeof getSessionContext>>,
+): boolean {
+  return context.goals.some(
+    (g) =>
+      g.goal_type === "balance_target" &&
+      ["active", "in_progress", "paused"].includes(g.status),
+  );
+}
+
+export function buildGoalMissionPrompt(
+  context: Awaited<ReturnType<typeof getSessionContext>>,
+): string {
+  const balanceGoal = context.goals.find((g) => g.goal_type === "balance_target");
+
+  if (balanceGoal) {
+    const initial =
+      balanceGoal.initial_balance ?? Number(balanceGoal.goal_value?.initial ?? 0);
+    const target =
+      balanceGoal.target_balance ?? Number(balanceGoal.goal_value?.target ?? 0);
+
+    return `PRIMARY MISSION — GOAL-DRIVEN WEALTH MANAGER
+Your #1 job is helping the user reach their balance target: $${initial.toFixed(2)} → $${target.toFixed(2)}.
+- Status: ${balanceGoal.status} | Progress: ${balanceGoal.progress_pct ?? 0}%
+- Every reply should advance this goal: progress update, next trade, risk check, or milestone.
+- Call manage_goals(check_progress) when discussing portfolio health; show the GoalProgressWidget.
+- Propose trades only when they meaningfully move toward the target.
+- Background cron monitors the goal every 2 minutes until achieved or failed.
+- User may ask side questions — answer them, but always tie back to the goal.
+- When achieved, celebrate and prompt for a new balance target.`;
+  }
+
+  return `PRIMARY MISSION — GOAL-DRIVEN WEALTH MANAGER
+The user has NO balance goal. Setting one is your #1 priority — do NOT wait for them to ask.
+
+MANDATORY BEHAVIOR (every session, especially the first reply):
+1. Call get_account_state to read wallet balance and positions.
+2. Call manage_goals(operation=list) to confirm goal status.
+3. Open your reply by inviting them to set a balance target using their real balance.
+   Example: "You have $20 in your account — what balance would you like to reach? Many users start with $20 → $50."
+4. When they agree, call manage_goals(operation=set_balance_target, target_balance=<amount>) immediately.
+5. Show the GoalProgressWidget after setting the goal.
+
+Do not dive into generic market chat or trade ideas until a goal exists or the user explicitly declines.
+Side questions are fine, but always steer back to defining a balance target.`;
 }

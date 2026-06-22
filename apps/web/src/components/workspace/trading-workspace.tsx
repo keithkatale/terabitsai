@@ -61,6 +61,7 @@ import {
 } from "@/lib/chat/interactive-question-helper";
 import { ChatWidgetProvider } from "@/contexts/chat-widget-context";
 import type { WidgetAction } from "@/lib/chat/widget-actions";
+import { QUANT_WIDGET_ACTION_EVENT } from "@/lib/chat/widget-actions";
 
 import {
   Conversation,
@@ -78,6 +79,7 @@ import {
   CHAT_LANDING_MAX_TAGGED_ASSETS,
 } from "@/components/workspace/chat-landing-hero";
 import { HomeSection } from "@/components/workspace/app-sections/home-section";
+import { OrchestratorCycleControls } from "@/components/workspace/orchestrator-cycle-controls";
 import { InvestingSection } from "@/components/workspace/app-sections/investing-section";
 import { notifyPortfolioUpdated } from "@/lib/portfolio/portfolio-events";
 import { readHomeTabCache, writeHomeTabCache } from "@/lib/portfolio/home-tab-cache";
@@ -96,7 +98,7 @@ const Figma = ({ className }: { className?: string }) => (
 );
 
 interface MessagePart {
-  type: "reasoning" | "text" | "trade-execution" | "genui";
+  type: "reasoning" | "text" | "trade-execution" | "genui" | "quant-ui";
   text?: string;
   payload?: unknown;
 }
@@ -108,6 +110,26 @@ interface ChatMessage {
   toolPods?: ChatToolPod[];
   liveStatus?: string;
   liveStatusDetail?: string;
+}
+
+function mapPersistedParts(
+  parts: Array<{ type: string; text?: string; payload?: unknown }>,
+): MessagePart[] {
+  return parts.map((p) => {
+    if (p.type === "genui" && p.payload != null) {
+      return { type: "genui" as const, payload: p.payload };
+    }
+    if (p.type === "quant-ui" && p.payload != null) {
+      return { type: "quant-ui" as const, payload: p.payload };
+    }
+    if (p.type === "reasoning") {
+      return { type: "reasoning" as const, text: p.text };
+    }
+    if (p.type === "trade-execution") {
+      return { type: "trade-execution" as const, text: p.text };
+    }
+    return { type: "text" as const, text: p.text };
+  });
 }
 
 // --- Asset Catalog Definitions (Fully dynamic, ported from capital-assets) ---
@@ -229,6 +251,7 @@ export function TradingWorkspace() {
   const conversationBootstrapped = useRef(false);
   const conversationIdRef = useRef<string | null>(null);
   const lastTaskPollRef = useRef(new Date().toISOString());
+  const lastOrchestratorPollRef = useRef(new Date().toISOString());
 
   const [activeTerminalTab, setActiveTerminalTab] = useState<TerminalTabId>("markets");
   const [pinnedAssetTabs, setPinnedAssetTabs] = useState<string[]>([]);
@@ -579,34 +602,159 @@ export function TradingWorkspace() {
 
     void (async () => {
       try {
+        const modeParam = tradingMode;
         const [convRes, ctxRes] = await Promise.all([
-          fetch("/api/chat/conversations", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ mode: tradingMode }),
-          }),
-          fetch(`/api/chat/context?mode=${tradingMode}`),
+          fetch(`/api/chat/conversations/active?mode=${modeParam}`),
+          fetch(`/api/chat/context?mode=${modeParam}`),
         ]);
+
+        let convId: string | null = null;
+        let sessionNum: number | null = null;
 
         if (convRes.ok) {
           const convJson = (await convRes.json()) as {
-            conversation?: { id?: string; session_number?: number };
+            conversation?: { id?: string; session_number?: number } | null;
           };
-          const id = convJson.conversation?.id ?? null;
-          setConversationId(id);
-          conversationIdRef.current = id;
-          setSessionNumber(convJson.conversation?.session_number ?? null);
+          if (convJson.conversation?.id) {
+            convId = convJson.conversation.id;
+            sessionNum = convJson.conversation.session_number ?? null;
+          } else {
+            const createRes = await fetch("/api/chat/conversations/active", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ mode: modeParam }),
+            });
+            if (createRes.ok) {
+              const created = (await createRes.json()) as {
+                conversation?: { id?: string; session_number?: number };
+              };
+              convId = created.conversation?.id ?? null;
+              sessionNum = created.conversation?.session_number ?? null;
+            }
+          }
+        }
+
+        if (convId) {
+          setConversationId(convId);
+          conversationIdRef.current = convId;
+          setSessionNumber(sessionNum);
+
+          const msgRes = await fetch(`/api/chat/conversations/${convId}/messages`);
+          if (msgRes.ok) {
+            const msgJson = (await msgRes.json()) as {
+              messages?: Array<{
+                id: string;
+                role: "user" | "assistant" | "system";
+                parts: Array<{ type: string; text?: string; payload?: unknown }>;
+                toolPods?: unknown;
+                createdAt?: string;
+              }>;
+            };
+            const loaded = msgJson.messages ?? [];
+            if (loaded.length > 0) {
+              const visible = loaded.filter((m) => m.role !== "system");
+              if (visible.length > 0) {
+                setMessages(
+                  visible.map((m) => ({
+                    id: m.id,
+                    role: m.role as "user" | "assistant",
+                    parts: mapPersistedParts(m.parts),
+                    toolPods: m.toolPods as ChatToolPod[] | undefined,
+                  })),
+                );
+                const latest = visible
+                  .map((m) => m.createdAt)
+                  .filter(Boolean)
+                  .sort()
+                  .pop();
+                lastOrchestratorPollRef.current = latest ?? new Date().toISOString();
+              }
+            }
+          }
         }
 
         if (ctxRes.ok) {
-          const ctxJson = (await ctxRes.json()) as { prompt?: string };
+          const ctxJson = (await ctxRes.json()) as {
+            prompt?: string;
+            hasBalanceGoal?: boolean;
+          };
           sessionContextRef.current = ctxJson.prompt ?? "";
+
+          if (!ctxJson.hasBalanceGoal) {
+            setMessages((prev) => {
+              if (prev.length > 0) return prev;
+              return [
+                {
+                  id: "goal-onboarding",
+                  role: "assistant",
+                  parts: [
+                    {
+                      type: "text",
+                      text: "Welcome to Command. Before we trade, let's set a **balance goal** — the target your agent works toward in the background.\n\nFor example, if you have **$20** in your account, you might aim for **$50**. I'll monitor progress every 2 minutes and suggest (or execute) trades to get you there.\n\n**What balance would you like to reach?**",
+                    },
+                  ],
+                },
+              ];
+            });
+          }
         }
       } catch (e) {
         console.warn("Failed to bootstrap chat session", e);
       }
     })();
   }, [mode, user, tradingMode]);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const pollOrchestratorInbox = async () => {
+      try {
+        const since = lastOrchestratorPollRef.current;
+        const convId = conversationIdRef.current;
+        const params = new URLSearchParams({
+          mode: tradingMode,
+          since,
+        });
+        if (convId) params.set("conversationId", convId);
+
+        const res = await fetch(`/api/autonomous/orchestrator-inbox?${params}`);
+        if (!res.ok) return;
+
+        const json = (await res.json()) as {
+          messages?: Array<{
+            id: string;
+            role: string;
+            parts: Array<{ type: string; text?: string; payload?: unknown }>;
+            toolPods?: unknown;
+            createdAt?: string;
+          }>;
+        };
+        const incoming = json.messages ?? [];
+        if (incoming.length === 0) return;
+
+        lastOrchestratorPollRef.current = new Date().toISOString();
+        setMessages((prev) => {
+          const existingIds = new Set(prev.map((m) => m.id));
+          const toAdd: ChatMessage[] = incoming
+            .filter((m) => !existingIds.has(m.id))
+            .map((m) => ({
+              id: m.id,
+              role: "assistant" as const,
+              parts: mapPersistedParts(m.parts),
+              toolPods: m.toolPods as ChatToolPod[] | undefined,
+            }));
+          if (toAdd.length === 0) return prev;
+          return [...prev, ...toAdd];
+        });
+      } catch {
+        /* non-fatal */
+      }
+    };
+
+    void pollOrchestratorInbox();
+    const interval = window.setInterval(() => void pollOrchestratorInbox(), 30_000);
+    return () => window.clearInterval(interval);
+  }, [user, tradingMode, conversationId]);
 
   useEffect(() => {
     if (mode !== "command" || !user) return;
@@ -859,6 +1007,7 @@ export function TradingWorkspace() {
     tp: number | null;
     sl: number | null;
     timestamp: number;
+    tradeLogId?: string;
   }) => {
     const walletAvailable = balance?.wallet_available ?? 0;
     if (walletAvailable < trade.margin) {
@@ -874,6 +1023,13 @@ export function TradingWorkspace() {
       };
       setMessages((prev) => [...prev, errorMsg]);
       openDeposit();
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("quant-trade-failed", {
+            detail: { message: "Insufficient margin for this trade." },
+          }),
+        );
+      }
       return;
     }
 
@@ -884,6 +1040,17 @@ export function TradingWorkspace() {
         size: trade.size,
         leverage: trade.leverage,
       });
+
+      if (trade.tradeLogId) {
+        await fetch("/api/trades/confirm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tradeLogId: trade.tradeLogId,
+            execution_result: result,
+          }),
+        }).catch(() => undefined);
+      }
 
       await refreshAccount();
       await reloadPositions();
@@ -918,6 +1085,10 @@ export function TradingWorkspace() {
         ],
       };
       setMessages((prev) => [...prev, receiptMessage]);
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("quant-trade-executed", { detail: { symbol: trade.symbol } }));
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Trade execution failed";
       setMessages((prev) => [
@@ -928,38 +1099,45 @@ export function TradingWorkspace() {
           parts: [{ type: "text", text: `⚠️ **Trade failed:** ${message}` }],
         },
       ]);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("quant-trade-failed", { detail: { message } }));
+      }
     }
   }, [balance, openDeposit, refreshAccount, reloadPositions, tradingMode]);
 
-  // Listen to standard "execute-simulated-trade" custom window events dispatched by Approach B widgets
+  // Trade tickets from chat GenUI widgets
   useEffect(() => {
-    const handleSimulatedTrade = (e: Event) => {
+    const handleTradeFromWidget = (e: Event) => {
       const customEvent = e as CustomEvent;
-      const { symbol, direction, size, price } = customEvent.detail;
-      
-      const leverage = 5;
-      const margin = (size * price) / leverage;
-      
+      const { symbol, direction, size, price, leverage, tradeLogId } = customEvent.detail;
+
+      const effectiveLeverage = leverage ?? 5;
+      const margin = (size * price) / effectiveLeverage;
+
       handleTradeExecute({
-        id: "sim_" + Math.random().toString(36).substring(2, 11),
+        id: crypto.randomUUID(),
         symbol,
         direction,
         price,
         size,
-        leverage,
+        leverage: effectiveLeverage,
         margin,
         tp: null,
         sl: null,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        tradeLogId,
       });
     };
 
     if (typeof window !== "undefined") {
-      window.addEventListener("execute-simulated-trade", handleSimulatedTrade);
+      window.addEventListener("execute-trade", handleTradeFromWidget);
+      // Legacy event name for older cached responses
+      window.addEventListener("execute-simulated-trade", handleTradeFromWidget);
     }
     return () => {
       if (typeof window !== "undefined") {
-        window.removeEventListener("execute-simulated-trade", handleSimulatedTrade);
+        window.removeEventListener("execute-trade", handleTradeFromWidget);
+        window.removeEventListener("execute-simulated-trade", handleTradeFromWidget);
       }
     };
   }, [handleTradeExecute]);
@@ -1183,6 +1361,15 @@ export function TradingWorkspace() {
     }
   }, []);
 
+  useEffect(() => {
+    const onWidgetEvent = (event: Event) => {
+      const detail = (event as CustomEvent<WidgetAction>).detail;
+      if (detail) handleWidgetAction(detail);
+    };
+    window.addEventListener(QUANT_WIDGET_ACTION_EVENT, onWidgetEvent);
+    return () => window.removeEventListener(QUANT_WIDGET_ACTION_EVENT, onWidgetEvent);
+  }, [handleWidgetAction]);
+
   const handleQuestionSubmit = useCallback(
     (answer: string) => {
       if (!activeQuestion) return;
@@ -1302,6 +1489,12 @@ export function TradingWorkspace() {
 
               if (event.type === "genui") {
                 const parts = [...lastMsg.parts, { type: "genui" as const, payload: event.payload }];
+                updated[updated.length - 1] = { ...lastMsg, parts, liveStatus: undefined, liveStatusDetail: undefined };
+                return updated;
+              }
+
+              if (event.type === "quant_ui") {
+                const parts = [...lastMsg.parts, { type: "quant-ui" as const, text: event.markup }];
                 updated[updated.length - 1] = { ...lastMsg, parts, liveStatus: undefined, liveStatusDetail: undefined };
                 return updated;
               }
@@ -1530,6 +1723,7 @@ Provide:
         {messages.length === 0 ? <PageBackground overlay="minimal" variant="orb" /> : null}
         <ChatWidgetProvider onWidgetAction={handleWidgetAction}>
         <div className="relative mx-auto flex h-full w-full max-w-5xl flex-col overflow-hidden">
+          <OrchestratorCycleControls />
           {sessionNumber ? (
             <div className="shrink-0 px-4 pt-2 text-[10px] font-medium uppercase tracking-wider text-zinc-500">
               Session {sessionNumber} · Continuing with memory from prior sessions
@@ -1604,11 +1798,13 @@ Provide:
                   />
                   {isQuestionActive && activeQuestion ? (
                     <div className="absolute bottom-0 left-0 right-0 z-50 pointer-events-auto">
-                      <InteractiveQuestionForm
-                        question={activeQuestion}
-                        onSubmit={handleQuestionSubmit}
-                        onDismiss={handleQuestionDismiss}
-                      />
+                      <div className="mx-auto w-full max-w-2xl">
+                        <InteractiveQuestionForm
+                          question={activeQuestion}
+                          onSubmit={handleQuestionSubmit}
+                          onDismiss={handleQuestionDismiss}
+                        />
+                      </div>
                     </div>
                   ) : null}
                 </div>

@@ -8,13 +8,15 @@ import { ChevronDown, Loader2 } from "lucide-react";
 import { AssistantSiriOrb } from "./assistant-siri-orb";
 import { MarkdownContent } from "./markdown-content";
 import { GenUiRenderer } from "@/components/generative-ui/genui-renderer";
+import { QuantUiRenderer } from "@/components/quant-ui/quant-ui-renderer";
 import { stripGenuiFences } from "@/lib/genui/strip-genui-fences";
+import { stripInjectedArtifactMarkdown } from "@/lib/genui/strip-artifact-fences";
 import { stripInteractiveQuestionMarkup } from "@/lib/chat/interactive-question-helper";
 import { AssetLogoIcon } from "@/components/ui/asset-logo";
 import type { ChatToolPod } from "@/lib/chat/stream-types";
 
 export interface MessagePart {
-  type: "reasoning" | "text" | "trade-execution" | "genui";
+  type: "reasoning" | "text" | "trade-execution" | "genui" | "quant-ui";
   text?: string;
   payload?: unknown;
 }
@@ -342,7 +344,7 @@ export function ChatMessage({
   );
   const toolPods = message.toolPods ?? [];
   const hasActivity = reasoningText.trim().length > 0 || toolPods.length > 0 || isAssistantStreaming;
-  const hasInjectedGenui = message.parts.some((p) => p.type === "genui");
+  const hasInjectedArtifact = message.parts.some((p) => p.type === "genui" || p.type === "quant-ui");
 
   return (
     <div
@@ -396,8 +398,11 @@ export function ChatMessage({
             if (part.type === "genui" && part.payload != null) {
               return <GenUiRenderer key={`${message.id}-${idx}`} payload={part.payload} />;
             }
+            if (part.type === "quant-ui" && part.text?.includes("<quant:")) {
+              return <QuantUiRenderer key={`${message.id}-${idx}`} markup={part.text} />;
+            }
             if (part.type === "text" && part.text?.trim()) {
-              let markdown = hasInjectedGenui ? stripGenuiFences(part.text) : part.text;
+              let markdown = hasInjectedArtifact ? stripInjectedArtifactMarkdown(part.text) : part.text;
               markdown = stripInteractiveQuestionMarkup(markdown);
               if (!markdown.trim()) return null;
               return (

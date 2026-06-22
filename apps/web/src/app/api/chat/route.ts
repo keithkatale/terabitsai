@@ -3,10 +3,14 @@ import { parseVertexErrorMessage } from "@/lib/gemini/vertex-error-parser";
 import { getCapitalAssetCatalog } from "@/lib/catalog/capital-assets";
 import { generateVertexTextCompletion } from "@/lib/gemini/vertex-text-completion";
 import { fetchAssetCatalog } from "@/lib/chat/asset-catalog-tool";
-import { fetchAssetMarketData, fetchMarketOverview } from "@/lib/chat/market-data-tool";
+import {
+  fetchAssetChartData,
+  fetchComparativeChartData,
+  fetchMarketOverview,
+} from "@/lib/chat/market-data-tool";
 import { searchMarketIntel, getLatestCatalystBrief, getMacroRegime, findHistoricalAnalogs } from "@quant/market-intel";
 import type { ChatStreamEvent } from "@/lib/chat/stream-types";
-import { extractToolGenui } from "@/lib/chat/stream-types";
+import { extractToolGenui, extractToolQuantUi } from "@/lib/chat/stream-types";
 import { historyContextBlob, parseClientHistory, toGeminiContents, type ChatHistoryTurn } from "@/lib/chat/conversation-history";
 import { augmentMessageWithPinnedAssets, parsePinnedAssets } from "@/lib/chat/pinned-assets";
 import { fetchAccountState } from "@/lib/chat/tools/account-state-tool";
@@ -14,7 +18,12 @@ import { executeBrokerAction, type BrokerActionArgs } from "@/lib/chat/tools/bro
 import { manageUserGoals, type ManageGoalArgs } from "@/lib/chat/tools/goal-tool";
 import { fetchFundamentals, fetchMacroData } from "@/lib/chat/tools/macro-tools";
 import { scheduleAgentTask, type ScheduleTaskArgs } from "@/lib/chat/tools/schedule-task-tool";
-import { buildSessionContextPrompt, getSessionContext } from "@/lib/chat/conversation-persistence";
+import {
+  buildSessionContextPrompt,
+  buildGoalMissionPrompt,
+  getSessionContext,
+  hasActiveBalanceGoal,
+} from "@/lib/chat/conversation-persistence";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { Type } from "@google/genai";
 
@@ -54,7 +63,7 @@ const getAssetDetailsDeclaration = {
 const getAssetMarketDataDeclaration = {
   name: "get_asset_market_data",
   description:
-    "Fetch live quote and historical OHLCV candles for any catalog asset. Use for charts, price checks, and technical context. Resolves names like Bitcoin → BTCUSD.",
+    "Fetch LIVE quote + historical OHLCV from Capital.com for any catalog asset. Returns a real AssetPriceChart component — never invent prices.",
   parameters: {
     type: Type.OBJECT,
     properties: {
@@ -68,16 +77,55 @@ const getAssetMarketDataDeclaration = {
       },
       range: {
         type: Type.STRING,
-        description: "History window: 1D, 1W, 1M, 3M, 6M, 1Y (default 1M)"
+        description: "History window: 1D, 1W, 1M, 3M, 6M, 1Y (default 1M)",
+        enum: ["1D", "1W", "1M", "3M", "6M", "1Y"],
       }
     }
   }
 };
 
+const renderAssetChartDeclaration = {
+  name: "render_asset_chart",
+  description:
+    "Render an interactive LIVE price chart from Capital.com OHLCV data. Use for ANY chart, graph, or price-history request. Returns server-built AssetPriceChart — do NOT hand-write chart numbers.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      symbol: { type: Type.STRING, description: "Ticker e.g. BTCUSD, AAPL, GOLD" },
+      query: { type: Type.STRING, description: "Natural language asset name" },
+      range: {
+        type: Type.STRING,
+        enum: ["1D", "1W", "1M", "3M", "6M", "1Y"],
+        description: "Time window (default 1M)",
+      },
+      variant: { type: Type.STRING, enum: ["line", "area"], description: "Chart style" },
+    },
+  },
+};
+
+const renderComparativeChartDeclaration = {
+  name: "render_comparative_chart",
+  description:
+    "Compare two assets with LIVE Capital.com historical data on one chart. Use when user asks to compare two tickers.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      symbol1: { type: Type.STRING },
+      symbol2: { type: Type.STRING },
+      range: {
+        type: Type.STRING,
+        enum: ["1M", "3M", "6M", "1Y"],
+        description: "Comparison window (default 6M)",
+      },
+    },
+    required: ["symbol1", "symbol2"],
+  },
+};
+
 const getMarketOverviewDeclaration = {
   name: "get_market_overview",
   description:
-    "Build a ready-to-render market overview dashboard (multiple assets). Returns a complete `genui` object — paste it verbatim into a ```genui block.",
+    "Build a contextual market overview from live Capital.com data. Pass symbols[] relevant to the user's question. Returns quant_ui markup — the client renders it automatically; do not paste it yourself.",
   parameters: {
     type: Type.OBJECT,
     properties: {
@@ -209,20 +257,45 @@ const scheduleTaskDeclaration = {
 
 const manageGoalsDeclaration = {
   name: "manage_goals",
-  description: "Set, list, update, or cancel persistent user trading goals (e.g. grow $20 to $1000).",
+  description:
+    "Set, track, and manage persistent balance goals. Required before autonomous trading. Use set_balance_target to grow account (e.g. $20 → $50). Background cron monitors progress every 5 minutes.",
   parameters: {
     type: Type.OBJECT,
     properties: {
-      operation: { type: Type.STRING, enum: ["list", "set", "update", "cancel"] },
+      operation: {
+        type: Type.STRING,
+        enum: [
+          "list",
+          "set",
+          "update",
+          "cancel",
+          "set_balance_target",
+          "check_progress",
+          "pause_goal",
+          "resume_goal",
+          "enable_autonomous",
+          "disable_autonomous",
+        ],
+      },
       goal_type: {
         type: Type.STRING,
         enum: ["balance_target", "strategy_preference", "risk_tolerance", "milestone"],
       },
-      goal_value: { type: Type.OBJECT, description: "JSON goal payload, e.g. { target: 1000, current: 20 }" },
+      goal_value: { type: Type.OBJECT, description: "JSON goal payload, e.g. { target: 50 }" },
       description: { type: Type.STRING },
       goal_id: { type: Type.STRING },
       progress_pct: { type: Type.NUMBER },
-      status: { type: Type.STRING, enum: ["active", "achieved", "cancelled", "paused"] },
+      target_balance: { type: Type.NUMBER, description: "Target account balance in USD" },
+      deadline_days: { type: Type.NUMBER, description: "Optional deadline in days from now" },
+      autonomous_trading: {
+        type: Type.BOOLEAN,
+        description: "If true, agent may execute trades toward goal without confirmation",
+      },
+      max_risk_per_trade: { type: Type.NUMBER, description: "Max % of account per trade (default 5)" },
+      status: {
+        type: Type.STRING,
+        enum: ["active", "in_progress", "achieved", "failed", "cancelled", "paused"],
+      },
     },
     required: ["operation"],
   },
@@ -287,23 +360,39 @@ export async function POST(req: Request) {
     }
 
     const tradingMode = rawTradingMode === "live" ? "live" : "demo";
-    let memoryContext = typeof clientSessionContext === "string" ? clientSessionContext : "";
-    if (!memoryContext) {
-      try {
-        const ctx = await getSessionContext(user.id, tradingMode);
-        memoryContext = buildSessionContextPrompt(ctx);
-      } catch {
-        memoryContext = "";
-      }
+    let memoryContext = "";
+    let goalMission = "";
+
+    try {
+      const ctx = await getSessionContext(user.id, tradingMode);
+      memoryContext = buildSessionContextPrompt(ctx);
+      goalMission = buildGoalMissionPrompt(ctx);
+    } catch {
+      memoryContext =
+        typeof clientSessionContext === "string" ? clientSessionContext : "";
     }
 
     const pinnedAssets = parsePinnedAssets(rawPinned);
     const effectiveMessage = augmentMessageWithPinnedAssets(message, pinnedAssets);
 
     const conversationHistory = parseClientHistory(rawHistory);
+    const isFirstTurn = conversationHistory.length === 0;
 
-    const systemInstruction = `You are the Terabits Wealth Engine coordinator — an AI trading agent team that helps users grow capital on autopilot.
-Your goal is to observe markets, synthesize intel, propose actionable trades, explain risk, and guide simulated or live execution with clarity and discipline.
+    const firstTurnDirective = isFirstTurn
+      ? `\n\nFIRST TURN OF SESSION: Before your visible reply, call manage_goals(operation=list) and get_account_state. Lead with goal setup (if none) or goal progress (if active).`
+      : "";
+
+    const tradingModeLabel =
+      tradingMode === "live"
+        ? "LIVE — the user trades on a real Capital.com account with real money. Never describe trades as simulated or paper. Trade tickets execute against their live balance."
+        : "DEMO — paper trading only. Trades update a simulated portfolio; label them as paper/demo.";
+
+    const systemInstruction = `${goalMission}${firstTurnDirective}
+
+TRADING MODE: ${tradingModeLabel}
+
+You are the Terabits Wealth Engine coordinator — an AI trading agent team that helps users grow capital on autopilot.
+Your goal is to observe markets, synthesize intel, propose actionable trades, explain risk, and guide ${tradingMode === "live" ? "live Capital.com execution" : "paper (demo) execution"} with clarity and discipline — always in service of the user's balance target.
 You maintain a professional, decisive tone. Provide structured replies using markdown formatting beautifully.
 
 You coordinate specialized agent teams equipped with MCP tools to:
@@ -313,8 +402,10 @@ You coordinate specialized agent teams equipped with MCP tools to:
 - Spin up specialized agent teams (parallel subagents) for technical, fundamental, risk, and sentiment analysis before trade proposals.
 
 When the user asks for a chart, price, market overview, or market view:
-1. Call get_market_overview (multi-asset) or get_asset_market_data (single asset).
-2. The client renders the tool's \`genui\` payload automatically — write **one short intro sentence only**. Do NOT output a \`\`\`genui block for market data (the server injects the dashboard).
+1. Call render_asset_chart (single asset) or render_comparative_chart (two assets) or get_market_overview (multi-asset). Pass specific symbols to get_market_overview — pick assets relevant to the user's question, not a generic default list.
+2. The client renders the tool's \`quant_ui\` markup automatically as a **live visual interface** — write **one short intro sentence only**.
+3. **NEVER** paste \`\`\`quant, \`\`\`genui, raw \`<quant:…>\` tags, or JSON in your reply. The user must never see markup or code — only rendered UI.
+4. NEVER hand-write price series, sparklines, or metric values for assets — all numbers must come from tool output.
 
 When the user asks to list, browse, or pull assets from the catalog:
 1. Call get_all_assets (optionally filter by asset_class).
@@ -322,10 +413,32 @@ When the user asks to list, browse, or pull assets from the catalog:
 
 When requested to analyze assets or run deep research, aggressively use the 'spawn_subagents' tool to form a team of subagents, and then synthesize their findings beautifully in your final response.
 
-### 🌟 GENERATIVE UI ENGINE (how you reply)
-Do NOT dump long walls of dry text. Lead with one short, high-signal sentence, then express the substance as live UI. The client renders three kinds of generated UI — pick the lightest that fits.
+### 🌟 QUANT UI — tag-based design system (server-rendered, never shown as code)
+Quant UI is our branded component language. Tools return \`<quant:…>\` markup which the **client renders as live visual components** — the user never sees tags or code.
 
-1) GENUI — declarative composed interface (DEFAULT — use this most).
+You describe *what* to show by calling tools (render_asset_chart, get_market_overview, etc.). The server builds the markup; the app interprets it into charts, buttons, and cards using our universal design tokens (accent colors, surfaces, borders).
+
+If you need a custom layout in prose (rare), you may use \`\`\`quant fences — but prefer tool injection. Never tell the user to "look at the code below".
+- Layout: section{title,subtitle}, grid{columns:1-4}, stack{gap:sm|md|lg}, divider
+- Typography: heading{level:1-4,text}, text{tone:default|muted|strong}, badge{accent,text}, citation{source,href?}
+- Live data: chart{symbol,name?,range,variant}, compare{symbol1,symbol2,range}, asset-card{symbol,name?,range} (compact live card — click to expand)
+- Metrics: stat{label,value,delta?,trend?,accent?}, metrics{columns} wrapping stat children
+- Interactive: button{action:prompt|navigate|custom,label?,payload?,href?,variant?}, study-link{id,title,description?,prompt?}, actions (wraps buttons)
+- Bridge: widget{name,props} for TradeConfirmationWidget, GoalProgressWidget, PortfolioBreakdown, etc.
+
+Button actions work like HTML+JS:
+- action="prompt" payload="…" → sends chat message
+- action="navigate" href="/path" → in-app link
+- action="custom" name="…" data='{"key":"val"}' → app custom handler
+
+When render_asset_chart / get_market_overview / render_comparative_chart return data, the server injects Quant UI automatically — do NOT duplicate.
+
+### 🌟 GENERATIVE UI ENGINE (legacy JSON DSL — still supported)
+Do NOT dump long walls of dry text. Lead with one short, high-signal sentence, then express the substance as live UI. The client renders four kinds of generated UI — pick the lightest that fits.
+
+1) QUANT UI (\`\`\`quant) — preferred for charts, dashboards, and interactive layouts (see above).
+
+2) GENUI — declarative JSON composed interface.
 For ANY structured financial answer (metrics, comparisons, breakdowns, scores, risk, summaries), output a fenced code block whose language tag is \`genui\` containing a single JSON layout tree. The renderer composes branded, animated React widgets; you never hand-write HTML for this. The JSON may be a single node { "type": ... }, a wrapper { "view": [ ...nodes ] }, or a bare array of nodes.
 
 Node vocabulary (every node has a \`type\`):
@@ -333,7 +446,7 @@ Node vocabulary (every node has a \`type\`):
 - Metrics: stat{label,value,delta?,trend?:up|down|flat,icon?,accent?}, metricCard{label,value,sublabel?,delta?,trend?,sparkline?:number[],accent?}
 - Viz: sparkline{data:number[],accent?,label?}, chart{variant?:line|area,series:[{name,data:number[],color?}],labels?:string[],title?}, gauge{value:0-100,label?,caption?,accent?}, progress{value:0-100,label?,caption?,accent?}, barlist{title?,items:[{label,value,accent?}],unit?}
 - Info: callout{variant:info|success|warning|danger,title?,text}, badge{text,accent?}, keyValue{items:[{label,value,accent?}]}, table{columns:string[],rows:(string|number)[][]}
-- Bridge to prebuilt widgets: component{name,props} where name is AssetCatalogGrid | AssetComparativeChart | PortfolioBreakdown | TransactionSummary | TradeConfirmationWidget
+- Bridge to prebuilt widgets: component{name,props} where name is AssetPriceChart | AssetCatalogGrid | AssetComparativeChart | PortfolioBreakdown | TransactionSummary | TradeConfirmationWidget | GoalProgressWidget
 - Interactive buttons: actionButton{label, action:"prompt"|"custom", payload, variant?:primary|secondary} — sends payload to chat when clicked
 accent is one of cyan|violet|emerald|rose|amber|sky|zinc. icon is any lucide icon name (e.g. "trending-up").
 
@@ -343,7 +456,7 @@ Example for "How is Bitcoin doing?" — call get_asset_market_data, then paste t
 \`\`\`
 
 PREFER FLAT layouts: \`{ "view": [ metricCard, metricCard, chart ] }\`. Avoid deep nesting (section>grid>children). Max 8 sparkline points. Never truncate JSON — if short on space, omit sparkline rather than cutting mid-object.
-For a trade ticket, use a component node: { "type": "component", "name": "TradeConfirmationWidget", "props": { "symbol": "BTCUSD", "direction": "BUY", "size": 0.5, "estimatedPrice": 67250, "leverage": 5, "fee": 12.5 } }.
+For a trade ticket, use a component node: { "type": "component", "name": "TradeConfirmationWidget", "props": { "symbol": "BTCUSD", "direction": "BUY", "size": 0.5, "estimatedPrice": 67250, "leverage": 5, "fee": 12.5, "mode": "${tradingMode}" } }. Never call live trades simulated when mode is live.
 
 2) HTML / SVG ARTIFACT — bespoke fully-custom interactive visuals ONLY.
 Use a fenced block with language \`html\` only when the genui vocabulary genuinely cannot express it (a novel custom interactive visual, a hand-drawn diagram, a one-off mini-app). It runs in a secured sandboxed iframe and must be fully self-contained (inline CSS/SVG/JS, no external scripts or network requests). Dark theme (#0b0d19 / #050508), cyan #38bdf8, buy-green #34d399, sell-red #f87171, glassmorphism. Prefer genui for ordinary charts and dashboards.
@@ -373,11 +486,10 @@ Each option \`value\` must be a complete user prompt. IDs must be unique per que
 3) PLAIN MARKDOWN — for concepts, definitions, and short answers. Keep it tight; you may still weave in a small genui block to highlight key numbers.
 
 RULES:
-- Whenever the user asks about a specific financial asset, coin, token, or stock ticker (e.g. Bitcoin, BTC, Ethereum, Apple, AAPL, gold, etc.) or requests to view charts, metrics, or perform analysis, you MUST output a \`\`\`genui block containing structured charts, metrics, and cards, or a \`\`\`html block containing a custom interactive SVG card. Raw text alone is NOT allowed for asset-specific requests.
-- Default to genui for anything quantitative or comparative; reach for HTML artifacts sparingly.
-- Put exactly ONE complete, valid JSON object inside each genui block and finish it (the renderer waits for the block to close before mounting — never leave it half-written).
-- GenUI JSON must be strict valid JSON: no ellipsis (...), no comments, no trailing commas. Include every sparkline number explicitly (max 12 points) or omit sparkline entirely.
-- When get_asset_market_data returns sparkline/labels, copy those arrays exactly into your chart/metricCard nodes.
+- Whenever the user asks about a specific financial asset, coin, token, or stock ticker (e.g. Bitcoin, BTC, Ethereum, Apple, AAPL, gold, etc.) or requests to view charts, metrics, or perform analysis, you MUST use a tool (render_asset_chart / get_market_overview) or output \`\`\`quant markup — raw text alone is NOT allowed for asset-specific requests.
+- Default to Quant UI or tools for charts and market views; use genui JSON for generic metrics; reach for HTML artifacts sparingly.
+- Put exactly ONE complete artifact block inside each fence and finish it (the renderer waits for the block to close before mounting — never leave it half-written).
+- When get_asset_market_data or render_asset_chart returns data, the server injects Quant UI with live Capital.com data — do not duplicate with hand-written chart nodes or legacy component JSON.
 - Never claim you "cannot display graphics" — choose a generative-UI path instead.
 
 CONVERSATION MEMORY:
@@ -388,14 +500,18 @@ PINNED ASSETS:
 - When a user message includes a <pinned_assets> block, those symbols are exact catalog tickers chosen in the UI — never substitute or guess alternatives.
 - Always call get_asset_details and get_asset_market_data for every pinned symbol before synthesizing your answer.
 
-AUTONOMOUS QUANT CAPABILITIES:
-- Use get_account_state before trade proposals to know wallet, positions, and performance.
-- Use broker_action for live Capital.com quotes/positions; place_order/close_position only as proposals — confirm via interactive-question.
-- Use schedule_task to wait for price moves or review positions later (e.g. 30-minute scalp check).
-- Use manage_goals to remember milestones (e.g. grow $20 → $1000) across sessions.
-- Use get_macro_data and get_fundamentals for broader market context.
-- Be proactive: on session start, summarize goals, account state, and suggest next steps.
-- Risk rule: never risk > 2% of account per trade unless user explicitly overrides.${memoryContext}`;
+AUTONOMOUS WEALTH MANAGER (you LEAD — user MONITORS):
+- You are the user's financial wealth manager. When a balance goal exists with autonomous_trading ON, you EXECUTE trades and REPORT what you did — never ask "would you like me to propose a trade?"
+- ORCHESTRATOR WAKE: When a user message starts with "[Orchestrator cycle", this is an internal 2-minute cycle wake-up — NOT a user question. Execute the directive immediately, call tools as needed, report what you did and the next step. Do not ask permission. Use spawn_subagents when the directive requires multi-faceted research.
+- After goal approval or enable_autonomous: narrate what you're doing ("I'm scanning markets…", "I opened a position on…") — act first, explain after.
+- Use manage_goals(set_balance_target) with autonomous_trading:true when user approves a plan — this kicks off immediate autonomous management.
+- Trades within the risk threshold execute automatically; larger trades queue for one-tap confirmation.
+- Use get_account_state to report portfolio state; use GoalProgressWidget via manage_goals(check_progress).
+- NEVER end a message with a menu of options like "would you like me to propose a trade?" — you are in charge.
+- broker_action place_order/close_position: when autonomous trading is ON, these still log proposals — prefer manage_goals flow and autonomous cycle for execution.
+- Use schedule_task only for reminders, not for trading decisions you should make yourself.
+- Use get_macro_data and get_fundamentals for context you weave into narration.
+- Risk rule: respect max_risk_per_trade on the goal; never exceed confirmation_threshold without queueing.${memoryContext}`;
 
     const encoder = new TextEncoder();
 
@@ -414,6 +530,7 @@ AUTONOMOUS QUANT CAPABILITIES:
             let loopCount = 0;
             const maxLoops = 5;
             let pendingGenui: unknown = null;
+            let pendingQuantUi: string | null = null;
 
             const toolConfig = {
               systemInstruction,
@@ -430,6 +547,8 @@ AUTONOMOUS QUANT CAPABILITIES:
                     getAssetDetailsDeclaration,
                     getAssetMarketDataDeclaration,
                     getMarketOverviewDeclaration,
+                    renderAssetChartDeclaration,
+                    renderComparativeChartDeclaration,
                     spawnSubagentsDeclaration,
                     searchMarketIntelDeclaration,
                     getCatalystBriefDeclaration,
@@ -501,10 +620,24 @@ AUTONOMOUS QUANT CAPABILITIES:
                       ? { success: true, asset }
                       : { success: false, error: `Asset '${symbol || "unknown"}' not found.` };
                   } else if (name === "get_asset_market_data") {
-                    toolResult = await fetchAssetMarketData({
+                    toolResult = await fetchAssetChartData({
                       symbol: args?.symbol as string | undefined,
                       query: args?.query as string | undefined,
                       range: (args?.range as string | undefined) ?? "1M",
+                      variant: "area",
+                    });
+                  } else if (name === "render_asset_chart") {
+                    toolResult = await fetchAssetChartData({
+                      symbol: args?.symbol as string | undefined,
+                      query: args?.query as string | undefined,
+                      range: (args?.range as string | undefined) ?? "1M",
+                      variant: (args?.variant as "line" | "area" | undefined) ?? "area",
+                    });
+                  } else if (name === "render_comparative_chart") {
+                    toolResult = await fetchComparativeChartData({
+                      symbol1: String(args?.symbol1 ?? ""),
+                      symbol2: String(args?.symbol2 ?? ""),
+                      range: (args?.range as string | undefined) ?? "6M",
                     });
                   } else if (name === "get_market_overview") {
                     const symbols = Array.isArray(args?.symbols)
@@ -619,6 +752,10 @@ AUTONOMOUS QUANT CAPABILITIES:
                       goal_id: args?.goal_id as string | undefined,
                       progress_pct: args?.progress_pct as number | undefined,
                       status: args?.status as ManageGoalArgs["status"],
+                      target_balance: args?.target_balance as number | undefined,
+                      deadline_days: args?.deadline_days as number | undefined,
+                      autonomous_trading: args?.autonomous_trading as boolean | undefined,
+                      max_risk_per_trade: args?.max_risk_per_trade as number | undefined,
                     });
                   } else if (name === "get_macro_data") {
                     const indicators = Array.isArray(args?.indicators)
@@ -647,8 +784,10 @@ AUTONOMOUS QUANT CAPABILITIES:
                     durationMs: Date.now() - started,
                   });
 
+                  const toolQuantUi = ok ? extractToolQuantUi(toolResult) : null;
                   const toolGenui = ok ? extractToolGenui(toolResult) : null;
-                  if (toolGenui) pendingGenui = toolGenui;
+                  if (toolQuantUi) pendingQuantUi = toolQuantUi;
+                  else if (toolGenui) pendingGenui = toolGenui;
 
                   toolResponseParts.push({
                     functionResponse: {
@@ -669,7 +808,9 @@ AUTONOMOUS QUANT CAPABILITIES:
               }
             }
 
-            if (pendingGenui) {
+            if (pendingQuantUi) {
+              sendEvent({ type: "quant_ui", markup: pendingQuantUi, source: "tool" });
+            } else if (pendingGenui) {
               sendEvent({ type: "genui", payload: pendingGenui, source: "tool" });
             }
           } catch (err: unknown) {
@@ -679,13 +820,13 @@ AUTONOMOUS QUANT CAPABILITIES:
               errMsg
             );
             const parsed = parseVertexErrorMessage(err);
-            await simulateStreamingResponse(effectiveMessage, sendEvent, `(Note: Vertex Gemini encountered an issue: ${parsed}. Running local model fallbacks...)\n\n`, conversationHistory);
+            await simulateStreamingResponse(effectiveMessage, sendEvent, `(Note: Vertex Gemini encountered an issue: ${parsed}. Running local model fallbacks...)\n\n`, conversationHistory, tradingMode);
           }
         } else {
           console.info(
             "[POST /api/chat] Gemini is not configured, running standard high-fidelity neutral simulated token stream."
           );
-          await simulateStreamingResponse(effectiveMessage, sendEvent, "", conversationHistory);
+          await simulateStreamingResponse(effectiveMessage, sendEvent, "", conversationHistory, tradingMode);
         }
 
         controller.close();
@@ -717,59 +858,39 @@ async function simulateStreamingResponse(
   prompt: string,
   sendEvent: (data: ChatStreamEvent) => void,
   prefixText = "",
-  conversationHistory: ChatHistoryTurn[] = []
+  conversationHistory: ChatHistoryTurn[] = [],
+  tradingMode: "demo" | "live" = "demo",
 ) {
   const contextBlob = conversationHistory.length
     ? `${historyContextBlob(conversationHistory)}\nUser: ${prompt}`
     : prompt;
   const normalizedPrompt = contextBlob.toLowerCase();
 
-  // 1. Compare AAPL and MSFT
-  if (normalizedPrompt.includes("compare aapl and msft") || normalizedPrompt === "compare" || (normalizedPrompt.includes("compare") && (normalizedPrompt.includes("aapl") || normalizedPrompt.includes("msft") || normalizedPrompt.includes("apple") || normalizedPrompt.includes("microsoft")))) {
-    const simulatedThoughts = [
-      "Analyzing user request to compare Apple (AAPL) and Microsoft (MSFT)...\n",
-      "Scanning dual pricing vectors across historical daily candles...\n",
-      "Calculating rolling beta correlation and momentum indicators...\n",
-      "Synthesizing comparative performance vectors...\n"
-    ];
+  // Compare two assets — live Capital.com data
+  if (
+    normalizedPrompt.includes("compare") &&
+    (normalizedPrompt.includes("aapl") ||
+      normalizedPrompt.includes("msft") ||
+      normalizedPrompt.includes("apple") ||
+      normalizedPrompt.includes("microsoft"))
+  ) {
+    const compare = await fetchComparativeChartData({
+      symbol1: "AAPL",
+      symbol2: "MSFT",
+      range: "6M",
+    });
 
-    for (const thought of simulatedThoughts) {
-      const words = thought.split(" ");
-      for (const word of words) {
-        sendEvent({ type: "reasoning", text: word + " " });
-        await new Promise((resolve) => setTimeout(resolve, 25));
-      }
-      await new Promise((resolve) => setTimeout(resolve, 100));
+    if (compare.success === false) {
+      sendEvent({ type: "text", text: `${prefixText}Could not load live comparison data: ${compare.error}` });
+      return;
     }
 
-    const mainText = `${prefixText}### 📊 Apple (AAPL) vs Microsoft (MSFT) Comparative Analysis
-
-I have completed a high-fidelity comparative analysis between **Apple Inc. (AAPL)** and **Microsoft Corp. (MSFT)** covering the active 6-month momentum index. 
-
-Both assets represent leading market caps in the tech sector, but they show diverging short-term momentum. Below is an interactive comparative chart that you can toggle across **1M**, **6M**, and **1Y** timeframes to inspect rolling price developments:
-
-\`\`\`json
-{
-  "component": "AssetComparativeChart",
-  "props": {
-    "ticker1": "AAPL",
-    "ticker2": "MSFT"
-  }
-}
-\`\`\`
-
-#### Key Quantitative Takeaways:
-* **AAPL Momentum (Indigo)**: Shows strong bullish retention supported by solid services revenue and high-conviction institutional inflows.
-* **MSFT Momentum (Emerald)**: Demonstrates steady growth backed by cloud expansion and deep integration of enterprise AI pipelines.
-* **Correlation Metric**: The 30-day rolling correlation sits at **0.78**, reflecting macro-economic alignment with slight asset-specific divergence.
-
-How would you like to balance your tactical exposure between these two blue-chips today?`;
-
-    const textChunks = mainText.split(" ");
-    for (const chunk of textChunks) {
+    const intro = `${prefixText}Here's a live **AAPL vs MSFT** comparison from Capital.com (6M):`;
+    for (const chunk of intro.split(" ")) {
       sendEvent({ type: "text", text: chunk + " " });
-      await new Promise((resolve) => setTimeout(resolve, 15));
+      await new Promise((r) => setTimeout(r, 12));
     }
+    sendEvent({ type: "quant_ui", markup: compare.quant_ui!, source: "render_comparative_chart" });
     return;
   }
 
@@ -789,7 +910,7 @@ How would you like to balance your tactical exposure between these two blue-chip
       sendEvent({ type: "text", text: chunk + " " });
       await new Promise((r) => setTimeout(r, 12));
     }
-    sendEvent({ type: "genui", payload: overview.genui, source: "get_market_overview" });
+    sendEvent({ type: "quant_ui", markup: overview.quant_ui!, source: "get_market_overview" });
     return;
   }
 
@@ -809,7 +930,7 @@ How would you like to balance your tactical exposure between these two blue-chip
     sendEvent({ type: "status", label: "get asset market data", detail: "Fetching candles" });
     sendEvent({ type: "tool_start", toolUseId, name: "get_asset_market_data", args: { query, range: "1M" } });
 
-    const market = await fetchAssetMarketData({ query, range: "1M" });
+    const market = await fetchAssetChartData({ query, range: "1M" });
 
     sendEvent({
       type: "tool_end",
@@ -837,54 +958,14 @@ How would you like to balance your tactical exposure between these two blue-chip
       quote.change24hPct != null
         ? `${quote.change24hPct >= 0 ? "+" : ""}${quote.change24hPct.toFixed(2)}%`
         : undefined;
-    const trend =
-      quote.change24hPct == null ? "flat" : quote.change24hPct >= 0 ? "up" : "down";
 
-    const genui = market.genui ?? {
-      view: [
-        {
-          type: "grid",
-          columns: 2,
-          children: [
-            {
-              type: "metricCard",
-              label: market.symbol,
-              value: quote.spot,
-              delta: change,
-              trend,
-              accent: "amber",
-              sparkline: (() => {
-                const s = market.sparkline as number[] | undefined;
-                return Array.isArray(s) ? s.slice(-8) : undefined;
-              })(),
-            },
-            {
-              type: "keyValue",
-              items: [
-                { label: "24h High", value: stats.high },
-                { label: "24h Low", value: stats.low },
-                { label: "Points", value: stats.points },
-              ],
-            },
-          ],
-        },
-        {
-          type: "chart",
-          variant: "area",
-          title: `${market.display_name} · 1M`,
-          labels: market.labels,
-          series: [{ name: market.symbol, data: market.sparkline, color: "amber" }],
-        },
-      ],
-    };
-
-    const mainText = `${prefixText}Here's **${market.display_name}** with live quote and 1-month history. Spot **${quote.spot.toLocaleString()}**${change ? ` (${change} 24h)` : ""}. Want a different range or a trade ticket?`;
+    const mainText = `${prefixText}Here's **${market.display_name}** with live Capital.com data. Spot **${quote.spot.toLocaleString()}**${change ? ` (${change} 24h)` : ""}. ${stats.points} candles loaded.`;
 
     for (const chunk of mainText.split(" ")) {
       sendEvent({ type: "text", text: chunk + " " });
       await new Promise((r) => setTimeout(r, 12));
     }
-    sendEvent({ type: "genui", payload: genui, source: "get_asset_market_data" });
+    sendEvent({ type: "quant_ui", markup: market.quant_ui!, source: "render_asset_chart" });
     return;
   }
 
@@ -1009,12 +1090,17 @@ Would you like to view your transaction invoice list or export these metrics?`;
     const direction = isSell ? "SELL" : "BUY";
     const size = symbol === "BTCUSD" ? 0.5 : 10;
     const fee = symbol === "BTCUSD" ? 12.50 : 5.00;
+    const isLive = tradingMode === "live";
+
+    const confirmIntro = isLive
+      ? "Please review the contract details below. To submit a **live order** to your Capital.com account, **Swipe to Confirm**. Confirmed trades use real margin from your available balance and open a CFD position you can monitor in the Investing tab."
+      : "Please review the contract details below. To submit a **paper trade** to your demo portfolio, **Swipe to Confirm**. Confirmed trades update your demo cash balance and open a practice CFD position in the Investing tab.";
 
     const mainText = `${prefixText}### 🛡️ Secure Trade Execution Card
 
 I have prepared an interactive trade execution ticket for your confirmation. 
 
-Please review the contract details below. To submit the order to our simulated paper ledger, **Swipe to Confirm** (or click the slider). Confirmed trades instantly update your cash balance and open a new CFD position in the Left Panel explorer tab!
+${confirmIntro}
 
 \`\`\`json
 {
@@ -1025,7 +1111,8 @@ Please review the contract details below. To submit the order to our simulated p
     "size": ${size},
     "estimatedPrice": ${price},
     "leverage": 5,
-    "fee": ${fee}
+    "fee": ${fee},
+    "mode": "${tradingMode}"
   }
 }
 \`\`\`

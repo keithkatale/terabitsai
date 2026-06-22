@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useState, useRef, useMemo } from "react";
+import { useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { TrendingUp } from "lucide-react";
 
@@ -15,59 +15,40 @@ interface AssetComparativeChartProps {
   ticker1?: string;
   ticker2?: string;
   data?: DataPoint[];
+  range?: string;
+  dataSource?: string;
 }
 
 export function AssetComparativeChart({
   ticker1 = "AAPL",
   ticker2 = "MSFT",
-  data
+  data,
+  range = "6M",
+  dataSource = "capital.com",
 }: AssetComparativeChartProps) {
-  const [timeframe, setTimeframe] = useState<"1M" | "6M" | "1Y">("6M");
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Fallback high-fidelity mocked datasets based on chosen timeframe
   const dataset = useMemo(() => {
     if (data && data.length > 0) return data;
+    return [];
+  }, [data]);
 
-    const mockDataMap: Record<"1M" | "6M" | "1Y", DataPoint[]> = {
-      "1M": [
-        { time: "W1", val1: 100, val2: 100 },
-        { time: "W2", val1: 104, val2: 101 },
-        { time: "W3", val1: 102, val2: 105 },
-        { time: "W4", val1: 108, val2: 103 },
-        { time: "Now", val1: 112, val2: 106 },
-      ],
-      "6M": [
-        { time: "Jan", val1: 100, val2: 100 },
-        { time: "Feb", val1: 105, val2: 103 },
-        { time: "Mar", val1: 103, val2: 108 },
-        { time: "Apr", val1: 112, val2: 109 },
-        { time: "May", val1: 118, val2: 114 },
-        { time: "Jun", val1: 125, val2: 120 },
-      ],
-      "1Y": [
-        { time: "Q1", val1: 100, val2: 100 },
-        { time: "Q2", val1: 114, val2: 108 },
-        { time: "Q3", val1: 108, val2: 120 },
-        { time: "Q4", val1: 126, val2: 118 },
-        { time: "End", val1: 138, val2: 132 },
-      ]
-    };
+  if (dataset.length === 0) {
+    return (
+      <div className="my-3 rounded-2xl border border-amber-500/20 bg-amber-950/10 p-4 text-left text-xs text-amber-200">
+        No live comparison data loaded. Ask the AI to compare {ticker1} and {ticker2} — it will fetch real Capital.com history.
+      </div>
+    );
+  }
 
-    return mockDataMap[timeframe];
-  }, [data, timeframe]);
-
-  // Compute SVG line paths coordinates
   const height = 150;
   const width = 380;
   const padding = 20;
 
   const points = useMemo(() => {
-    if (dataset.length === 0) return { path1: "", path2: "", coords1: [], coords2: [] };
-
-    const vals1 = dataset.map(d => d.val1);
-    const vals2 = dataset.map(d => d.val2);
+    const vals1 = dataset.map((d) => d.val1);
+    const vals2 = dataset.map((d) => d.val2);
     const allVals = [...vals1, ...vals2];
     const minVal = Math.min(...allVals) * 0.98;
     const maxVal = Math.max(...allVals) * 1.02;
@@ -82,12 +63,12 @@ export function AssetComparativeChart({
     const getPathStr = (c: { x: number; y: number }[]) => {
       if (c.length === 0) return "";
       let path = `M ${c[0].x} ${c[0].y}`;
-      for (let i = 0; i < c.length - 1; i++) {
-        const cpX1 = c[i].x + (c[i + 1].x - c[i].x) / 3;
-        const cpY1 = c[i].y;
-        const cpX2 = c[i].x + (2 * (c[i + 1].x - c[i].x)) / 3;
-        const cpY2 = c[i + 1].y;
-        path += ` C ${cpX1} ${cpY1}, ${cpX2} ${cpY2}, ${c[i + 1].x} ${c[i + 1].y}`;
+      for (let i = 1; i < c.length; i++) {
+        const cpX1 = c[i - 1].x + (c[i].x - c[i - 1].x) / 3;
+        const cpY1 = c[i - 1].y;
+        const cpX2 = c[i - 1].x + (2 * (c[i].x - c[i - 1].x)) / 3;
+        const cpY2 = c[i].y;
+        path += ` C ${cpX1} ${cpY1}, ${cpX2} ${cpY2}, ${c[i].x} ${c[i].y}`;
       }
       return path;
     };
@@ -96,7 +77,7 @@ export function AssetComparativeChart({
       path1: getPathStr(coords1),
       path2: getPathStr(coords2),
       coords1,
-      coords2
+      coords2,
     };
   }, [dataset, width, height]);
 
@@ -104,10 +85,10 @@ export function AssetComparativeChart({
     if (!containerRef.current || points.coords1.length === 0) return;
     const rect = containerRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
-    
+
     let nearestIdx = 0;
     let minDistance = Infinity;
-    
+
     points.coords1.forEach((pt, i) => {
       const distance = Math.abs(pt.x - x);
       if (distance < minDistance) {
@@ -119,88 +100,62 @@ export function AssetComparativeChart({
     setHoveredIndex(nearestIdx);
   };
 
-  const handleMouseLeave = () => {
-    setHoveredIndex(null);
-  };
-
   const activePoint = hoveredIndex !== null ? dataset[hoveredIndex] : dataset[dataset.length - 1];
-  const activeCoord1 = hoveredIndex !== null ? points.coords1[hoveredIndex] : points.coords1[points.coords1.length - 1];
-  const activeCoord2 = hoveredIndex !== null ? points.coords2[hoveredIndex] : points.coords2[points.coords2.length - 1];
+  const activeCoord1 =
+    hoveredIndex !== null ? points.coords1[hoveredIndex] : points.coords1[points.coords1.length - 1];
+  const activeCoord2 =
+    hoveredIndex !== null ? points.coords2[hoveredIndex] : points.coords2[points.coords2.length - 1];
 
-  const pctDiff1 = useMemo(() => {
-    const start = dataset[0].val1;
-    const end = activePoint.val1;
-    return ((end - start) / start) * 100;
-  }, [dataset, activePoint]);
-
-  const pctDiff2 = useMemo(() => {
-    const start = dataset[0].val2;
-    const end = activePoint.val2;
-    return ((end - start) / start) * 100;
-  }, [dataset, activePoint]);
+  const pctDiff1 = ((activePoint.val1 - dataset[0].val1) / dataset[0].val1) * 100;
+  const pctDiff2 = ((activePoint.val2 - dataset[0].val2) / dataset[0].val2) * 100;
 
   return (
-    <div 
+    <div
       ref={containerRef}
-      className="w-full bg-zinc-950/50 backdrop-blur-xl border border-zinc-900 rounded-2xl p-4 flex flex-col gap-3 shadow-xl animate-fade-in my-3 text-left"
+      className="my-3 w-full rounded-2xl border border-zinc-900 bg-zinc-950/50 p-4 shadow-xl backdrop-blur-xl animate-fade-in text-left"
     >
-      <div className="flex items-center justify-between">
+      <div className="mb-3 flex items-center justify-between gap-2">
         <div className="flex flex-col gap-0.5">
           <div className="flex items-center gap-1.5">
             <TrendingUp className="size-3.5 text-cyan-400" />
-            <span className="text-xs font-bold text-zinc-100 uppercase tracking-wider">Comparative Performance</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-zinc-100">
+              Comparative Performance
+            </span>
+            <span className="rounded border border-emerald-500/20 bg-emerald-950/30 px-1.5 py-0.5 text-[9px] font-bold uppercase text-emerald-400">
+              Live · {dataSource}
+            </span>
           </div>
-          <div className="flex items-center gap-2 mt-1">
-            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-sky-500/20 bg-sky-950/20 text-sky-400 font-extrabold">{ticker1}</span>
-            <span className="text-[9px] text-zinc-500 font-extrabold uppercase tracking-widest">VS</span>
-            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-rose-500/20 bg-rose-950/20 text-rose-400 font-extrabold">{ticker2}</span>
+          <div className="mt-1 flex items-center gap-2">
+            <span className="rounded border border-sky-500/20 bg-sky-950/20 px-1.5 py-0.5 font-mono text-[10px] font-extrabold text-sky-400">
+              {ticker1}
+            </span>
+            <span className="text-[9px] font-extrabold uppercase tracking-widest text-zinc-500">VS</span>
+            <span className="rounded border border-rose-500/20 bg-rose-950/20 px-1.5 py-0.5 font-mono text-[10px] font-extrabold text-rose-400">
+              {ticker2}
+            </span>
+            <span className="text-[10px] text-zinc-500">· {range}</span>
           </div>
-        </div>
-
-        <div className="bg-zinc-950 p-0.5 rounded-lg border border-zinc-900/60 flex gap-0.5">
-          {(["1M", "6M", "1Y"] as const).map((tf) => (
-            <button
-              key={tf}
-              onClick={() => setTimeframe(tf)}
-              className={cn(
-                "px-2 py-0.5 rounded text-[9px] font-extrabold tracking-wider transition-all cursor-pointer",
-                timeframe === tf
-                  ? "bg-cyan-500/10 border border-cyan-500/20 text-cyan-400"
-                  : "bg-transparent border border-transparent text-zinc-500 hover:text-zinc-300"
-              )}
-            >
-              {tf}
-            </button>
-          ))}
         </div>
       </div>
 
-      <div className="relative w-full h-[150px] bg-zinc-950/40 rounded-xl border border-zinc-900/40 overflow-hidden select-none">
+      <div className="relative h-[150px] overflow-hidden rounded-xl border border-zinc-900/40 bg-zinc-950/40">
         <svg
-          className="w-full h-full overflow-visible"
+          className="h-full w-full overflow-visible"
           viewBox={`0 0 ${width} ${height}`}
           preserveAspectRatio="none"
           onMouseMove={handleMouseMove}
-          onMouseLeave={handleMouseLeave}
+          onMouseLeave={() => setHoveredIndex(null)}
         >
           <defs>
             <linearGradient id="gradient-blue" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.4" />
-              <stop offset="100%" stopColor="#38bdf8" stopOpacity="0.0" />
+              <stop offset="100%" stopColor="#38bdf8" stopOpacity="0" />
             </linearGradient>
             <linearGradient id="gradient-rose" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="#f43f5e" stopOpacity="0.4" />
-              <stop offset="100%" stopColor="#f43f5e" stopOpacity="0.0" />
+              <stop offset="100%" stopColor="#f43f5e" stopOpacity="0" />
             </linearGradient>
-            <filter id="glow" x="-10%" y="-10%" width="120%" height="120%">
-              <feGaussianBlur stdDeviation="3" result="blur" />
-              <feComposite in="SourceGraphic" in2="blur" operator="over" />
-            </filter>
           </defs>
-
-          <line x1={padding} y1={height/2} x2={width-padding} y2={height/2} stroke="#1f1f2e" strokeWidth={1} strokeDasharray="3 3" />
-          <line x1={padding} y1={padding} x2={width-padding} y2={padding} stroke="#11111c" strokeWidth={1} />
-          <line x1={padding} y1={height-padding} x2={width-padding} y2={height-padding} stroke="#11111c" strokeWidth={1} />
 
           {points.coords1.length > 0 && (
             <path
@@ -215,20 +170,8 @@ export function AssetComparativeChart({
             />
           )}
 
-          <path
-            d={points.path1}
-            fill="none"
-            stroke="#38bdf8"
-            strokeWidth={1.75}
-            filter="url(#glow)"
-          />
-          <path
-            d={points.path2}
-            fill="none"
-            stroke="#f43f5e"
-            strokeWidth={1.75}
-            filter="url(#glow)"
-          />
+          <path d={points.path1} fill="none" stroke="#38bdf8" strokeWidth={1.75} />
+          <path d={points.path2} fill="none" stroke="#f43f5e" strokeWidth={1.75} />
 
           {hoveredIndex !== null && activeCoord1 && (
             <line
@@ -241,49 +184,27 @@ export function AssetComparativeChart({
               strokeDasharray="2 2"
             />
           )}
-
-          {activeCoord1 && (
-            <circle
-              cx={activeCoord1.x}
-              cy={activeCoord1.y}
-              r={hoveredIndex !== null ? 4.5 : 3.5}
-              fill="#38bdf8"
-              stroke="#09090b"
-              strokeWidth={2}
-              className="transition-all duration-150"
-            />
-          )}
-          {activeCoord2 && (
-            <circle
-              cx={activeCoord2.x}
-              cy={activeCoord2.y}
-              r={hoveredIndex !== null ? 4.5 : 3.5}
-              fill="#f43f5e"
-              stroke="#09090b"
-              strokeWidth={2}
-              className="transition-all duration-150"
-            />
-          )}
         </svg>
       </div>
 
-      <div className="grid grid-cols-2 gap-3.5 bg-zinc-950/40 p-3 rounded-xl border border-zinc-900/60 text-xs font-mono">
-        <div className="flex flex-col gap-1 border-r border-zinc-900/60 pr-1">
-          <span className="text-[9px] text-zinc-500 font-extrabold uppercase tracking-wide leading-none">{ticker1} VALUE ({activePoint.time})</span>
-          <div className="flex items-baseline gap-1.5 mt-0.5">
-            <span className="text-zinc-200 font-extrabold text-sm">${activePoint.val1.toFixed(1)}</span>
-            <span className={cn("text-[9px] font-extrabold uppercase", pctDiff1 >= 0 ? "text-emerald-400" : "text-rose-400")}>
-              {pctDiff1 >= 0 ? "+" : ""}{pctDiff1.toFixed(1)}%
+      <div className="mt-2 grid grid-cols-2 gap-3 rounded-xl border border-zinc-900/60 bg-zinc-950/40 p-3 font-mono text-xs">
+        <div className="border-r border-zinc-900/60 pr-1">
+          <span className="text-[9px] font-extrabold uppercase text-zinc-500">{ticker1} ({activePoint.time})</span>
+          <div className="mt-0.5 flex items-baseline gap-1.5">
+            <span className="text-sm font-extrabold text-zinc-200">${activePoint.val1.toFixed(2)}</span>
+            <span className={cn("text-[9px] font-extrabold", pctDiff1 >= 0 ? "text-emerald-400" : "text-rose-400")}>
+              {pctDiff1 >= 0 ? "+" : ""}
+              {pctDiff1.toFixed(1)}%
             </span>
           </div>
         </div>
-        
-        <div className="flex flex-col gap-1 pl-1">
-          <span className="text-[9px] text-zinc-500 font-extrabold uppercase tracking-wide leading-none">{ticker2} VALUE ({activePoint.time})</span>
-          <div className="flex items-baseline gap-1.5 mt-0.5">
-            <span className="text-zinc-200 font-extrabold text-sm">${activePoint.val2.toFixed(1)}</span>
-            <span className={cn("text-[9px] font-extrabold uppercase", pctDiff2 >= 0 ? "text-emerald-400" : "text-rose-400")}>
-              {pctDiff2 >= 0 ? "+" : ""}{pctDiff2.toFixed(1)}%
+        <div className="pl-1">
+          <span className="text-[9px] font-extrabold uppercase text-zinc-500">{ticker2} ({activePoint.time})</span>
+          <div className="mt-0.5 flex items-baseline gap-1.5">
+            <span className="text-sm font-extrabold text-zinc-200">${activePoint.val2.toFixed(2)}</span>
+            <span className={cn("text-[9px] font-extrabold", pctDiff2 >= 0 ? "text-emerald-400" : "text-rose-400")}>
+              {pctDiff2 >= 0 ? "+" : ""}
+              {pctDiff2.toFixed(1)}%
             </span>
           </div>
         </div>

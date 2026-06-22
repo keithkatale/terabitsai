@@ -14,6 +14,7 @@ export type ChatStreamEvent =
   | { type: "reasoning"; text: string }
   | { type: "status"; label: string; detail?: string }
   | { type: "genui"; payload: unknown; source?: string }
+  | { type: "quant_ui"; markup: string; source?: string }
   | { type: "tool_start"; toolUseId: string; name: string; args?: Record<string, unknown> }
   | {
       type: "tool_end";
@@ -31,4 +32,11 @@ export function extractToolGenui(output: unknown): unknown | null {
   if (!output || typeof output !== "object") return null;
   const genui = (output as { genui?: unknown }).genui;
   return genui && typeof genui === "object" ? genui : null;
+}
+
+/** Extract Quant UI markup from a tool result. */
+export function extractToolQuantUi(output: unknown): string | null {
+  if (!output || typeof output !== "object") return null;
+  const markup = (output as { quant_ui?: unknown }).quant_ui;
+  return typeof markup === "string" && markup.includes("<quant:") ? markup : null;
 }

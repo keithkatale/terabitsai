@@ -39,6 +39,35 @@
     inset 3px 3px 8px rgba(0, 0, 0, 0.35),
     inset -1px -1px 6px rgba(255, 255, 255, 0.03);
   --terminal-shadow: var(--neo-soft);
+
+  /* Quant UI design system — components reference these, AI references accent names */
+  --quant-surface: rgba(10, 13, 16, 0.55);
+  --quant-surface-raised: rgba(18, 24, 32, 0.65);
+  --quant-border: rgba(255, 255, 255, 0.08);
+  --quant-border-strong: rgba(255, 255, 255, 0.12);
+  --quant-text: #f4f4f5;
+  --quant-text-muted: #71717a;
+  --quant-accent-cyan: #38bdf8;
+  --quant-accent-cyan-soft: rgba(56, 189, 248, 0.1);
+  --quant-accent-cyan-border: rgba(56, 189, 248, 0.22);
+  --quant-accent-violet: #a78bfa;
+  --quant-accent-violet-soft: rgba(167, 139, 250, 0.1);
+  --quant-accent-violet-border: rgba(167, 139, 250, 0.22);
+  --quant-accent-emerald: #34d399;
+  --quant-accent-emerald-soft: rgba(52, 211, 153, 0.1);
+  --quant-accent-emerald-border: rgba(52, 211, 153, 0.22);
+  --quant-accent-rose: #f87171;
+  --quant-accent-rose-soft: rgba(248, 113, 113, 0.1);
+  --quant-accent-rose-border: rgba(248, 113, 113, 0.22);
+  --quant-accent-amber: #fbbf24;
+  --quant-accent-amber-soft: rgba(251, 191, 36, 0.1);
+  --quant-accent-amber-border: rgba(251, 191, 36, 0.22);
+  --quant-accent-sky: #7dd3fc;
+  --quant-accent-sky-soft: rgba(125, 211, 252, 0.1);
+  --quant-accent-sky-border: rgba(125, 211, 252, 0.22);
+  --quant-accent-zinc: #a1a1aa;
+  --quant-accent-zinc-soft: rgba(161, 161, 170, 0.1);
+  --quant-accent-zinc-border: rgba(113, 113, 122, 0.35);
 }
 
 * {
@@ -54,6 +83,24 @@ body {
   background-image:
     radial-gradient(at 15% 10%, rgba(46, 201, 255, 0.04) 0px, transparent 48%),
     radial-gradient(at 85% 90%, rgba(0, 255, 133, 0.03) 0px, transparent 50%);
+}
+
+/* Quant UI — universal styling layer (components inherit these tokens) */
+.quant-ui {
+  color: var(--quant-text);
+  font-family: var(--font-sans);
+}
+
+.quant-ui .quant-panel {
+  background: var(--quant-surface);
+  border: 1px solid var(--quant-border);
+  border-radius: 1rem;
+}
+
+.quant-ui .quant-panel-raised {
+  background: var(--quant-surface-raised);
+  border: 1px solid var(--quant-border-strong);
+  border-radius: 1rem;
 }
 
 /* Scrollbar styling */

@@ -134,10 +134,14 @@ export async function executeBrokerAction(
           size: args.size ?? 0.1,
           leverage: 5,
           estimatedPrice,
+          mode,
+          tradeLogId: logRow.id,
         },
       },
       message:
-        "Trade proposal logged. Ask the user to confirm via an interactive-question before executing through the investing flow.",
+        mode === "live"
+          ? "Live trade proposal logged. Ask the user to swipe to confirm on the trade ticket — execution routes to their Capital.com account."
+          : "Paper trade proposal logged. Ask the user to swipe to confirm on the trade ticket to update their demo portfolio.",
     };
   }
 

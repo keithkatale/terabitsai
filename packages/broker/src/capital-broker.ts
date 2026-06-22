@@ -289,6 +289,45 @@ export class CapitalBroker {
     }
     throw new Error(`Trade confirmation timed out: ${dealReference}`)
   }
+
+  async closePosition(
+    dealId: string,
+    size?: number
+  ): Promise<{ dealId: string; level: number; status: string }> {
+    if (this.killSwitch) {
+      throw new Error("Kill switch active — cannot close positions")
+    }
+
+    await this.ensureSession()
+
+    const res = await fetch(
+      `${this.baseUrl}/api/v1/positions/${encodeURIComponent(dealId)}`,
+      {
+        method: "DELETE",
+        headers: {
+          ...this.authHeaders(),
+          "Content-Type": "application/json"
+        },
+        body: size != null && size > 0 ? JSON.stringify({ size }) : undefined
+      }
+    )
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(
+        `Close position failed: ${(err as { errorMessage?: string }).errorMessage ?? res.statusText}`
+      )
+    }
+
+    const data = await res.json()
+    const dealReference = data.dealReference as string
+    if (!dealReference) {
+      return { dealId, level: 0, status: "CLOSED" }
+    }
+
+    const confirm = await this.confirmDeal(dealReference)
+    return { dealId: confirm.dealId || dealId, level: confirm.level, status: "CLOSED" }
+  }
 }
 
 function midPrice(pair: unknown): number {

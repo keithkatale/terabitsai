@@ -1,0 +1,26 @@
+{
+  "name": "@quant/wealth-manager",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@quant/broker": "*",
+    "@quant/db": "*",
+    "@quant/indicators": "*",
+    "@quant/market-intel": "*",
+    "@quant/risk": "*",
+    "@quant/strategy": "*",
+    "@supabase/supabase-js": "^2.49.1",
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.16",
+    "tsx": "^4.19.0",
+    "typescript": "^5.3.3"
+  }
+}
