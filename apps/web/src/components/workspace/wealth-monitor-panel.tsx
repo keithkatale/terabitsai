@@ -303,7 +303,9 @@ export function WealthMonitorPanel({ className }: Props) {
       setRemainingMs(rem);
       setProgress(Math.min(100, ((intervalMs - rem) / intervalMs) * 100));
 
-      if (rem <= 0 && !tickFiredRef.current && !triggerInFlightRef.current && autonomousOn) {
+      const monitorBusy = attention?.monitorRunning || triggerInFlightRef.current;
+
+      if (rem <= 0 && !tickFiredRef.current && !monitorBusy && autonomousOn) {
         tickFiredRef.current = true;
         triggerInFlightRef.current = true;
         setTriggering(true);
@@ -327,6 +329,7 @@ export function WealthMonitorPanel({ className }: Props) {
     attention?.cycleIntervalMs,
     attention?.remainingMs,
     attention?.autonomousActive,
+    attention?.monitorRunning,
     data?.goal?.nextWakeAt,
     data?.goal?.id,
     data?.autonomousActive,

@@ -1,10 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronDown, Loader2, Pause, Play, Power, Settings2 } from "lucide-react";
+import { Brain, ChevronDown, Loader2, Pause, Play, Power, Settings2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { formatCountdown } from "@/lib/autonomous/cycle-config";
-import { triggerWealthMonitorCycle } from "@/lib/autonomous/trigger-client";
 import { useAppTab } from "@/contexts/app-tab-context";
 
 type AttentionPayload = {
@@ -22,15 +20,15 @@ type AttentionPayload = {
   goal?: { id: string; status: string; autonomousTrading: boolean; killSwitch: boolean } | null;
 };
 
+/**
+ * Compact autonomous controls for the Command tab (pause / kill / settings).
+ * Countdown + cycle trigger live only in WealthMonitorPanel to avoid double wakes.
+ */
 export function OrchestratorCycleControls() {
   const { setActiveTab } = useAppTab();
   const [attention, setAttention] = useState<AttentionPayload | null>(null);
-  const [remainingMs, setRemainingMs] = useState(0);
-  const [progress, setProgress] = useState(0);
   const [open, setOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const tickFiredRef = useRef(false);
-  const triggerInFlightRef = useRef(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
   const refreshAttention = useCallback(async () => {
@@ -61,44 +59,6 @@ export function OrchestratorCycleControls() {
   }, [refreshAttention]);
 
   useEffect(() => {
-    tickFiredRef.current = false;
-  }, [attention?.nextCycleAt]);
-
-  useEffect(() => {
-    if (!attention?.nextCycleAt || !attention.cycleIntervalMs) {
-      setRemainingMs(attention?.remainingMs ?? 0);
-      setProgress(0);
-      return;
-    }
-
-    const tick = () => {
-      const nextMs = new Date(attention.nextCycleAt!).getTime();
-      const interval = attention.cycleIntervalMs;
-      const rem = Math.max(0, nextMs - Date.now());
-      setRemainingMs(rem);
-      setProgress(Math.min(100, ((interval - rem) / interval) * 100));
-      if (
-        rem <= 0 &&
-        !tickFiredRef.current &&
-        !triggerInFlightRef.current &&
-        attention.autonomousActive
-      ) {
-        tickFiredRef.current = true;
-        triggerInFlightRef.current = true;
-        void triggerWealthMonitorCycle(attention.goal?.id)
-          .then(() => void refreshAttention())
-          .finally(() => {
-            triggerInFlightRef.current = false;
-          });
-      }
-    };
-
-    tick();
-    const id = window.setInterval(tick, 1000);
-    return () => window.clearInterval(id);
-  }, [attention?.nextCycleAt, attention?.cycleIntervalMs, attention?.remainingMs, refreshAttention]);
-
-  useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
       if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
@@ -118,9 +78,8 @@ export function OrchestratorCycleControls() {
   if (!showControls) return null;
 
   const { attentionState, autonomousActive } = attention;
-  const isChecking = attentionState === "checking";
+  const isChecking = attentionState === "checking" || attention.monitorRunning;
   const isPaused = attentionState === "paused" || attentionState === "inactive";
-  const showCountdown = autonomousActive && !isPaused;
 
   const ringColor = isChecking
     ? "border-cyan-400/60"
@@ -169,40 +128,31 @@ export function OrchestratorCycleControls() {
           "relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 bg-black/50 backdrop-blur-sm transition-shadow",
           ringColor,
           isChecking && "shadow-[0_0_16px_rgba(34,211,238,0.25)]",
-          showCountdown && !isChecking && "shadow-[0_0_12px_rgba(52,211,153,0.15)]",
+          autonomousActive && !isPaused && !isChecking && "shadow-[0_0_12px_rgba(52,211,153,0.15)]",
         )}
-        style={
-          showCountdown
-            ? {
-                background: `conic-gradient(rgb(34 211 238 / 0.4) ${progress}%, rgb(0 0 0 / 0.5) ${progress}%)`,
-              }
-            : undefined
-        }
         title={
           isChecking
-            ? attention.monitorRunning
-              ? "Wealth Monitor analyzing & directing Command"
-              : "Orchestrator checking markets"
-            : showCountdown
-              ? `Next wake in ${formatCountdown(remainingMs)}`
-              : "Autonomous trading paused"
+            ? "Wealth Monitor analyzing & directing Command"
+            : isPaused
+              ? "Autonomous trading paused"
+              : autonomousActive
+                ? "Autonomous trading active — see timer in Wealth Monitor panel"
+                : "Autonomous manager"
         }
       >
         <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--terminal-surface)]">
           {isChecking ? (
             <Loader2 className="size-3.5 animate-spin text-cyan-400" />
-          ) : showCountdown ? (
-            <span className="text-[9px] font-bold tabular-nums leading-none text-cyan-300">
-              {formatCountdown(remainingMs)}
-            </span>
-          ) : (
+          ) : isPaused ? (
             <Pause className="size-3 text-amber-400" />
+          ) : (
+            <Brain className="size-3.5 text-emerald-400" />
           )}
         </span>
-        {autonomousActive && showCountdown ? (
+        {autonomousActive && !isPaused && !isChecking ? (
           <span className="absolute -right-0.5 -top-0.5 flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400 opacity-50" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-cyan-400" />
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-50" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
           </span>
         ) : null}
       </button>
