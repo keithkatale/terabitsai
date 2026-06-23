@@ -1,0 +1,497 @@
+# Terabits AI Trading Skills Registry
+# Canonical metadata for all trading skills
+# Auto-validated via scripts/validate_skills_registry.ts
+
+version: "1.0.0"
+last_updated: "2026-06-24"
+
+skills:
+  # ============================================================================
+  # MARKET REGIME ANALYSIS
+  # ============================================================================
+  
+  - id: market-regime-detector
+    name: Market Regime Detector
+    category: market-regime
+    status: planned
+    autonomous: true
+    priority: 1
+    description: >
+      Classifies current market as uptrend, downtrend, or ranging using 
+      breadth indicators, moving average slopes, and volatility measures.
+      Returns regime classification with confidence score and recommended
+      strategy adjustments.
+    triggers:
+      - "Wealth Monitor cycle begins"
+      - "User asks about current market conditions"
+      - "Goal strategy needs regime-specific adjustment"
+    integrations:
+      data_required:
+        - capital_com_candles  # OHLCV data for SPY, QQQ, major indices
+      knowledge_refs:
+        - strategies.json      # Regime-based strategy selection
+        - indicators.json      # MA, ADX, ATR calculations
+    inputs:
+      - symbols: ["SPY", "QQQ", "BTCUSD"]  # Breadth proxies
+      - timeframes: ["1D", "1W"]          # Multi-timeframe confirmation
+    outputs:
+      regime:
+        type: enum
+        values: [uptrend, downtrend, ranging]
+      confidence:
+        type: number
+        range: [0, 100]
+      reasoning:
+        type: string
+      recommended_strategy:
+        type: string
+    workflows:
+      - wealth-monitor-cycle
+      - command-market-check
+
+  - id: volatility-analyzer
+    name: Volatility Analyzer
+    category: market-regime
+    status: planned
+    autonomous: true
+    priority: 2
+    description: >
+      Measures current volatility (ATR, Bollinger Band width, realized vol)
+      against historical norms. Adjusts position sizing recommendations
+      and identifies volatility expansion/contraction regimes.
+    integrations:
+      data_required:
+        - capital_com_candles
+      knowledge_refs:
+        - indicators.json
+    workflows:
+      - wealth-monitor-cycle
+      - pre-trade-sizing
+
+  # ============================================================================
+  # TECHNICAL ANALYSIS
+  # ============================================================================
+
+  - id: multi-timeframe-analyzer
+    name: Multi-Timeframe Analyzer
+    category: technical-analysis
+    status: planned
+    autonomous: true
+    priority: 3
+    description: >
+      Analyzes trend alignment across 1H, 4H, 1D, and 1W timeframes.
+      Checks for higher-timeframe support, identifies strongest trends,
+      and flags divergences between timeframes.
+    integrations:
+      data_required:
+        - capital_com_candles  # Multiple timeframes
+      knowledge_refs:
+        - dow-theory.md        # Timeframe hierarchy
+    workflows:
+      - wealth-monitor-cycle
+      - command-chart-analysis
+
+  - id: support-resistance-identifier
+    name: Support/Resistance Identifier
+    category: technical-analysis
+    status: planned
+    autonomous: true
+    priority: 4
+    description: >
+      Identifies key support and resistance levels using swing points,
+      volume profile, and psychological round numbers. Used for stop
+      placement and profit targets.
+    integrations:
+      data_required:
+        - capital_com_candles
+      knowledge_refs:
+        - chart-patterns.json
+    workflows:
+      - trade-planning
+      - stop-placement
+
+  - id: trend-strength-scorer
+    name: Trend Strength Scorer
+    category: technical-analysis
+    status: planned
+    autonomous: true
+    priority: 5
+    description: >
+      Scores trend strength 0-100 using ADX, moving average slopes,
+      higher high/low sequence, and momentum indicators. Helps filter
+      weak setups and identify strongest opportunities.
+    integrations:
+      data_required:
+        - capital_com_candles
+      knowledge_refs:
+        - indicators.json
+        - strategies.json
+    workflows:
+      - wealth-monitor-cycle
+      - trade-filtering
+
+  - id: breakout-validator
+    name: Breakout Validator
+    category: technical-analysis
+    status: planned
+    autonomous: false
+    priority: 8
+    description: >
+      Validates breakout authenticity using volume, volatility, time of day,
+      and follow-through. Reduces false breakout trades.
+    integrations:
+      data_required:
+        - capital_com_candles
+        - capital_com_quote  # Real-time for intraday
+      knowledge_refs:
+        - chart-patterns.json
+    workflows:
+      - breakout-entry-confirmation
+
+  # ============================================================================
+  # RISK MANAGEMENT
+  # ============================================================================
+
+  - id: position-sizer
+    name: Position Sizer
+    category: risk-management
+    status: planned
+    autonomous: true
+    priority: 1
+    description: >
+      Calculates position size in units based on account balance, ATR-based
+      stop distance, max risk per trade from goal, and current portfolio heat.
+      Core risk management skill used on every trade.
+    integrations:
+      data_required:
+        - capital_com_account  # Current balance
+        - capital_com_positions  # Existing risk
+        - capital_com_quote    # Current price + ATR
+      knowledge_refs:
+        - None (pure calculation)
+    inputs:
+      - symbol: string
+      - entry_price: number
+      - stop_loss: number
+      - account_balance: number
+      - max_risk_pct: number  # From goal
+    outputs:
+      - units: number
+      - margin_required: number
+      - risk_dollars: number
+      - risk_pct: number
+    workflows:
+      - wealth-monitor-cycle  # Every trade decision
+      - command-trade-planning
+
+  - id: portfolio-heat-calculator
+    name: Portfolio Heat Calculator
+    category: risk-management
+    status: planned
+    autonomous: true
+    priority: 2
+    description: >
+      Sums total risk across all open positions to ensure aggregate risk
+      stays within goal limits. Blocks new trades if heat is too high.
+    integrations:
+      data_required:
+        - capital_com_positions
+      knowledge_refs:
+        - None
+    workflows:
+      - wealth-monitor-cycle
+      - pre-trade-validation
+
+  - id: stop-loss-optimizer
+    name: Stop-Loss Optimizer
+    category: risk-management
+    status: planned
+    autonomous: true
+    priority: 6
+    description: >
+      Places stops at technical levels (swing lows, support) rather than
+      arbitrary percentage distances. Balances risk/reward with technical logic.
+    integrations:
+      data_required:
+        - capital_com_candles
+      knowledge_refs:
+        - chart-patterns.json
+    workflows:
+      - trade-planning
+      - order-structuring
+
+  - id: drawdown-monitor
+    name: Drawdown Monitor
+    category: risk-management
+    status: planned
+    autonomous: true
+    priority: 7
+    description: >
+      Tracks consecutive losses and peak-to-trough drawdown. Recommends
+      pause or reduced sizing after extended losing streaks.
+    integrations:
+      data_required:
+        - capital_com_account
+      knowledge_refs:
+        - trading-psychology.json
+    workflows:
+      - wealth-monitor-cycle
+      - risk-circuit-breaker
+
+  # ============================================================================
+  # TRADE PLANNING
+  # ============================================================================
+
+  - id: trade-hypothesis-builder
+    name: Trade Hypothesis Builder
+    category: trade-planning
+    status: planned
+    autonomous: false
+    priority: 10
+    description: >
+      Documents trade thesis (why entering), catalyst (what triggers entry),
+      invalidation (when thesis is wrong), and structure (entry/stop/targets).
+      Improves trade discipline and journaling.
+    integrations:
+      data_required:
+        - None
+      knowledge_refs:
+        - strategies.json
+    workflows:
+      - manual-trade-planning
+      - trade-journaling
+
+  - id: entry-timing-optimizer
+    name: Entry Timing Optimizer
+    category: trade-planning
+    status: planned
+    autonomous: false
+    priority: 9
+    description: >
+      Decides whether to enter immediately (momentum chase) or wait for
+      pullback (better R:R). Uses volatility, trend strength, and timeframe.
+    integrations:
+      data_required:
+        - capital_com_candles
+      knowledge_refs:
+        - strategies.json
+    workflows:
+      - trade-entry-decision
+
+  - id: profit-target-calculator
+    name: Profit Target Calculator
+    category: trade-planning
+    status: planned
+    autonomous: true
+    priority: 7
+    description: >
+      Calculates profit targets as R-multiples (1R, 2R, 3R) based on
+      stop distance and adjusts for setup quality and regime.
+    integrations:
+      data_required:
+        - None (pure calculation)
+      knowledge_refs:
+        - strategies.json
+    workflows:
+      - trade-planning
+      - order-structuring
+
+  # ============================================================================
+  # EXECUTION QUALITY
+  # ============================================================================
+
+  - id: trade-postmortem-analyzer
+    name: Trade Postmortem Analyzer
+    category: execution-quality
+    status: planned
+    autonomous: true
+    priority: 8
+    description: >
+      Reviews closed trades: Was thesis correct? Was process followed?
+      What was learned? Builds institutional memory for improvement.
+    integrations:
+      data_required:
+        - capital_com_positions  # Historical
+        - capital_com_account    # P&L
+      knowledge_refs:
+        - trading-psychology.json
+    workflows:
+      - post-trade-review
+      - monthly-performance-review
+
+  - id: win-rate-analyzer
+    name: Win Rate Analyzer
+    category: execution-quality
+    status: planned
+    autonomous: false
+    priority: 9
+    description: >
+      Calculates win rate, expectancy, and average R-multiple by setup type,
+      timeframe, asset class, and market regime. Identifies edge.
+    integrations:
+      data_required:
+        - Trade history (from DB)
+      knowledge_refs:
+        - None
+    workflows:
+      - monthly-performance-review
+      - strategy-refinement
+
+  # ============================================================================
+  # CAPITAL.COM SPECIFIC
+  # ============================================================================
+
+  - id: spread-cost-calculator
+    name: Spread Cost Calculator
+    category: capital-com-specific
+    status: planned
+    autonomous: true
+    priority: 6
+    description: >
+      Calculates bid-ask spread cost as percentage of position size.
+      Factors into expected R:R and flags illiquid instruments.
+    integrations:
+      data_required:
+        - capital_com_quote  # Bid/ask spread
+      knowledge_refs:
+        - None
+    workflows:
+      - trade-planning
+      - cost-analysis
+
+  - id: overnight-funding-estimator
+    name: Overnight Funding Estimator
+    category: capital-com-specific
+    status: planned
+    autonomous: true
+    priority: 10
+    description: >
+      Estimates CFD overnight funding costs for multi-day holds.
+      Helps decide whether to hold or close before rollover.
+    integrations:
+      data_required:
+        - capital.com API  # Funding rates
+      knowledge_refs:
+        - None
+    workflows:
+      - hold-or-exit-decision
+
+  # ============================================================================
+  # KNOWLEDGE INTEGRATION
+  # ============================================================================
+
+  - id: pattern-lookup
+    name: Pattern Lookup
+    category: knowledge-integration
+    status: planned
+    autonomous: true
+    priority: 4
+    description: >
+      Queries chart-patterns.json for pattern definitions, reliability stats,
+      and trading playbooks. Used when pattern is detected in chart.
+    integrations:
+      data_required:
+        - None
+      knowledge_refs:
+        - chart-patterns.json
+        - elliott-wave.json
+    workflows:
+      - pattern-recognition
+      - trade-planning
+
+  - id: indicator-explainer
+    name: Indicator Explainer
+    category: knowledge-integration
+    status: planned
+    autonomous: false
+    priority: 5
+    description: >
+      Interprets indicator readings (RSI, MACD, ADX) from indicators.json
+      and explains what they mean in current market context.
+    integrations:
+      data_required:
+        - None
+      knowledge_refs:
+        - indicators.json
+    workflows:
+      - command-chart-analysis
+      - educational-mode
+
+  - id: strategy-recommender
+    name: Strategy Recommender
+    category: knowledge-integration
+    status: planned
+    autonomous: true
+    priority: 3
+    description: >
+      Recommends trading strategies from strategies.json based on current
+      market regime, asset class, and goal objectives.
+    integrations:
+      data_required:
+        - None
+      knowledge_refs:
+        - strategies.json
+    workflows:
+      - wealth-monitor-cycle
+      - strategy-selection
+
+  - id: psychology-coach
+    name: Psychology Coach
+    category: knowledge-integration
+    status: planned
+    autonomous: true
+    priority: 7
+    description: >
+      Applies risk rules from trading-psychology.json: reminds about
+      FOMO, revenge trading, overtrading, and emotional discipline.
+    integrations:
+      data_required:
+        - Trade history
+      knowledge_refs:
+        - trading-psychology.json
+    workflows:
+      - drawdown-response
+      - emotional-trading-detection
+
+# ============================================================================
+# WORKFLOWS
+# ============================================================================
+
+workflows:
+  - id: wealth-monitor-cycle
+    name: Wealth Monitor Cycle
+    description: Skills invoked automatically during each monitor wake
+    skills:
+      - market-regime-detector
+      - volatility-analyzer
+      - multi-timeframe-analyzer
+      - trend-strength-scorer
+      - position-sizer
+      - portfolio-heat-calculator
+      - strategy-recommender
+
+  - id: command-trade-planning
+    name: Command Trade Planning
+    description: On-demand trade planning in Command chat
+    skills:
+      - multi-timeframe-analyzer
+      - support-resistance-identifier
+      - position-sizer
+      - stop-loss-optimizer
+      - profit-target-calculator
+      - spread-cost-calculator
+
+  - id: post-trade-review
+    name: Post-Trade Review
+    description: Learning from closed trades
+    skills:
+      - trade-postmortem-analyzer
+      - win-rate-analyzer
+
+  - id: monthly-performance-review
+    name: Monthly Performance Review
+    description: Monthly strategy refinement
+    skills:
+      - win-rate-analyzer
+      - drawdown-monitor
+      - psychology-coach
