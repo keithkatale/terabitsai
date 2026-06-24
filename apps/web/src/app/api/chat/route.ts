@@ -1,27 +1,19 @@
-import { getAgentGeminiModelId, getVertexGeminiClient, isGeminiRuntimeConfigured, geminiIncludeThoughts } from "@/lib/gemini/vertex-client";
+import { isGeminiRuntimeConfigured } from "@/lib/gemini/vertex-client";
 import { parseVertexErrorMessage } from "@/lib/gemini/vertex-error-parser";
 import { getCapitalAssetCatalog } from "@/lib/catalog/capital-assets";
 import { generateVertexTextCompletion } from "@/lib/gemini/vertex-text-completion";
 import { fetchAssetCatalog } from "@/lib/chat/asset-catalog-tool";
-import {
-  fetchAssetChartData,
-  fetchComparativeChartData,
-  fetchMarketOverview,
-} from "@/lib/chat/market-data-tool";
-import { searchMarketIntel, getLatestCatalystBrief, getMacroRegime, findHistoricalAnalogs } from "@quant/market-intel";
+import { fetchAssetChartData, fetchComparativeChartData, fetchMarketOverview } from "@/lib/chat/market-data-tool";
+import { findHistoricalAnalogs } from "@quant/market-intel";
 import type { ChatStreamEvent } from "@/lib/chat/stream-types";
-import { extractToolGenui, extractToolQuantUi } from "@/lib/chat/stream-types";
 import { historyContextBlob, parseClientHistory, toGeminiContents, type ChatHistoryTurn } from "@/lib/chat/conversation-history";
 import { augmentMessageWithPinnedAssets, parsePinnedAssets } from "@/lib/chat/pinned-assets";
-import { fetchAccountState } from "@/lib/chat/tools/account-state-tool";
-import { executeBrokerAction, executeAutonomousTrade, type BrokerActionArgs } from "@/lib/chat/tools/broker-action-tool";
-import { manageUserGoals, type ManageGoalArgs } from "@/lib/chat/tools/goal-tool";
-import { fetchFundamentals, fetchMacroData } from "@/lib/chat/tools/macro-tools";
-import { scheduleAgentTask, type ScheduleTaskArgs } from "@/lib/chat/tools/schedule-task-tool";
 import {
-  executeQueryTradingKnowledge,
-  queryTradingKnowledgeDeclaration,
-} from "@/lib/chat/tools/knowledge-tool";
+  augmentMessageWithAiTools,
+  buildAiToolsSystemHint,
+  parseAiTools,
+} from "@/lib/chat/ai-tools";
+import { fetchAccountState } from "@/lib/chat/tools/account-state-tool";
 import {
   buildSessionContextPrompt,
   buildGoalMissionPrompt,
@@ -29,333 +21,12 @@ import {
   hasActiveBalanceGoal,
 } from "@/lib/chat/conversation-persistence";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { Type } from "@google/genai";
-import {
-  executeSkillDeclaration,
-  handleExecuteSkill,
-} from "@/lib/skills/tool-declaration";
+import { runAgentLoop } from "@/lib/chat/agent-loop";
+import { orchestratorToolDeclarations } from "@/lib/chat/tool-declarations";
+import { subAgentColorAt } from "@/lib/chat/subagent-types";
 
 export const dynamic = "force-dynamic";
 
-// Define Gemini tool schemas matching the approved technical specifications
-const getAllAssetsDeclaration = {
-  name: "get_all_assets",
-  description: "Retrieve all assets available in the Terabits AI catalog, grouped by asset class (crypto, stock, etf, index, commodity, etc.)",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      asset_class: {
-        type: Type.STRING,
-        description: "Optional filter by asset class: crypto, stock, or etf",
-        enum: ["crypto", "stock", "etf"]
-      }
-    }
-  }
-};
-
-const getAssetDetailsDeclaration = {
-  name: "get_asset_details",
-  description: "Retrieve detailed metadata and transaction rules for a specific asset ticker from the catalog.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      symbol: {
-        type: Type.STRING,
-        description: "The exact symbol of the asset to look up (e.g. BTCUSD, AAPL, EURUSD, GOLD)"
-      }
-    },
-    required: ["symbol"]
-  }
-};
-
-const getAssetMarketDataDeclaration = {
-  name: "get_asset_market_data",
-  description:
-    "Fetch LIVE quote + historical OHLCV from Capital.com for any catalog asset. Returns a real AssetPriceChart component — never invent prices.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      symbol: {
-        type: Type.STRING,
-        description: "Ticker or name, e.g. BTCUSD, Bitcoin, AAPL, GOLD"
-      },
-      query: {
-        type: Type.STRING,
-        description: "Alternative to symbol — natural language asset name"
-      },
-      range: {
-        type: Type.STRING,
-        description: "History window: 1D, 1W, 1M, 3M, 6M, 1Y (default 1M)",
-        enum: ["1D", "1W", "1M", "3M", "6M", "1Y"],
-      }
-    }
-  }
-};
-
-const renderAssetChartDeclaration = {
-  name: "render_asset_chart",
-  description:
-    "Render an interactive LIVE price chart from Capital.com OHLCV data. Use for ANY chart, graph, or price-history request. Returns server-built AssetPriceChart — do NOT hand-write chart numbers.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      symbol: { type: Type.STRING, description: "Ticker e.g. BTCUSD, AAPL, GOLD" },
-      query: { type: Type.STRING, description: "Natural language asset name" },
-      range: {
-        type: Type.STRING,
-        enum: ["1D", "1W", "1M", "3M", "6M", "1Y"],
-        description: "Time window (default 1M)",
-      },
-      variant: { type: Type.STRING, enum: ["line", "area"], description: "Chart style" },
-    },
-  },
-};
-
-const renderComparativeChartDeclaration = {
-  name: "render_comparative_chart",
-  description:
-    "Compare two assets with LIVE Capital.com historical data on one chart. Use when user asks to compare two tickers.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      symbol1: { type: Type.STRING },
-      symbol2: { type: Type.STRING },
-      range: {
-        type: Type.STRING,
-        enum: ["1M", "3M", "6M", "1Y"],
-        description: "Comparison window (default 6M)",
-      },
-    },
-    required: ["symbol1", "symbol2"],
-  },
-};
-
-const getMarketOverviewDeclaration = {
-  name: "get_market_overview",
-  description:
-    "Build a contextual market overview from live Capital.com data. Pass symbols[] relevant to the user's question. Returns quant_ui markup — the client renders it automatically; do not paste it yourself.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      symbols: {
-        type: Type.ARRAY,
-        description: "Optional tickers, e.g. [\"BTCUSD\",\"ETHUSD\",\"US100\"]. Defaults to top markets.",
-        items: { type: Type.STRING },
-      },
-    },
-  },
-};
-
-const spawnSubagentsDeclaration = {
-  name: "spawn_subagents",
-  description: "Spin up multiple copy instances of yourself as parallel subagents (agent teams) to perform specialized analyses (e.g., technical, financial, risk, sentiment) on specific assets in parallel, and compile their reports.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      subagents: {
-        type: Type.ARRAY,
-        description: "List of subagents to spin up in parallel",
-        items: {
-          type: Type.OBJECT,
-          properties: {
-            role: {
-              type: Type.STRING,
-              description: "The specialized role of the subagent (e.g., Technical Analyst, Fundamental Analyst, Risk Manager, Sentiment Investigator)"
-            },
-            asset_symbol: {
-              type: Type.STRING,
-              description: "The symbol of the asset for this subagent to analyze (e.g., BTCUSD, AAPL, GOLD)"
-            },
-            instruction: {
-              type: Type.STRING,
-              description: "Specific analytical instruction or question for this subagent to resolve"
-            }
-          },
-          required: ["role", "asset_symbol", "instruction"]
-        }
-      }
-    },
-    required: ["subagents"]
-  }
-};
-
-const searchMarketIntelDeclaration = {
-  name: "search_market_intel",
-  description:
-    "Search ingested market intelligence (news, macro, flow) with verified sources. Use for 'why is X moving' questions before synthesizing an answer.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      query: { type: Type.STRING, description: "Search query" },
-      symbol: { type: Type.STRING, description: "Optional ticker filter e.g. NVDA" },
-    },
-    required: ["query"],
-  },
-};
-
-const getCatalystBriefDeclaration = {
-  name: "get_catalyst_brief",
-  description: "Get latest AI catalyst synthesis brief for a symbol with impact score and provenance URLs.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      symbol: { type: Type.STRING },
-    },
-    required: ["symbol"],
-  },
-};
-
-const getAccountStateDeclaration = {
-  name: "get_account_state",
-  description:
-    "Get complete account information: wallet balance, locked margin, open positions, recent transactions, and portfolio performance.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      include_history: { type: Type.BOOLEAN, description: "Include recent ledger transactions" },
-      include_positions: { type: Type.BOOLEAN, description: "Include open positions with P&L" },
-      include_performance: { type: Type.BOOLEAN, description: "Include portfolio growth metrics" },
-      history_limit: { type: Type.NUMBER, description: "Max transactions to return (default 50)" },
-    },
-  },
-};
-
-const brokerActionDeclaration = {
-  name: "broker_action",
-  description:
-    "Capital.com API: get_quote, get_candles, get_positions, get_account. For place_order/close_position when autonomous trading is ON, orders execute immediately on Capital.com with no user confirmation. When autonomous is OFF, returns a swipe-to-confirm proposal.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      action: {
-        type: Type.STRING,
-        enum: ["get_quote", "get_positions", "get_account", "get_candles", "place_order", "close_position"],
-      },
-      symbol: { type: Type.STRING },
-      direction: { type: Type.STRING, enum: ["BUY", "SELL"] },
-      size: { type: Type.NUMBER, description: "Contract size in units (optional — auto-sized from goal risk limits if omitted)" },
-      stop_loss: { type: Type.NUMBER },
-      take_profit: { type: Type.NUMBER },
-      deal_id: { type: Type.STRING },
-      timeframe: { type: Type.STRING, description: "1D, 1W, 1M, 3M, 6M, 1Y" },
-      reasoning: { type: Type.STRING, description: "Why you are placing this trade" },
-    },
-    required: ["action"],
-  },
-};
-
-const executeTradeDeclaration = {
-  name: "execute_trade",
-  description:
-    "Execute a trade directly on Capital.com when autonomous trading is ON. No swipe confirmation — the order is placed immediately. Use get_quote first, then call with symbol, direction, optional size/stop_loss/take_profit. For closing, set action to close_position.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      action: { type: Type.STRING, enum: ["place_order", "close_position"] },
-      symbol: { type: Type.STRING },
-      direction: { type: Type.STRING, enum: ["BUY", "SELL"] },
-      size: { type: Type.NUMBER },
-      stop_loss: { type: Type.NUMBER },
-      take_profit: { type: Type.NUMBER },
-      deal_id: { type: Type.STRING },
-      reasoning: { type: Type.STRING },
-    },
-    required: ["action"],
-  },
-};
-
-const scheduleTaskDeclaration = {
-  name: "schedule_task",
-  description:
-    "Schedule a future check (price, position review, reminder). Use when waiting for price movement or long-running scalping workflows.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      task_type: {
-        type: Type.STRING,
-        enum: ["price_check", "position_review", "market_open", "reminder", "strategy_check"],
-      },
-      delay_minutes: { type: Type.NUMBER, description: "Minutes from now (1–1440)" },
-      symbol: { type: Type.STRING },
-      condition: { type: Type.STRING, description: "Optional JS expression using `price`, e.g. price > 50000" },
-      message: { type: Type.STRING },
-    },
-    required: ["task_type", "delay_minutes"],
-  },
-};
-
-const manageGoalsDeclaration = {
-  name: "manage_goals",
-  description:
-    "Set, track, and manage persistent balance goals. Required before autonomous trading. Use set_balance_target to grow account (e.g. $20 → $50). Background cron monitors progress every 5 minutes.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      operation: {
-        type: Type.STRING,
-        enum: [
-          "list",
-          "set",
-          "update",
-          "cancel",
-          "set_balance_target",
-          "check_progress",
-          "pause_goal",
-          "resume_goal",
-          "enable_autonomous",
-          "disable_autonomous",
-        ],
-      },
-      goal_type: {
-        type: Type.STRING,
-        enum: ["balance_target", "strategy_preference", "risk_tolerance", "milestone"],
-      },
-      goal_value: { type: Type.OBJECT, description: "JSON goal payload, e.g. { target: 50 }" },
-      description: { type: Type.STRING },
-      goal_id: { type: Type.STRING },
-      progress_pct: { type: Type.NUMBER },
-      target_balance: { type: Type.NUMBER, description: "Target account balance in USD" },
-      deadline_days: { type: Type.NUMBER, description: "Optional deadline in days from now" },
-      autonomous_trading: {
-        type: Type.BOOLEAN,
-        description: "If true, agent may execute trades toward goal without confirmation",
-      },
-      max_risk_per_trade: { type: Type.NUMBER, description: "Max % of account per trade (default 5)" },
-      status: {
-        type: Type.STRING,
-        enum: ["active", "in_progress", "achieved", "failed", "cancelled", "paused"],
-      },
-    },
-    required: ["operation"],
-  },
-};
-
-const getMacroDataDeclaration = {
-  name: "get_macro_data",
-  description: "Fetch macro indicators and market sentiment (Fear & Greed, rates, VIX via FRED when configured).",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      indicators: {
-        type: Type.ARRAY,
-        items: { type: Type.STRING },
-        description: "e.g. fear_greed, macro, rates, vix",
-      },
-    },
-  },
-};
-
-const getFundamentalsDeclaration = {
-  name: "get_fundamentals",
-  description: "Fetch stock fundamentals and news sentiment via Alpha Vantage (when API key configured).",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      symbol: { type: Type.STRING },
-    },
-    required: ["symbol"],
-  },
-};
 
 export async function POST(req: Request) {
   try {
@@ -379,6 +50,7 @@ export async function POST(req: Request) {
       conversationId,
       tradingMode: rawTradingMode,
       sessionContext: clientSessionContext,
+      aiTools: rawAiTools,
     } = body;
 
     if (!message || typeof message !== "string") {
@@ -404,7 +76,12 @@ export async function POST(req: Request) {
     }
 
     const pinnedAssets = parsePinnedAssets(rawPinned);
-    const effectiveMessage = augmentMessageWithPinnedAssets(message, pinnedAssets);
+    const aiTools = parseAiTools(rawAiTools);
+    const effectiveMessage = augmentMessageWithAiTools(
+      augmentMessageWithPinnedAssets(message, pinnedAssets),
+      aiTools,
+    );
+    const aiToolsHint = buildAiToolsSystemHint(aiTools);
 
     const conversationHistory = parseClientHistory(rawHistory);
     const isFirstTurn = conversationHistory.length === 0;
@@ -418,7 +95,7 @@ export async function POST(req: Request) {
         ? "LIVE — the user trades on a real Capital.com account with real money. Never describe trades as simulated or paper. Trade tickets execute against their live balance."
         : "DEMO — paper trading only. Trades update a simulated portfolio; label them as paper/demo.";
 
-    const systemInstruction = `${goalMission}${firstTurnDirective}
+    const systemInstruction = `${goalMission}${firstTurnDirective}${aiToolsHint}
 
 TRADING MODE: ${tradingModeLabel}
 
@@ -433,16 +110,25 @@ You coordinate specialized agent teams equipped with MCP tools to:
 - Spin up specialized agent teams (parallel subagents) for technical, fundamental, risk, and sentiment analysis before trade proposals.
 
 When the user asks for a chart, price, market overview, or market view:
-1. Call render_asset_chart (single asset) or render_comparative_chart (two assets) or get_market_overview (multi-asset). Pass specific symbols to get_market_overview — pick assets relevant to the user's question, not a generic default list.
-2. The client renders the tool's \`quant_ui\` markup automatically as a **live visual interface** — write **one short intro sentence only**.
-3. **NEVER** paste \`\`\`quant, \`\`\`genui, raw \`<quant:…>\` tags, or JSON in your reply. The user must never see markup or code — only rendered UI.
-4. NEVER hand-write price series, sparklines, or metric values for assets — all numbers must come from tool output.
+1. For **technical analysis, patterns, support/resistance, indicator reads, or trader-style chart review** — call \`analyze_chart\` (TradingView data + AI vision). Use \`render_asset_chart\` only for simple live Capital.com price history.
+2. Otherwise call render_asset_chart (single asset) or render_comparative_chart (two assets) or get_market_overview (multi-asset). Pass specific symbols to get_market_overview — pick assets relevant to the user's question, not a generic default list.
+3. The client renders the tool's \`quant_ui\` or \`genui\` payload automatically as a **live visual interface** — write **one short intro sentence only**.
+4. **NEVER** paste \`\`\`quant, \`\`\`genui, raw \`<quant:…>\` tags, or JSON in your reply. The user must never see markup or code — only rendered UI.
+5. NEVER hand-write price series, sparklines, or metric values for assets — all numbers must come from tool output.
 
 When the user asks to list, browse, or pull assets from the catalog:
 1. Call get_all_assets (optionally filter by asset_class).
 2. The client renders the tool's \`genui\` payload automatically (AssetCatalogGrid with logos and live prices) — write **one short intro sentence only**. Do NOT output barlist nodes or markdown tables for the full catalog.
 
-When requested to analyze assets or run deep research, aggressively use the 'spawn_subagents' tool to form a team of subagents, and then synthesize their findings beautifully in your final response.
+When delegating parallel research via \`spawn_subagents\`:
+1. **When to delegate** — only when the task needs many steps, parallel depth, or a wider information scope than you can cover efficiently alone. Do NOT delegate for its own sake.
+2. **Split work dynamically** — each sub-agent must get a **distinct slice** of the problem (e.g. technical chart vs macro intel vs risk). Never assign duplicate or near-identical prompts to multiple agents.
+3. For each sub-agent provide:
+   - \`label\`: short user-facing trace (3–7 words) shown in the live widget — what this agent is assigned to do.
+   - \`prompt\`: full detailed instructions (for the agent only; **not** shown in the widget).
+4. Cap at 5 parallel agents per call. You may call \`spawn_subagents\` again for follow-up slices or fresh data.
+5. Sub-agents may fail, time out, or return thin reports — that is normal. Never describe a failed agent as malfunctioning. State what data was missing, re-delegate a sharper slice if needed, or synthesize from what succeeded.
+6. Sub-agents only report tool-verified facts. Synthesize \`team_results\`; do not paste raw JSON.
 
 ### 🌟 QUANT UI — tag-based design system (server-rendered, never shown as code)
 Quant UI is our branded component language. Tools return \`<quant:…>\` markup which the **client renders as live visual components** — the user never sees tags or code.
@@ -516,6 +202,10 @@ Each option \`value\` must be a complete user prompt. IDs must be unique per que
 
 3) PLAIN MARKDOWN — for concepts, definitions, and short answers. Keep it tight; you may still weave in a small genui block to highlight key numbers.
 
+LIVE STATUS (shown to the user while you work):
+- In your thinking, emit ONE short phrase per step (about 3–7 words) — e.g. "Analyzing Bitcoin", "Spinning up sub-agents", "Checking your account", "Searching the web", "Digging deeper".
+- Never write long sentences in status thoughts. Plain English only — not tool names or JSON.
+
 RULES:
 - Whenever the user asks about a specific financial asset, coin, token, or stock ticker (e.g. Bitcoin, BTC, Ethereum, Apple, AAPL, gold, etc.) or requests to view charts, metrics, or perform analysis, you MUST use a tool (render_asset_chart / get_market_overview) or output \`\`\`quant markup — raw text alone is NOT allowed for asset-specific requests.
 - Default to Quant UI or tools for charts and market views; use genui JSON for generic metrics; reach for HTML artifacts sparingly.
@@ -557,350 +247,28 @@ AUTONOMOUS WEALTH MANAGER (you LEAD — user MONITORS):
 
         if (isGeminiRuntimeConfigured()) {
           try {
-            const ai = getVertexGeminiClient();
-            const model = getAgentGeminiModelId();
-
-            const contents: any[] = toGeminiContents(conversationHistory, effectiveMessage);
-            let loopCount = 0;
-            const maxLoops = 5;
-            let pendingGenui: unknown = null;
-            let pendingQuantUi: string | null = null;
-
-            const toolConfig = {
-              systemInstruction,
-              temperature: 0.3,
-              maxOutputTokens: 8192,
-              thinkingConfig: {
-                thinkingBudget: 2048,
-                includeThoughts: geminiIncludeThoughts(),
-              },
-              tools: [
-                {
-                  functionDeclarations: [
-                    getAllAssetsDeclaration,
-                    getAssetDetailsDeclaration,
-                    getAssetMarketDataDeclaration,
-                    getMarketOverviewDeclaration,
-                    renderAssetChartDeclaration,
-                    renderComparativeChartDeclaration,
-                    spawnSubagentsDeclaration,
-                    searchMarketIntelDeclaration,
-                    getCatalystBriefDeclaration,
-                    getAccountStateDeclaration,
-                    brokerActionDeclaration,
-                    executeTradeDeclaration,
-                    executeSkillDeclaration,
-                    scheduleTaskDeclaration,
-                    manageGoalsDeclaration,
-                    getMacroDataDeclaration,
-                    getFundamentalsDeclaration,
-                    queryTradingKnowledgeDeclaration,
-                  ]
-                }
-              ]
+            const contents: Array<Record<string, unknown>> = toGeminiContents(
+              conversationHistory,
+              effectiveMessage,
+            );
+            const toolCtx = {
+              userId: user.id,
+              tradingMode: tradingMode as "demo" | "live",
+              conversationId: typeof conversationId === "string" ? conversationId : undefined,
+              sessionContext,
+              sendEvent,
             };
 
-            while (loopCount < maxLoops) {
-              loopCount++;
-
-              const responseStream = await ai.models.generateContentStream({
-                model,
-                contents,
-                config: toolConfig,
-              });
-
-              const parts: any[] = [];
-
-              for await (const chunk of responseStream) {
-                const chunkParts = chunk.candidates?.[0]?.content?.parts || [];
-                for (const part of chunkParts) {
-                  parts.push(part);
-                  if (part.thought && part.text) {
-                    sendEvent({ type: "reasoning", text: part.text });
-                  } else if (part.text && !part.functionCall) {
-                    sendEvent({ type: "text", text: part.text });
-                  }
-                }
-              }
-
-              const functionCalls = parts.filter((p) => p.functionCall);
-
-              if (functionCalls.length > 0) {
-                contents.push({ role: "model", parts });
-
-                const toolResponseParts: any[] = [];
-
-                for (const callPart of functionCalls) {
-                  const call = callPart.functionCall;
-                  if (!call) continue;
-
-                  const name = call.name as string;
-                  const args = (call.args ?? {}) as Record<string, unknown>;
-                  const toolUseId = `${name}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-                  const started = Date.now();
-
-                  sendEvent({ type: "status", label: name.replace(/_/g, " "), detail: "Running" });
-                  sendEvent({ type: "tool_start", toolUseId, name, args });
-
-                  let toolResult: unknown;
-
-                  if (name === "get_all_assets") {
-                    const filter = args?.asset_class as string | undefined;
-                    toolResult = await fetchAssetCatalog(filter);
-                  } else if (name === "get_asset_details") {
-                    const symbol = args?.symbol as string | undefined;
-                    const allAssets = getCapitalAssetCatalog();
-                    const asset = symbol
-                      ? allAssets.find((a) => a.symbol?.toLowerCase() === symbol.toLowerCase())
-                      : undefined;
-                    toolResult = asset
-                      ? { success: true, asset }
-                      : { success: false, error: `Asset '${symbol || "unknown"}' not found.` };
-                  } else if (name === "get_asset_market_data") {
-                    toolResult = await fetchAssetChartData({
-                      symbol: args?.symbol as string | undefined,
-                      query: args?.query as string | undefined,
-                      range: (args?.range as string | undefined) ?? "1M",
-                      variant: "area",
-                    });
-                  } else if (name === "render_asset_chart") {
-                    toolResult = await fetchAssetChartData({
-                      symbol: args?.symbol as string | undefined,
-                      query: args?.query as string | undefined,
-                      range: (args?.range as string | undefined) ?? "1M",
-                      variant: (args?.variant as "line" | "area" | undefined) ?? "area",
-                    });
-                  } else if (name === "render_comparative_chart") {
-                    toolResult = await fetchComparativeChartData({
-                      symbol1: String(args?.symbol1 ?? ""),
-                      symbol2: String(args?.symbol2 ?? ""),
-                      range: (args?.range as string | undefined) ?? "6M",
-                    });
-                  } else if (name === "get_market_overview") {
-                    const symbols = Array.isArray(args?.symbols)
-                      ? (args.symbols as string[])
-                      : undefined;
-                    toolResult = await fetchMarketOverview(symbols);
-                  } else if (name === "search_market_intel") {
-                    toolResult = {
-                      success: true,
-                      results: await searchMarketIntel({
-                        query: String(args?.query ?? ""),
-                        symbol: args?.symbol ? String(args.symbol).toUpperCase() : undefined,
-                        limit: 8,
-                      }),
-                    };
-                  } else if (name === "get_catalyst_brief") {
-                    const sym = String(args?.symbol ?? "").toUpperCase();
-                    const brief = sym ? await getLatestCatalystBrief(sym) : null;
-                    const regime = await getMacroRegime();
-                    toolResult = {
-                      success: Boolean(brief),
-                      brief,
-                      macroRegime: regime?.regime ?? null,
-                    };
-                  } else if (name === "spawn_subagents") {
-                    const subagentsList = (args?.subagents || []) as Array<{
-                      role: string;
-                      asset_symbol: string;
-                      instruction: string;
-                    }>;
-
-                    sendEvent({
-                      type: "status",
-                      label: "Subagent team",
-                      detail: `${subagentsList.length} analysts running`,
-                    });
-
-                    const subagentPromises = subagentsList.map(async (sub) => {
-                      const asset = getCapitalAssetCatalog().find(
-                        (a) => a.symbol?.toLowerCase() === sub.asset_symbol?.toLowerCase()
-                      );
-                      const assetContext = asset
-                        ? `Asset: "${asset.display_name}", sector ${asset.sector}, class ${asset.asset_class}.`
-                        : `Asset: ${sub.asset_symbol}.`;
-
-                      sendEvent({
-                        type: "status",
-                        label: sub.role,
-                        detail: `Analyzing ${sub.asset_symbol}`,
-                      });
-
-                      try {
-                        const analysis = await generateVertexTextCompletion({
-                          userPrompt: sub.instruction,
-                          systemInstruction: `You are a specialized ${sub.role}. ${assetContext} Be concise and analytical.`,
-                          temperature: 0.2,
-                          maxTokens: 1200,
-                        });
-                        return {
-                          role: sub.role,
-                          asset: sub.asset_symbol,
-                          status: "success",
-                          report: analysis,
-                        };
-                      } catch (subErr: unknown) {
-                        const errMsg = subErr instanceof Error ? subErr.message : String(subErr);
-                        return {
-                          role: sub.role,
-                          asset: sub.asset_symbol,
-                          status: "failed",
-                          error: errMsg,
-                        };
-                      }
-                    });
-
-                    const subagentResults = await Promise.all(subagentPromises);
-                    toolResult = { success: true, team_results: subagentResults };
-                  } else if (name === "get_account_state") {
-                    toolResult = await fetchAccountState(user.id, tradingMode, {
-                      include_history: args?.include_history as boolean | undefined,
-                      include_positions: args?.include_positions as boolean | undefined,
-                      include_performance: args?.include_performance as boolean | undefined,
-                      history_limit: args?.history_limit as number | undefined,
-                    });
-                  } else if (name === "broker_action") {
-                    toolResult = await executeBrokerAction(user.id, tradingMode, {
-                      action: args?.action as BrokerActionArgs["action"],
-                      symbol: args?.symbol as string | undefined,
-                      direction: args?.direction as "BUY" | "SELL" | undefined,
-                      size: args?.size as number | undefined,
-                      stop_loss: args?.stop_loss as number | undefined,
-                      take_profit: args?.take_profit as number | undefined,
-                      deal_id: args?.deal_id as string | undefined,
-                      timeframe: args?.timeframe as string | undefined,
-                      conversation_id: typeof conversationId === "string" ? conversationId : undefined,
-                      reasoning: args?.reasoning as string | undefined,
-                    });
-                  } else if (name === "execute_trade") {
-                    toolResult = await executeAutonomousTrade(user.id, tradingMode, {
-                      action: (args?.action as "place_order" | "close_position" | undefined) ?? "place_order",
-                      symbol: args?.symbol as string | undefined,
-                      direction: args?.direction as "BUY" | "SELL" | undefined,
-                      size: args?.size as number | undefined,
-                      stop_loss: args?.stop_loss as number | undefined,
-                      take_profit: args?.take_profit as number | undefined,
-                      deal_id: args?.deal_id as string | undefined,
-                      conversation_id: typeof conversationId === "string" ? conversationId : undefined,
-                      reasoning: args?.reasoning as string | undefined,
-                    });
-                  } else if (name === "execute_skill") {
-                    const { skill_id, inputs } = args as { skill_id?: string; inputs?: any };
-                    
-                    // Get the active goal ID from session context
-                    const balanceGoal = sessionContext?.goals?.find((g: any) => g.goal_type === "balance_target");
-                    
-                    // Fetch account state for balance
-                    let accountBal: number | undefined;
-                    try {
-                      const accState = await fetchAccountState(user.id, tradingMode);
-                      accountBal = accState?.balance?.total_balance;
-                    } catch {
-                      accountBal = undefined;
-                    }
-                    
-                    if (!skill_id) {
-                      toolResult = { error: true, message: "skill_id is required" };
-                    } else {
-                      const skillResult = await handleExecuteSkill({
-                        skill_id,
-                        inputs: inputs || {},
-                        userId: user.id,
-                        goalId: balanceGoal?.id || "",
-                        mode: tradingMode,
-                        accountBalance: accountBal,
-                      });
-
-                      if (skillResult.error) {
-                        toolResult = { error: true, message: skillResult.message };
-                      } else {
-                        toolResult = {
-                          success: true,
-                          skill_id: skillResult.skill_id,
-                          data: skillResult.data,
-                          execution_time_ms: skillResult.execution_time_ms,
-                          cached: skillResult.cached || false,
-                        };
-                      }
-                    }
-                  } else if (name === "schedule_task") {
-                    toolResult = await scheduleAgentTask(user.id, tradingMode, {
-                      task_type: args?.task_type as ScheduleTaskArgs["task_type"],
-                      delay_minutes: Number(args?.delay_minutes ?? 30),
-                      symbol: args?.symbol as string | undefined,
-                      condition: args?.condition as string | undefined,
-                      message: args?.message as string | undefined,
-                      conversation_id: typeof conversationId === "string" ? conversationId : undefined,
-                    });
-                  } else if (name === "manage_goals") {
-                    toolResult = await manageUserGoals(user.id, tradingMode, {
-                      operation: args?.operation as ManageGoalArgs["operation"],
-                      goal_type: args?.goal_type as ManageGoalArgs["goal_type"],
-                      goal_value: args?.goal_value as Record<string, unknown> | undefined,
-                      description: args?.description as string | undefined,
-                      goal_id: args?.goal_id as string | undefined,
-                      progress_pct: args?.progress_pct as number | undefined,
-                      status: args?.status as ManageGoalArgs["status"],
-                      target_balance: args?.target_balance as number | undefined,
-                      deadline_days: args?.deadline_days as number | undefined,
-                      autonomous_trading: args?.autonomous_trading as boolean | undefined,
-                      max_risk_per_trade: args?.max_risk_per_trade as number | undefined,
-                    });
-                  } else if (name === "get_macro_data") {
-                    const indicators = Array.isArray(args?.indicators)
-                      ? (args.indicators as string[])
-                      : undefined;
-                    toolResult = await fetchMacroData(indicators);
-                  } else if (name === "get_fundamentals") {
-                    toolResult = await fetchFundamentals(String(args?.symbol ?? ""));
-                  } else if (name === "query_trading_knowledge") {
-                    toolResult = await executeQueryTradingKnowledge({
-                      query: args?.query as string | undefined,
-                      category: args?.category as string | undefined,
-                    });
-                  } else {
-                    toolResult = { success: false, error: "Unknown tool name" };
-                  }
-
-                  const ok =
-                    toolResult != null &&
-                    typeof toolResult === "object" &&
-                    (toolResult as { success?: boolean }).success !== false;
-
-                  sendEvent({
-                    type: "tool_end",
-                    toolUseId,
-                    name,
-                    ok,
-                    args,
-                    output: toolResult,
-                    error: ok ? undefined : String((toolResult as { error?: string })?.error ?? "Tool failed"),
-                    durationMs: Date.now() - started,
-                  });
-
-                  const toolQuantUi = ok ? extractToolQuantUi(toolResult) : null;
-                  const toolGenui = ok ? extractToolGenui(toolResult) : null;
-                  if (toolQuantUi) pendingQuantUi = toolQuantUi;
-                  else if (toolGenui) pendingGenui = toolGenui;
-
-                  toolResponseParts.push({
-                    functionResponse: {
-                      name,
-                      response: toolResult,
-                    },
-                  });
-                }
-
-                // Add tool responses back to the conversation contents history as a user turn
-                contents.push({
-                  role: "user",
-                  parts: toolResponseParts
-                });
-
-              } else {
-                break;
-              }
-            }
+            const { pendingGenui, pendingQuantUi } = await runAgentLoop({
+              contents,
+              systemInstruction,
+              functionDeclarations: orchestratorToolDeclarations,
+              toolCtx,
+              maxLoops: 5,
+              onEvent: (event) => {
+                sendEvent(event as ChatStreamEvent);
+              },
+            });
 
             if (pendingQuantUi) {
               sendEvent({ type: "quant_ui", markup: pendingQuantUi, source: "tool" });
@@ -1021,7 +389,6 @@ async function simulateStreamingResponse(
     const toolUseId = `get_asset_market_data-${Date.now()}`;
     const started = Date.now();
 
-    sendEvent({ type: "status", label: "get asset market data", detail: "Fetching candles" });
     sendEvent({ type: "tool_start", toolUseId, name: "get_asset_market_data", args: { query, range: "1M" } });
 
     const market = await fetchAssetChartData({ query, range: "1M" });
@@ -1065,21 +432,6 @@ async function simulateStreamingResponse(
 
   // 2. Portfolio Breakdown / Allocation
   if (normalizedPrompt.includes("asset allocation") || normalizedPrompt.includes("portfolio") || normalizedPrompt.includes("allocation")) {
-    const simulatedThoughts = [
-      "Accessing user ledger balances and simulated positions database...\n",
-      "Aggregating total values and computing weighted asset class ratios...\n",
-      "Formatting allocation percentages (Equities, Crypto, Fixed Income, Cash)...\n"
-    ];
-
-    for (const thought of simulatedThoughts) {
-      const words = thought.split(" ");
-      for (const word of words) {
-        sendEvent({ type: "reasoning", text: word + " " });
-        await new Promise((resolve) => setTimeout(resolve, 25));
-      }
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-
     const mainText = `${prefixText}### 💼 Simulated Portfolio Allocation Breakdown
 
 Your current simulated portfolio is valued at **$24,500**. Here is an interactive, high-fidelity breakdown of your capital allocation.
@@ -1113,21 +465,6 @@ Would you like to rebalance any portion of this allocation or execute new CFD po
 
   // 3. Spending / Transactions
   if (normalizedPrompt.includes("spending") || normalizedPrompt.includes("transactions")) {
-    const simulatedThoughts = [
-      "Querying quantitative billing history and API subscription ledgers...\n",
-      "Grouping expenditure vectors by category (Commissions, Data, Compute, Research)...\n",
-      "Generating monthly expense visualization nodes...\n"
-    ];
-
-    for (const thought of simulatedThoughts) {
-      const words = thought.split(" ");
-      for (const word of words) {
-        sendEvent({ type: "reasoning", text: word + " " });
-        await new Promise((resolve) => setTimeout(resolve, 25));
-      }
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-
     const mainText = `${prefixText}### 💳 Monthly Expense & Transaction Summary
 
 I have compiled and categorized your operational costs and transaction fees for the current cycle. Your total expenses stand at **$4,850**.
@@ -1162,22 +499,6 @@ Would you like to view your transaction invoice list or export these metrics?`;
 
   // 4. Buy / Sell Trade Confirmation
   if (normalizedPrompt.includes("buy btc") || normalizedPrompt.includes("buy") || normalizedPrompt.includes("sell")) {
-    const simulatedThoughts = [
-      "Parsing order parameters and validating tick sizes...\n",
-      "Scanning available CFD order books for optimal execution price...\n",
-      "Calculating margin requirements and transaction commissions...\n",
-      "Drafting interactive trade confirmation ticket...\n"
-    ];
-
-    for (const thought of simulatedThoughts) {
-      const words = thought.split(" ");
-      for (const word of words) {
-        sendEvent({ type: "reasoning", text: word + " " });
-        await new Promise((resolve) => setTimeout(resolve, 25));
-      }
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-
     const isSell = normalizedPrompt.includes("sell");
     const symbol = normalizedPrompt.includes("btc") ? "BTCUSD" : (normalizedPrompt.includes("aapl") ? "AAPL" : "BTCUSD");
     const price = symbol === "BTCUSD" ? 67250 : 185;
@@ -1224,21 +545,6 @@ ${confirmIntro}
 
   // 5. Sandbox / SVG Approach A
   if (normalizedPrompt.includes("sandbox") || normalizedPrompt.includes("svg")) {
-    const simulatedThoughts = [
-      "Generating isolated HTML/SVG canvas visualization package...\n",
-      "Embedding custom responsive styles and glassmorphism elements...\n",
-      "Packaging sandboxed iframe container for secured execution...\n"
-    ];
-
-    for (const thought of simulatedThoughts) {
-      const words = thought.split(" ");
-      for (const word of words) {
-        sendEvent({ type: "reasoning", text: word + " " });
-        await new Promise((resolve) => setTimeout(resolve, 25));
-      }
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-
     const mainText = `${prefixText}### 🎨 Custom Sandboxed Visualisation (Approach A)
 
 Here is a bespoke sandboxed HTML/SVG status widget, representing real-time system metrics. It runs inside an isolated \`<iframe>\` to guarantee complete security.
@@ -1285,27 +591,6 @@ Feel free to customize the HTML code directly inside your request and watch me c
 
   // CASE 1: Query to list or pull assets
   if (normalizedPrompt.includes("list") || normalizedPrompt.includes("assets") || normalizedPrompt.includes("catalog") || normalizedPrompt.includes("pull")) {
-    const simulatedThoughts = [
-      "Analyzing user query regarding asset list / catalog...\n",
-      "Scanning registered catalog indices (Crypto, Stocks, Forex, Commodities, ETFs)...\n",
-      "Validating provider references and stable mapping identifiers...\n"
-    ];
-
-    for (const thought of simulatedThoughts) {
-      const words = thought.split(" ");
-      for (const word of words) {
-        sendEvent({ type: "reasoning", text: word + " " });
-        await new Promise((resolve) => setTimeout(resolve, 25));
-      }
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-
-    sendEvent({
-      type: "reasoning",
-      text: `\n⚙️ **Executing System Tool: \`get_all_assets\`**...\n`
-    });
-    await new Promise((resolve) => setTimeout(resolve, 800));
-
     const catalog = await fetchAssetCatalog();
     sendEvent({
       type: "reasoning",
@@ -1327,22 +612,6 @@ Feel free to customize the HTML code directly inside your request and watch me c
 
   // CASE 2: Query requesting agents, subagents, or parallel analysis
   if (normalizedPrompt.includes("agent") || normalizedPrompt.includes("subagent") || normalizedPrompt.includes("team") || normalizedPrompt.includes("parallel") || normalizedPrompt.includes("analyze") || normalizedPrompt.includes("compare")) {
-    const simulatedThoughts = [
-      "Interpreting multi-agent delegation request...\n",
-      "Identifying target assets for analysis...\n",
-      "Determining necessary subagent roles for structured quantitative assessment...\n"
-    ];
-
-    for (const thought of simulatedThoughts) {
-      const words = thought.split(" ");
-      for (const word of words) {
-        sendEvent({ type: "reasoning", text: word + " " });
-        await new Promise((resolve) => setTimeout(resolve, 25));
-      }
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-
-    // Determine asset name from prompt
     let targetAsset = "BTCUSD";
     if (normalizedPrompt.includes("apple") || normalizedPrompt.includes("aapl")) {
       targetAsset = "AAPL";
@@ -1352,191 +621,77 @@ Feel free to customize the HTML code directly inside your request and watch me c
       targetAsset = "ETHUSD";
     }
 
-    const mockSubagents = [
-      { role: "Technical Analyst", asset_symbol: targetAsset, instruction: `Analyze short term price momentum, RSI/MACD indices, and moving averages on ${targetAsset}.` },
-      { role: "Fundamental Analyst", asset_symbol: targetAsset, instruction: `Check institutional flow coefficients, market capitalization trends, and fair value gaps for ${targetAsset}.` },
-      { role: "Risk Manager", asset_symbol: targetAsset, instruction: `Run high-fidelity Value-at-Risk calculations and set stop-loss/take-profit boundary limits for ${targetAsset}.` }
+    const mockPrompts = [
+      `On ${targetAsset} (4H): identify chart patterns, key support/resistance, and RSI/MACD readings. Use analyze_chart and live market data. Report only tool-verified levels — flag uncertainty explicitly.`,
+      `For ${targetAsset}: summarize institutional flow context, sector drivers, and fair-value gaps using market intel and fundamentals. Cite sources; never invent headlines.`,
+      `For ${targetAsset}: estimate short-term VaR and propose stop-loss / take-profit guardrails from live volatility data. State assumptions clearly if data is incomplete.`,
     ];
 
-    // Stream structured metadata of all subagents
-    sendEvent({
-      type: "reasoning",
-      text: `[SUBAGENTS_DETAILS: ${JSON.stringify(mockSubagents)}]\n`
-    });
+    const assignmentLabels = [
+      `Chart patterns on ${targetAsset}`,
+      `Flow context for ${targetAsset}`,
+      `Risk guardrails for ${targetAsset}`,
+    ];
 
-    sendEvent({
-      type: "reasoning",
-      text: `Spawning Subagent Team (3 members) in Parallel:\n`
-    });
-    await new Promise((resolve) => setTimeout(resolve, 400));
+    const reports = [
+      `Trend structure on the 4H frame shows momentum with RSI near 63 — levels and patterns per tool output above.`,
+      `Institutional flow context remains constructive; fair-value gap estimated from available intel (see tool citations).`,
+      `VaR and guardrails derived from live volatility — cap exposure if confidence is low.`,
+    ];
 
-    sendEvent({ type: "reasoning", text: `Spun up subagent **Technical Analyst** for **${targetAsset}**.\n` });
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    sendEvent({ type: "reasoning", text: `Spun up subagent **Fundamental Analyst** for **${targetAsset}**.\n` });
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    sendEvent({ type: "reasoning", text: `Spun up subagent **Risk Manager** for **${targetAsset}**.\n` });
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    for (let idx = 0; idx < mockPrompts.length; idx++) {
+      const prompt = mockPrompts[idx];
+      const assignmentLabel = assignmentLabels[idx];
+      const id = `sim-subagent-${idx}-${Date.now()}`;
+      const color = subAgentColorAt(idx);
 
-    // Parallel analysis states
-    sendEvent({ type: "reasoning", text: `Technical Analyst is analyzing **${targetAsset}**...\n` });
-    await new Promise((resolve) => setTimeout(resolve, 800));
-    sendEvent({ type: "reasoning", text: `Fundamental Analyst is analyzing **${targetAsset}**...\n` });
-    await new Promise((resolve) => setTimeout(resolve, 600));
+      sendEvent({ type: "subagent_start", id, prompt, assignmentLabel, color });
+      await new Promise((r) => setTimeout(r, 200));
 
-    const technicalReport = `### Technical Analysis Momentum Script
+      const toolUseId = `analyze_chart-${id}`;
+      sendEvent({
+        type: "subagent_tool_start",
+        id,
+        toolUseId,
+        name: "analyze_chart",
+        args: { symbol: targetAsset, interval: "4h" },
+      });
+      await new Promise((r) => setTimeout(r, 500));
+      sendEvent({
+        type: "subagent_tool_end",
+        id,
+        toolUseId,
+        name: "analyze_chart",
+        ok: true,
+        output: { success: true, symbol: targetAsset },
+        durationMs: 480,
+      });
 
-\`\`\`python
-import pandas as pd
+      for (const word of reports[idx].split(" ")) {
+        sendEvent({ type: "subagent_text", id, text: word + " " });
+        await new Promise((r) => setTimeout(r, 8));
+      }
 
-def get_momentum_indicators(df, length=14):
-    # Calculate 14-period RSI
-    delta = df['close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=length).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=length).mean()
-    rs = gain / loss
-    rsi = 100 - (100 / (1 + rs))
-    return rsi
-\`\`\`
+      const durationMs = 900 + idx * 200;
+      sendEvent({ type: "subagent_end", id, status: "done", report: reports[idx], durationMs });
+      await new Promise((r) => setTimeout(r, 150));
+    }
 
-\`\`\`typescript
-interface MomentumSignal {
-  indicator: "RSI" | "MACD" | "EMA";
-  value: number;
-  signalType: "BULLISH" | "BEARISH" | "NEUTRAL";
-}
-\`\`\`
-Trend structure across Daily/H4 frames shows a strong buy momentum setup with RSI hovering around 63.4. MACD shows climbing green bars.`;
+    const mainText = `${prefixText}### Multi-Agent Synthesis for **${targetAsset}**
 
-    sendEvent({
-      type: "reasoning",
-      text: `[SUBAGENT_REPORT: ${JSON.stringify({ role: "Technical Analyst", asset: targetAsset, status: "success", report: technicalReport })}]\n`
-    });
+I delegated three parallel sub-agents with full research prompts, then synthesized their tool-verified findings below. Re-run delegation anytime if you need deeper or updated analysis.
 
-    sendEvent({ type: "reasoning", text: `Technical Analyst finished analysis and submitted report!\n` });
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    
-    sendEvent({ type: "reasoning", text: `Risk Manager is analyzing **${targetAsset}**...\n` });
-    await new Promise((resolve) => setTimeout(resolve, 700));
+### Combined findings
+Momentum and structure on **${targetAsset}** look constructive on the 4H frame (RSI ~63 per chart tools). Flow context is supportive with cited intel. Risk guardrails should cap exposure when confidence is limited — see sub-agent widgets for each assignment trace and report.`;
 
-    const fundamentalReport = `### Fundamental Capital Flow Script
-
-\`\`\`python
-def calculate_institutional_inflows(etf_inflows, spot_volume):
-    multiplier = 1.25
-    return (etf_inflows * multiplier) / spot_volume
-\`\`\`
-
-\`\`\`typescript
-interface FundamentalAssessment {
-  fairValue: number;
-  discountPercent: number;
-  hasOrderBlockGap: boolean;
-}
-\`\`\`
-Institutional inflows remain strong. Sector metrics suggest a 9.4% discount relative to fair value projection models.`;
-
-    sendEvent({
-      type: "reasoning",
-      text: `[SUBAGENT_REPORT: ${JSON.stringify({ role: "Fundamental Analyst", asset: targetAsset, status: "success", report: fundamentalReport })}]\n`
-    });
-
-    sendEvent({ type: "reasoning", text: `Fundamental Analyst finished analysis and submitted report!\n` });
-    await new Promise((resolve) => setTimeout(resolve, 400));
-
-    const riskReport = `### Volatility & VaR Simulator
-
-\`\`\`python
-import numpy as np
-
-def monte_carlo_var(holding_period=1, confidence_level=0.95):
-    historical_std = 0.024
-    return np.percentile(np.random.normal(0, historical_std, 10000), (1 - confidence_level) * 100)
-\`\`\`
-
-\`\`\`typescript
-interface VolatilityGuards {
-  stopLossPercent: number;
-  takeProfitPercent: number;
-  maxLeverageLimit: number;
-}
-\`\`\`
-Daily VaR limit calculated at -3.2%. Recommendations suggest keeping total exposure capped under 4.5% of margin values.`;
-
-    sendEvent({
-      type: "reasoning",
-      text: `[SUBAGENT_REPORT: ${JSON.stringify({ role: "Risk Manager", asset: targetAsset, status: "success", report: riskReport })}]\n`
-    });
-
-    sendEvent({ type: "reasoning", text: `Risk Manager finished analysis and submitted report!\n` });
-    await new Promise((resolve) => setTimeout(resolve, 600));
-
-    sendEvent({
-      type: "reasoning",
-      text: `All subagent analyses received successfully. Synthesizing reports...\n`
-    });
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    // Formulate comprehensive report
-    const mainText = `${prefixText}### 🤖 Multi-Agent Team Report: Analytical Synthesis for **${targetAsset}**
-
-I have successfully coordinated an elite, parallel subagent team consisting of a **Technical Analyst**, a **Fundamental Analyst**, and a **Risk Manager** to perform a multi-dimensional study on **${targetAsset}**.
-
----
-
-#### 📈 1. Technical Analyst Report
-* **Trend Assessment**: Strong bullish structure across daily and weekly frames. The 50-day EMA resides securely above the 200-day EMA, confirming an ongoing golden cross.
-* **Momentum Oscillators**: RSI is currently at **63.4**, leaving ample room for upward exploration before entering extreme overbought (>75) territory. MACD histogram prints climbing green bars above the signal line.
-* **Support/Resistance Zones**: 
-  - Primary Support: Key demand block at previous cycle highs.
-  - Tactical Resistance: Minor psychological boundary.
-
-#### 📊 2. Fundamental Analyst Report
-* **Core Drivers**: Healthy institutional inflows, rising demand coefficients, and favorable macroeconomic policy pivots are supporting asset prices globally.
-* **Sector Strength**: High capital efficiency ratios and robust technological pipelines in the sector provide a strong foundation for underlying asset valuation.
-* **Fair Value estimate**: Calculated fair value indicates the asset is currently trading at a **9.4% discount** relative to long-term projected growth.
-
-#### 🛡️ 3. Risk Manager Report
-* **Volatility Analysis**: Average True Range (ATR) indicates standard daily volatility levels, within manageable thresholds.
-* **Stress Test Bounds**: 
-  - 95% Confidence VaR (Value-at-Risk) over a 1D holding window is **-3.2%**.
-  - Recommendation: Limit total directional exposure to **4.5% of total portfolio margin** to mitigate drawdown spikes.
-* **TP/SL Guardrails**: Set tactical stop-losses just below the daily support baseline and take-profits near key resistances.
-
----
-
-### 🔮 Master Synthesis & Quantitative Recommendation
-
-The quantitative metrics align beautifully to suggest a highly favorable setup for **${targetAsset}**. Capital appreciation remains highly probable. Keep leverage capped at **5x-10x** and utilize strict TP/SL guardrails as recommended by our Risk Manager to maximize tactical efficiency.
-
-How would you like to structure our tactical position today?`;
-
-    const textChunks = mainText.split(" ");
-    for (const chunk of textChunks) {
+    for (const chunk of mainText.split(" ")) {
       sendEvent({ type: "text", text: chunk + " " });
-      await new Promise((resolve) => setTimeout(resolve, 15));
+      await new Promise((r) => setTimeout(r, 15));
     }
     return;
   }
 
   // DEFAULT CASE: Normal prompt simulation
-  const simulatedThoughts = [
-    "Analyzing input request structure and financial patterns...\n",
-    "Scanning standard market trendlines and historical order books...\n",
-    "Retrieving neutral domain configurations...\n",
-    "Synthesizing an unbiased, balanced, and structured response in markdown formatting...\n"
-  ];
-
-  for (const thought of simulatedThoughts) {
-    const words = thought.split(" ");
-    for (const word of words) {
-      sendEvent({ type: "reasoning", text: word + " " });
-      await new Promise((resolve) => setTimeout(resolve, 35));
-    }
-    await new Promise((resolve) => setTimeout(resolve, 150));
-  }
-
-  await new Promise((resolve) => setTimeout(resolve, 300));
-
   const mainText = `${prefixText}Hello! I am Quant, your dedicated AI companion.
 
 I received your prompt: "${prompt}".

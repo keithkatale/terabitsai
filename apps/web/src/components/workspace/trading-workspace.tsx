@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo, useRef, useCallback, useId, type ReactNode } from "react";
 import { useAppTab, type AppTab } from "@/contexts/app-tab-context";
 import InputBar, { type TaggedAsset } from "@/components/ui/input-bar";
+import type { AiToolId } from "@/lib/chat/ai-tools";
 import {
   formatUserDisplayMessage,
   toPinnedAssetRef,
@@ -51,6 +52,15 @@ import { FollowUpSuggestions } from "@/components/ai-elements/follow-up-suggesti
 import { InteractiveQuestionForm } from "@/components/ai-elements/interactive-question-form";
 import type { ChatStreamEvent, ChatToolPod } from "@/lib/chat/stream-types";
 import {
+  buildActivityTimeline,
+  type ActivityPartRef,
+} from "@/lib/chat/activity-timeline";
+import { deriveLiveTraceFromSteps, LIVE_TRACE_PLANNING } from "@/lib/chat/live-trace";
+import type { SubAgentState } from "@/lib/chat/subagent-types";
+import { normalizeSubAgentList } from "@/lib/chat/subagent-types";
+import { applySubagentStreamEvent } from "@/lib/chat/subagent-stream";
+import { AgentDetailPane } from "@/components/workspace/agent-detail-pane";
+import {
   buildHistoryFromMessages,
   messagesToPredictPayload,
 } from "@/lib/chat/conversation-history";
@@ -75,13 +85,14 @@ import type { LiveSignal } from "@/lib/market/market-intel-data";
 import { PageBackground } from "@/components/ui/page-background";
 import {
   ChatLandingHero,
-  CHAT_LANDING_PROMPT_SUGGESTIONS,
   CHAT_LANDING_MAX_TAGGED_ASSETS,
 } from "@/components/workspace/chat-landing-hero";
 import { HomeSection } from "@/components/workspace/app-sections/home-section";
-import { OrchestratorCycleControls } from "@/components/workspace/orchestrator-cycle-controls";
-import { WealthMonitorPanel } from "@/components/workspace/wealth-monitor-panel";
-import { InvestingSection } from "@/components/workspace/app-sections/investing-section";
+import { MarketsTerminal } from "@/components/markets/markets-terminal";
+import {
+  ConversationPicker,
+  type ConversationPickerItem,
+} from "@/components/workspace/conversation-picker";
 import { notifyPortfolioUpdated } from "@/lib/portfolio/portfolio-events";
 import { readHomeTabCache, writeHomeTabCache } from "@/lib/portfolio/home-tab-cache";
 import { readCachedTradingMode } from "@/lib/account/user-app-preferences-client";
@@ -99,8 +110,17 @@ const Figma = ({ className }: { className?: string }) => (
 );
 
 interface MessagePart {
-  type: "reasoning" | "text" | "trade-execution" | "genui" | "quant-ui" | "monitor_directive" | "session_divider";
+  type:
+    | "reasoning"
+    | "text"
+    | "tool_ref"
+    | "trade-execution"
+    | "genui"
+    | "quant-ui"
+    | "monitor_directive"
+    | "session_divider";
   text?: string;
+  toolUseId?: string;
   payload?: unknown;
 }
 
@@ -109,12 +129,13 @@ interface ChatMessage {
   role: "user" | "assistant" | "system";
   parts: MessagePart[];
   toolPods?: ChatToolPod[];
+  subAgents?: SubAgentState[];
   liveStatus?: string;
   liveStatusDetail?: string;
 }
 
 function mapPersistedParts(
-  parts: Array<{ type: string; text?: string; payload?: unknown }>,
+  parts: Array<{ type: string; text?: string; toolUseId?: string; payload?: unknown }>,
 ): MessagePart[] {
   return parts.map((p) => {
     if (p.type === "genui" && p.payload != null) {
@@ -122,6 +143,9 @@ function mapPersistedParts(
     }
     if (p.type === "quant-ui" && p.payload != null) {
       return { type: "quant-ui" as const, payload: p.payload };
+    }
+    if (p.type === "tool_ref" && p.toolUseId) {
+      return { type: "tool_ref" as const, toolUseId: p.toolUseId };
     }
     if (p.type === "reasoning") {
       return { type: "reasoning" as const, text: p.text };
@@ -149,6 +173,68 @@ function isVisibleChatMessage(msg: {
   return msg.role === "user" || msg.role === "assistant";
 }
 
+function activityPartsFromMessage(parts: MessagePart[]): ActivityPartRef[] {
+  return parts
+    .filter((p) => p.type === "reasoning" || p.type === "tool_ref")
+    .map((p) =>
+      p.type === "tool_ref" && p.toolUseId
+        ? { type: "tool_ref" as const, toolUseId: p.toolUseId }
+        : { type: "reasoning" as const, text: p.text },
+    );
+}
+
+function appendReasoningPart(parts: MessagePart[], text: string): MessagePart[] {
+  const next = [...parts];
+  const last = next[next.length - 1];
+  if (last?.type === "reasoning") {
+    next[next.length - 1] = { ...last, text: `${last.text ?? ""}${text}` };
+  } else {
+    next.push({ type: "reasoning", text });
+  }
+  return next;
+}
+
+function appendToolRefPart(parts: MessagePart[], toolUseId: string): MessagePart[] {
+  const next = [...parts];
+  const last = next[next.length - 1];
+  if (last?.type === "tool_ref" && last.toolUseId === toolUseId) return next;
+  next.push({ type: "tool_ref", toolUseId });
+  return next;
+}
+
+function liveStatusFromMessage(
+  parts: MessagePart[],
+  toolPods: ChatToolPod[],
+  fallback?: string,
+): string {
+  const steps = buildActivityTimeline(activityPartsFromMessage(parts), toolPods, true);
+  return deriveLiveTraceFromSteps(steps, fallback || LIVE_TRACE_PLANNING);
+}
+
+function isWealthMonitorMessage(msg: {
+  role: string;
+  parts: Array<{ type?: string; payload?: unknown }>;
+}): boolean {
+  if (msg.parts.some((p) => p.type === "monitor_directive")) return true;
+  if (
+    msg.role === "assistant" &&
+    msg.parts.some((p) => {
+      const payload = p.payload as { source?: string } | undefined;
+      return payload?.source === "wealth_monitor";
+    })
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function isUserFacingCommandMessage(msg: {
+  role: string;
+  parts: Array<{ type?: string; payload?: unknown }>;
+}): boolean {
+  return isVisibleChatMessage(msg) && !isWealthMonitorMessage(msg);
+}
+
 // --- Asset Catalog Definitions (Fully dynamic, ported from capital-assets) ---
 const rawCapitalCatalog = getCapitalAssetCatalog();
 
@@ -161,81 +247,7 @@ const ASSET_CATALOG: Record<string, Array<{ symbol: string; name: string; asset_
   ETFs: [],
 };
 
-const LEFT_POOL_ASSETS: Array<{ symbol: string; name: string; asset_class?: string; sector?: string }> = [];
-const RIGHT_POOL_ASSETS: Array<{ symbol: string; name: string; asset_class?: string; sector?: string }> = [];
-
-rawCapitalCatalog.forEach((item) => {
-  let cat = "Stocks";
-  if (item.asset_class === "crypto") cat = "Crypto";
-  else if (item.sector === "Forex") cat = "Forex";
-  else if (item.sector === "Indices") cat = "Indices";
-  else if (item.sector === "Commodities") cat = "Commodities";
-  else if (item.sector === "ETFs") cat = "ETFs";
-
-  const assetObj = {
-    symbol: item.symbol,
-    name: item.display_name,
-    asset_class: item.asset_class,
-    sector: item.sector ?? undefined,
-  };
-
-  if (ASSET_CATALOG[cat]) {
-    ASSET_CATALOG[cat].push(assetObj);
-  }
-
-  if (cat === "Crypto" || cat === "Stocks") {
-    LEFT_POOL_ASSETS.push(assetObj);
-  } else {
-    RIGHT_POOL_ASSETS.push(assetObj);
-  }
-});
-
-function generateSparklinePoints(symbol: string, change24hPct: number, count = 12) {
-  const hash = symbol.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  const points: { x: number; y: number }[] = [];
-  
-  for (let i = 0; i < count; i++) {
-    const x = (i / (count - 1)) * 100;
-    const noise = Math.sin(i * 1.2 + hash) * 12 + Math.cos(i * 2.1 - hash) * 6;
-    const trend = (change24hPct) * (i / (count - 1)) * 12;
-    let y = 50 - trend + noise;
-    y = Math.max(15, Math.min(85, y));
-    points.push({ x, y });
-  }
-  return points;
-}
-
-const MiniSparkline = ({ points, isPositive }: { points: { x: number; y: number }[]; isPositive: boolean }) => {
-  const id = useId();
-  if (points.length === 0) return null;
-  const pathData = points.map((p, i) => (i === 0 ? `M ${p.x} ${p.y}` : `L ${p.x} ${p.y}`)).join(" ");
-  const areaData = `${pathData} L 100 100 L 0 100 Z`;
-  const color = isPositive ? "#10b981" : "#ef4444"; // emerald vs red
-  const gradientId = `grad-${id.replace(/:/g, "-")}`;
-
-  return (
-    <svg className="w-full h-11" viewBox="0 0 100 100" preserveAspectRatio="none">
-      <defs>
-        <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.25" />
-          <stop offset="100%" stopColor={color} stopOpacity="0.0" />
-        </linearGradient>
-      </defs>
-      {/* Area under curve */}
-      <path d={areaData} fill={`url(#${gradientId})`} />
-      {/* Curve line */}
-      <path d={pathData} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-};
-
-function tabPanelClass(active: boolean) {
-  return cn(
-    "absolute inset-0 flex min-h-0 flex-col overflow-hidden",
-    !active && "hidden",
-  );
-}
-
+// --- Main workspace ---
 function TabPanel({
   tab,
   activeTab,
@@ -245,35 +257,108 @@ function TabPanel({
   activeTab: AppTab;
   children: ReactNode;
 }) {
+  if (activeTab !== tab) return null;
+
   return (
-    <div className={tabPanelClass(activeTab === tab)} aria-hidden={activeTab !== tab}>
+    <div className="absolute inset-0 flex min-h-0 flex-col overflow-hidden">
       {children}
     </div>
   );
 }
 
+function mapLoadedMessagesToChat(
+  loaded: Array<{
+    id: string;
+    role: string;
+    parts: Array<{ type: string; text?: string; payload?: unknown }>;
+    toolPods?: unknown;
+    subAgents?: unknown;
+    createdAt?: string;
+    created_at?: string;
+  }>,
+): ChatMessage[] {
+  const visible = loaded.filter(isUserFacingCommandMessage);
+  return visible.map((m) => ({
+    id: m.id,
+    role: m.role as ChatMessage["role"],
+    parts: mapPersistedParts(m.parts),
+    toolPods: m.toolPods as ChatToolPod[] | undefined,
+    subAgents: normalizeSubAgentList(m.subAgents),
+  }));
+}
+
+function sortConversations(items: ConversationPickerItem[]): ConversationPickerItem[] {
+  return [...items].sort(
+    (a, b) =>
+      new Date(b.updated_at || b.created_at).getTime() -
+      new Date(a.updated_at || a.created_at).getTime(),
+  );
+}
+
+function toPickerItem(row: {
+  id: string;
+  title?: string | null;
+  created_at: string;
+  updated_at: string;
+  is_active?: boolean;
+}): ConversationPickerItem {
+  return {
+    id: row.id,
+    title: row.title?.trim() || "New conversation",
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    is_active: row.is_active,
+  };
+}
+
 // --- Main workspace ---
 export function TradingWorkspace() {
-  const { activeTab: mode, setActiveTab, isTabActive } = useAppTab();
+  const {
+    activeTab: mode,
+    setActiveTab,
+    isTabActive,
+    routeConversationId,
+    navigateToConversation,
+  } = useAppTab();
   const [value, setValue] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [openAgentId, setOpenAgentId] = useState<string | null>(null);
+  const openAgent = useMemo(() => {
+    if (!openAgentId) return null;
+    for (const message of messages) {
+      const agent = message.subAgents?.find((a) => a.id === openAgentId);
+      if (agent) return agent;
+    }
+    return null;
+  }, [messages, openAgentId]);
   const [loading, setLoading] = useState(false);
   const [followUpQuestion, setFollowUpQuestion] = useState<ParsedInteractiveQuestion | null>(null);
   const [dismissedQuestionIds, setDismissedQuestionIds] = useState<string[]>([]);
   const pendingBootstrapped = useRef(false);
   const followUpRequestId = useRef(0);
   const [conversationId, setConversationId] = useState<string | null>(null);
-  const [sessionNumber, setSessionNumber] = useState<number | null>(null);
-  const [newSessionLoading, setNewSessionLoading] = useState(false);
+  const [conversations, setConversations] = useState<ConversationPickerItem[]>([]);
+  const [switchingConversation, setSwitchingConversation] = useState(false);
   const sessionContextRef = useRef("");
-  const conversationBootstrapped = useRef(false);
   const conversationIdRef = useRef<string | null>(null);
+  const loadedRouteIdRef = useRef<string | null>(null);
+  const creatingChatRef = useRef(false);
+  const chatMetadataLoadedRef = useRef(false);
   const lastTaskPollRef = useRef(new Date().toISOString());
   const lastOrchestratorPollRef = useRef(new Date().toISOString());
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const lastUserMessageRef = useRef<HTMLDivElement | null>(null);
   const pendingChatScrollRef = useRef(false);
   const [responseSpacerHeight, setResponseSpacerHeight] = useState(0);
+
+  const resetCommandChatUi = useCallback(() => {
+    setMessages([]);
+    setValue("");
+    setTaggedAssets([]);
+    setDismissedQuestionIds([]);
+    setFollowUpQuestion(null);
+    setOpenAgentId(null);
+  }, []);
 
   const scrollUserMessageIntoView = useCallback(() => {
     const container = chatScrollRef.current;
@@ -325,25 +410,6 @@ export function TradingWorkspace() {
   const [activeQuote, setActiveQuote] = useState<any>(null);
   const [sidebarQuotes, setSidebarQuotes] = useState<Record<string, any>>({});
 
-  // Real candles mapping for sidebar card charts (Figma specification)
-  const [cardCandles, setCardCandles] = useState<Record<string, { x: number; y: number }[]>>({});
-
-  // Utility to map raw historic candles to standard x,y percentage coordinates with comfortable margin padding
-  const convertCandlesToSparklinePoints = useCallback((points: any[]) => {
-    if (points.length === 0) return [];
-    const closes = points.map((p) => p.close);
-    const min = Math.min(...closes);
-    const max = Math.max(...closes);
-    const range = max - min || 1;
-
-    return points.map((p, i) => {
-      const x = (i / (points.length - 1)) * 100;
-      // Invert Y axis for SVGs (0 is top), add 15% top/bottom safety padding
-      const y = 15 + ((max - p.close) / range) * 70;
-      return { x, y };
-    });
-  }, []);
-
   // Click handler to select asset, set category, and set a beautiful prompt to analyze the asset
   const handleCardClick = useCallback((symbol: string, assetClass?: string, sector?: string) => {
     setActiveSymbol(symbol);
@@ -385,234 +451,6 @@ export function TradingWorkspace() {
     }
   }, [handleCardClick]);
 
-  // Card Face renderer helper to draw high fidelity 3D flipping card elements matching Figma specification
-  const renderCardFace = useCallback((asset: { symbol: string; name: string; asset_class?: string; sector?: string }) => {
-    const q = sidebarQuotes[asset.symbol];
-    const spot = q?.spot || 100;
-    const change = q?.change24hPct ?? 0;
-    const points = cardCandles[asset.symbol] || generateSparklinePoints(asset.symbol, change);
-    const isPositive = change >= 0;
-    const absChange = spot * (change / 100);
-
-    return (
-      <div className="flex flex-col h-full justify-between select-none text-left">
-        {/* Top Segment: Thumbnail + Name (Figma style) */}
-        <div className="flex items-center gap-3">
-          <div className="relative shrink-0">
-            <AssetLogoIcon
-              symbol={asset.symbol}
-              assetClass={asset.asset_class}
-              sector={asset.sector}
-              size="sm"
-              className="rounded-xl shadow-md border border-zinc-900/60 bg-zinc-900/40 w-8 h-8 flex items-center justify-center"
-            />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="font-sans font-extrabold text-sm text-zinc-100 truncate leading-tight">
-              {asset.name.replace(" CFD", "").replace(" / USD", "")}
-            </p>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <p className="text-[10px] text-zinc-500 font-bold tracking-wider uppercase font-mono leading-none">
-                {asset.symbol}
-              </p>
-              <span className="text-[8px] font-extrabold px-1 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/10 uppercase tracking-wider scale-90 origin-left">
-                {asset.asset_class === "crypto" ? "Crypto" : asset.sector || "Stock"}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Content Segment: Price + Trend indicator */}
-        <div className="mt-3 flex flex-col">
-          <p className="font-mono font-bold text-lg text-white leading-none tracking-tight">
-            ${spot >= 1000 
-              ? spot.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) 
-              : spot.toFixed(3)
-            }
-          </p>
-          <div className="flex items-center gap-1 mt-1.5">
-            {isPositive ? (
-              <TrendingUp className="size-3.5 text-emerald-400 shrink-0" />
-            ) : (
-              <TrendingDown className="size-3.5 text-red-400 shrink-0" />
-            )}
-            <p className={cn(
-              "text-xs font-bold font-mono leading-none",
-              isPositive ? "text-emerald-400" : "text-red-400"
-            )}>
-              {isPositive ? "+" : ""}{absChange.toFixed(2)} ({isPositive ? "+" : ""}{change.toFixed(2)}%)
-            </p>
-          </div>
-        </div>
-
-        {/* Chart Container Segment: Light Grid SVG Sparkline (Figma style with actual data) */}
-        <div className="mt-3 w-full h-[95px] relative bg-zinc-950/20 rounded-xl overflow-hidden border border-zinc-900/30 flex items-center justify-center">
-          {/* Subtle Grid Lines matching Figma spec */}
-          <div className="absolute inset-0 flex flex-col justify-between p-1.5 pointer-events-none opacity-[0.1]">
-            <div className="w-full border-b border-zinc-700" />
-            <div className="w-full border-b border-zinc-700" />
-            <div className="w-full border-b border-zinc-700" />
-            <div className="w-full border-b border-zinc-700" />
-          </div>
-          <div className="absolute inset-0 flex justify-between p-1.5 pointer-events-none opacity-[0.03]">
-            <div className="h-full border-r border-zinc-700" />
-            <div className="h-full border-r border-zinc-700" />
-            <div className="h-full border-r border-zinc-700" />
-            <div className="h-full border-r border-zinc-700" />
-            <div className="h-full border-r border-zinc-700" />
-          </div>
-
-          <div className="absolute inset-0 p-1.5">
-            <MiniSparkline points={points} isPositive={isPositive} />
-          </div>
-        </div>
-
-        {/* Bottom Timeframe Segment: Pill selectors decoration (Figma style) */}
-        <div className="mt-3 flex items-center justify-between border-t border-zinc-900/40 pt-2 text-[9px] font-bold text-zinc-500 font-mono tracking-wider">
-          {["1D", "1W", "1M", "3M", "6M", "1Y", "5Y"].map((tf) => {
-            const isSelected = tf === "1D";
-            return (
-              <span
-                key={tf}
-                className={cn(
-                  "px-1.5 py-0.5 rounded transition-colors duration-200",
-                  isSelected 
-                    ? "bg-indigo-500/15 border border-indigo-500/30 text-indigo-400 font-extrabold"
-                    : "hover:text-zinc-300"
-                )}
-              >
-                {tf}
-              </span>
-            );
-          })}
-        </div>
-      </div>
-    );
-  }, [sidebarQuotes, cardCandles]);
-
-  // --- PREMIUM CAROUSEL 3D FLIP CARD STATES (Landing Page attract screen) ---
-  const [leftSlots, setLeftSlots] = useState(() => {
-    return Array.from({ length: 4 }).map((_, i) => {
-      const front = LEFT_POOL_ASSETS[i % LEFT_POOL_ASSETS.length];
-      const back = LEFT_POOL_ASSETS[(i + 4) % LEFT_POOL_ASSETS.length];
-      return {
-        front,
-        back,
-        isFlipped: false,
-        activeSide: "front" as "front" | "back",
-      };
-    });
-  });
-
-  const [rightSlots, setRightSlots] = useState(() => {
-    return Array.from({ length: 4 }).map((_, i) => {
-      const front = RIGHT_POOL_ASSETS[i % RIGHT_POOL_ASSETS.length];
-      const back = RIGHT_POOL_ASSETS[(i + 4) % RIGHT_POOL_ASSETS.length];
-      return {
-        front,
-        back,
-        isFlipped: false,
-        activeSide: "front" as "front" | "back",
-      };
-    });
-  });
-
-  const leftPoolPointer = useRef(8);
-  const rightPoolPointer = useRef(8);
-
-  // Pre-fetch 1M historical candles for carousel cards (chat landing only)
-  useEffect(() => {
-    if (mode !== "command" || messages.length > 0) return;
-    const visibleSymbols = new Set<string>();
-    leftSlots.forEach(s => {
-      visibleSymbols.add(s.activeSide === "front" ? s.front.symbol : s.back.symbol);
-      visibleSymbols.add(s.activeSide === "front" ? s.back.symbol : s.front.symbol);
-    });
-    rightSlots.forEach(s => {
-      visibleSymbols.add(s.activeSide === "front" ? s.front.symbol : s.back.symbol);
-      visibleSymbols.add(s.activeSide === "front" ? s.back.symbol : s.front.symbol);
-    });
-
-    visibleSymbols.forEach(sym => {
-      if (cardCandles[sym]) return;
-      fetch(`/api/market/candles?symbol=${sym}&range=1M`)
-        .then(res => res.ok ? res.json() : null)
-        .then(data => {
-          if (data?.points?.length > 0) {
-            const converted = convertCandlesToSparklinePoints(data.points);
-            setCardCandles(prev => ({ ...prev, [sym]: converted }));
-          }
-        }).catch(err => console.warn("Card candle fetch failed:", sym, err));
-    });
-  }, [mode, leftSlots, rightSlots, messages.length, cardCandles, convertCandlesToSparklinePoints]);
-
-  useEffect(() => {
-    if (mode !== "command" || messages.length > 0) return;
-
-    let leftFlipIndex = 0;
-    let rightFlipIndex = 0;
-
-    const leftInterval = setInterval(() => {
-      setLeftSlots((prev) => {
-        const next = [...prev];
-        const idx = leftFlipIndex;
-        leftFlipIndex = (leftFlipIndex + 1) % 4;
-
-        const slot = next[idx];
-        const newSide = slot.activeSide === "front" ? "back" : "front";
-        const isFlipped = newSide === "back";
-
-        const nextAsset = LEFT_POOL_ASSETS[leftPoolPointer.current % LEFT_POOL_ASSETS.length];
-        leftPoolPointer.current++;
-
-        next[idx] = {
-          ...slot,
-          isFlipped,
-          activeSide: newSide,
-          front: newSide === "back" ? nextAsset : slot.front,
-          back: newSide === "front" ? nextAsset : slot.back,
-        };
-        return next;
-      });
-    }, 10000); // 10 seconds calm rotation
-
-    let rightTimeout: NodeJS.Timeout;
-    const rightIntervals: NodeJS.Timeout[] = [];
-    
-    rightTimeout = setTimeout(() => {
-      const rightInterval = setInterval(() => {
-        setRightSlots((prev) => {
-          const next = [...prev];
-          const idx = rightFlipIndex;
-          rightFlipIndex = (rightFlipIndex + 1) % 4;
-
-          const slot = next[idx];
-          const newSide = slot.activeSide === "front" ? "back" : "front";
-          const isFlipped = newSide === "back";
-
-          const nextAsset = RIGHT_POOL_ASSETS[rightPoolPointer.current % RIGHT_POOL_ASSETS.length];
-          rightPoolPointer.current++;
-
-          next[idx] = {
-            ...slot,
-            isFlipped,
-            activeSide: newSide,
-            front: newSide === "back" ? nextAsset : slot.front,
-            back: newSide === "front" ? nextAsset : slot.back,
-          };
-          return next;
-        });
-      }, 10000); // 10 seconds calm rotation
-      rightIntervals.push(rightInterval);
-    }, 5000); // 5 seconds staggered side-to-side offset delay
-
-    return () => {
-      clearInterval(leftInterval);
-      clearTimeout(rightTimeout);
-      rightIntervals.forEach(clearInterval);
-    };
-  }, [mode, messages.length]);
-
   // Sidebar dynamic quotes record & search state
   const [searchQuery, setSearchQuery] = useState("");
   const [leftSidebarTab, setLeftSidebarTab] = useState<"markets" | "portfolio">("markets");
@@ -646,7 +484,7 @@ export function TradingWorkspace() {
 
   usePortfolioSnapshotPoll(
     tradingMode,
-    isTabActive("home") || isTabActive("investing"),
+    isTabActive("home") || isTabActive("markets"),
   );
 
   useEffect(() => {
@@ -654,84 +492,78 @@ export function TradingWorkspace() {
   }, [conversationId]);
 
   useEffect(() => {
-    conversationBootstrapped.current = false;
+    loadedRouteIdRef.current = null;
+    creatingChatRef.current = false;
   }, [tradingMode]);
 
+  const loadConversationById = useCallback(
+    async (id: string) => {
+      setSwitchingConversation(true);
+      try {
+        const alreadyActive = conversations.some((c) => c.id === id && c.is_active);
+        if (!alreadyActive) {
+          await fetch(`/api/chat/conversations/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ mode: tradingMode }),
+          });
+        }
+        const res = await fetch(`/api/chat/conversations/${id}/messages`, {
+          credentials: "include",
+        });
+        if (res.status === 401) return;
+        if (!res.ok) return;
+        const json = (await res.json()) as {
+          messages?: Array<{
+            id: string;
+            role: string;
+            parts: Array<{ type: string; text?: string; payload?: unknown }>;
+            toolPods?: unknown;
+            subAgents?: unknown;
+            createdAt?: string;
+          }>;
+        };
+        setConversationId(id);
+        conversationIdRef.current = id;
+        loadedRouteIdRef.current = id;
+        setConversations((prev) =>
+          sortConversations(prev.map((c) => ({ ...c, is_active: c.id === id }))),
+        );
+        setMessages(mapLoadedMessagesToChat(json.messages ?? []));
+        setDismissedQuestionIds([]);
+        setFollowUpQuestion(null);
+        setValue("");
+        setTaggedAssets([]);
+      } catch (e) {
+        console.warn("Failed to load conversation", e);
+      } finally {
+        setSwitchingConversation(false);
+      }
+    },
+    [tradingMode, conversations],
+  );
+
   useEffect(() => {
-    if (mode !== "command" || !user || conversationBootstrapped.current) return;
-    conversationBootstrapped.current = true;
+    if (mode !== "chat" || !user) return;
+    if (chatMetadataLoadedRef.current) return;
+    chatMetadataLoadedRef.current = true;
 
     void (async () => {
       try {
         const modeParam = tradingMode;
-        const [convRes, ctxRes] = await Promise.all([
-          fetch(`/api/chat/conversations/active?mode=${modeParam}`),
-          fetch(`/api/chat/context?mode=${modeParam}`),
+        const [listRes, ctxRes] = await Promise.all([
+          fetch(`/api/chat/conversations?mode=${modeParam}`, { credentials: "include" }),
+          fetch(`/api/chat/context?mode=${modeParam}`, { credentials: "include" }),
         ]);
 
-        let convId: string | null = null;
-        let sessionNum: number | null = null;
-
-        if (convRes.ok) {
-          const convJson = (await convRes.json()) as {
-            conversation?: { id?: string; session_number?: number } | null;
+        if (listRes.ok) {
+          const listJson = (await listRes.json()) as {
+            conversations?: ConversationPickerItem[];
           };
-          if (convJson.conversation?.id) {
-            convId = convJson.conversation.id;
-            sessionNum = convJson.conversation.session_number ?? null;
-          } else {
-            const createRes = await fetch("/api/chat/conversations/active", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ mode: modeParam }),
-            });
-            if (createRes.ok) {
-              const created = (await createRes.json()) as {
-                conversation?: { id?: string; session_number?: number };
-              };
-              convId = created.conversation?.id ?? null;
-              sessionNum = created.conversation?.session_number ?? null;
-            }
-          }
-        }
-
-        if (convId) {
-          setConversationId(convId);
-          conversationIdRef.current = convId;
-          setSessionNumber(sessionNum);
-
-          const msgRes = await fetch(`/api/chat/conversations/${convId}/messages`);
-          if (msgRes.ok) {
-            const msgJson = (await msgRes.json()) as {
-              messages?: Array<{
-                id: string;
-                role: "user" | "assistant" | "system";
-                parts: Array<{ type: string; text?: string; payload?: unknown }>;
-                toolPods?: unknown;
-                createdAt?: string;
-              }>;
-            };
-            const loaded = msgJson.messages ?? [];
-            if (loaded.length > 0) {
-              const visible = loaded.filter(isVisibleChatMessage);
-              if (visible.length > 0) {
-                setMessages(
-                  visible.map((m) => ({
-                    id: m.id,
-                    role: m.role as ChatMessage["role"],
-                    parts: mapPersistedParts(m.parts),
-                    toolPods: m.toolPods as ChatToolPod[] | undefined,
-                  })),
-                );
-                const latest = visible
-                  .map((m) => m.createdAt)
-                  .filter(Boolean)
-                  .sort()
-                  .pop();
-                lastOrchestratorPollRef.current = latest ?? new Date().toISOString();
-              }
-            }
-          }
+          setConversations(
+            sortConversations((listJson.conversations ?? []).map((c) => toPickerItem(c))),
+          );
         }
 
         if (ctxRes.ok) {
@@ -740,35 +572,82 @@ export function TradingWorkspace() {
             hasBalanceGoal?: boolean;
           };
           sessionContextRef.current = ctxJson.prompt ?? "";
-
-          if (!ctxJson.hasBalanceGoal) {
-            setMessages((prev) => {
-              if (prev.length > 0) return prev;
-              return [
-                {
-                  id: "goal-onboarding",
-                  role: "assistant",
-                  parts: [
-                    {
-                      type: "text",
-                      text: "Welcome to Command. Before we trade, let's set a **balance goal** — the target your agent works toward in the background.\n\nFor example, if you have **$20** in your account, you might aim for **$50**. I'll monitor progress every 2 minutes and suggest (or execute) trades to get you there.\n\n**What balance would you like to reach?**",
-                    },
-                  ],
-                },
-              ];
-            });
-          }
         }
       } catch (e) {
-        console.warn("Failed to bootstrap chat session", e);
+        console.warn("Failed to load chat metadata", e);
       }
     })();
   }, [mode, user, tradingMode]);
 
   useEffect(() => {
-    if (!user) return;
+    chatMetadataLoadedRef.current = false;
+  }, [tradingMode]);
+
+  useEffect(() => {
+    if (mode !== "chat" || !user) return;
+
+    if (!routeConversationId) {
+      if (creatingChatRef.current) return;
+      creatingChatRef.current = true;
+      loadedRouteIdRef.current = null;
+
+      void (async () => {
+        try {
+          const createRes = await fetch("/api/chat/conversations", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ mode: tradingMode }),
+          });
+          if (!createRes.ok) return;
+          const createdJson = (await createRes.json()) as {
+            conversation?: {
+              id: string;
+              title?: string | null;
+              created_at: string;
+              updated_at: string;
+            };
+          };
+          const row = createdJson.conversation;
+          if (!row?.id) return;
+
+          const item = toPickerItem({ ...row, is_active: true });
+          setConversations((prev) =>
+            sortConversations([item, ...prev.map((c) => ({ ...c, is_active: false }))]),
+          );
+          setConversationId(row.id);
+          conversationIdRef.current = row.id;
+          loadedRouteIdRef.current = row.id;
+          resetCommandChatUi();
+          navigateToConversation(row.id, { replace: true });
+        } catch (e) {
+          console.warn("Failed to create chat session", e);
+        } finally {
+          creatingChatRef.current = false;
+        }
+      })();
+      return;
+    }
+
+    if (loadedRouteIdRef.current === routeConversationId) return;
+    void loadConversationById(routeConversationId);
+  }, [
+    mode,
+    user,
+    tradingMode,
+    routeConversationId,
+    navigateToConversation,
+    loadConversationById,
+    resetCommandChatUi,
+  ]);
+
+  useEffect(() => {
+    if (mode !== "chat" || !user || !isTabActive("chat")) return;
+
+    let authLost = false;
 
     const pollOrchestratorInbox = async () => {
+      if (authLost) return;
       try {
         const since = lastOrchestratorPollRef.current;
         const convId = conversationIdRef.current;
@@ -778,7 +657,13 @@ export function TradingWorkspace() {
         });
         if (convId) params.set("conversationId", convId);
 
-        const res = await fetch(`/api/autonomous/orchestrator-inbox?${params}`);
+        const res = await fetch(`/api/autonomous/orchestrator-inbox?${params}`, {
+          credentials: "include",
+        });
+        if (res.status === 401) {
+          authLost = true;
+          return;
+        }
         if (!res.ok) return;
 
         const json = (await res.json()) as {
@@ -787,10 +672,11 @@ export function TradingWorkspace() {
             role: string;
             parts: Array<{ type: string; text?: string; payload?: unknown }>;
             toolPods?: unknown;
+    subAgents?: unknown;
             createdAt?: string;
           }>;
         };
-        const incoming = (json.messages ?? []).filter(isVisibleChatMessage);
+        const incoming = (json.messages ?? []).filter(isUserFacingCommandMessage);
         if (incoming.length === 0) return;
 
         lastOrchestratorPollRef.current = new Date().toISOString();
@@ -803,6 +689,7 @@ export function TradingWorkspace() {
               role: m.role as ChatMessage["role"],
               parts: mapPersistedParts(m.parts),
               toolPods: m.toolPods as ChatToolPod[] | undefined,
+    subAgents: normalizeSubAgentList(m.subAgents),
             }));
           if (toAdd.length === 0) return prev;
           return [...prev, ...toAdd];
@@ -813,19 +700,27 @@ export function TradingWorkspace() {
     };
 
     void pollOrchestratorInbox();
-    const interval = window.setInterval(() => void pollOrchestratorInbox(), 5_000);
+    const interval = window.setInterval(() => void pollOrchestratorInbox(), 30_000);
     return () => window.clearInterval(interval);
-  }, [user, tradingMode, conversationId]);
+  }, [mode, user, tradingMode, isTabActive]);
 
   useEffect(() => {
-    if (mode !== "command" || !user) return;
+    if (mode !== "chat" || !user || !isTabActive("chat")) return;
+
+    let authLost = false;
 
     const pollTasks = async () => {
+      if (authLost) return;
       try {
         const since = lastTaskPollRef.current;
         const res = await fetch(
           `/api/chat/pending-tasks?mode=${tradingMode}&since=${encodeURIComponent(since)}`,
+          { credentials: "include" },
         );
+        if (res.status === 401) {
+          authLost = true;
+          return;
+        }
         if (!res.ok) return;
 
         const json = (await res.json()) as {
@@ -854,12 +749,13 @@ export function TradingWorkspace() {
     };
 
     void pollTasks();
-    const interval = window.setInterval(() => void pollTasks(), 60_000);
+    const interval = window.setInterval(() => void pollTasks(), 120_000);
     return () => window.clearInterval(interval);
-  }, [mode, user, tradingMode]);
+  }, [mode, user, tradingMode, isTabActive]);
 
   const [isAccountPanelOpen, setIsAccountPanelOpen] = useState(false);
   const [taggedAssets, setTaggedAssets] = useState<TaggedAsset[]>([]);
+  const [selectedAiTools, setSelectedAiTools] = useState<AiToolId[]>([]);
 
   const MAX_TAGGED_ASSETS = CHAT_LANDING_MAX_TAGGED_ASSETS;
 
@@ -1015,11 +911,11 @@ export function TradingWorkspace() {
 
   useEffect(() => {
     if (!user) return;
-    if (!isTabActive("home") && !isTabActive("investing")) return;
+    if (!isTabActive("home") && !isTabActive("markets")) return;
 
     const interval = window.setInterval(() => {
       void reloadPositions(true);
-    }, 15_000);
+    }, 90_000);
 
     return () => window.clearInterval(interval);
   }, [user, reloadPositions, isTabActive]);
@@ -1422,38 +1318,45 @@ export function TradingWorkspace() {
     }
   }, []);
 
-  const handleNewSession = useCallback(async () => {
-    const convId = conversationIdRef.current;
-    if (!convId || newSessionLoading) return;
-    setNewSessionLoading(true);
-    try {
-      const res = await fetch(`/api/chat/conversations/${convId}/new-session`, {
-        method: "POST",
-      });
-      if (!res.ok) return;
-      const json = (await res.json()) as {
-        sessionNumber?: number;
-        dividerMessage?: {
-          id: string;
-          role: string;
-          parts: Array<{ type: string; text?: string; payload?: unknown }>;
-        };
-      };
-      if (json.sessionNumber) setSessionNumber(json.sessionNumber);
-      if (json.dividerMessage) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: json.dividerMessage!.id,
-            role: json.dividerMessage!.role as ChatMessage["role"],
-            parts: mapPersistedParts(json.dividerMessage!.parts),
-          },
-        ]);
+  const createNewChat = useCallback(() => {
+    if (loading || switchingConversation) return;
+    resetCommandChatUi();
+    setConversationId(null);
+    conversationIdRef.current = null;
+    loadedRouteIdRef.current = null;
+    creatingChatRef.current = false;
+    setActiveTab("chat");
+  }, [loading, switchingConversation, resetCommandChatUi, setActiveTab]);
+
+  const selectConversation = useCallback(
+    (id: string) => {
+      if (loading || switchingConversation || id === routeConversationId) return;
+      navigateToConversation(id);
+    },
+    [loading, switchingConversation, routeConversationId, navigateToConversation],
+  );
+
+  const deleteConversationById = useCallback(
+    async (id: string) => {
+      if (loading || switchingConversation) return;
+      try {
+        const res = await fetch(`/api/chat/conversations/${id}`, { method: "DELETE" });
+        if (!res.ok) return;
+        const remaining = conversations.filter((c) => c.id !== id);
+        setConversations(remaining);
+        if (conversationIdRef.current === id) {
+          if (remaining[0]) {
+            navigateToConversation(remaining[0].id);
+          } else {
+            createNewChat();
+          }
+        }
+      } catch (e) {
+        console.warn("Failed to delete conversation", e);
       }
-    } finally {
-      setNewSessionLoading(false);
-    }
-  }, [newSessionLoading]);
+    },
+    [loading, switchingConversation, conversations, createNewChat, navigateToConversation],
+  );
 
   useEffect(() => {
     const onWidgetEvent = (event: Event) => {
@@ -1528,6 +1431,7 @@ export function TradingWorkspace() {
         body: JSON.stringify({
           message: apiMessage,
           pinnedAssets,
+          aiTools: selectedAiTools,
           history,
           conversationId: conversationIdRef.current,
           tradingMode,
@@ -1570,15 +1474,31 @@ export function TradingWorkspace() {
               const lastMsg = updated[updated.length - 1];
               if (!lastMsg || lastMsg.id !== assistantMsgId) return prev;
 
-              if (event.type === "text" || event.type === "reasoning") {
+              if (event.type === "reasoning") {
+                const parts = appendReasoningPart(lastMsg.parts, event.text);
+                updated[updated.length - 1] = {
+                  ...lastMsg,
+                  parts,
+                  liveStatus: liveStatusFromMessage(parts, lastMsg.toolPods ?? [], lastMsg.liveStatus),
+                  liveStatusDetail: undefined,
+                };
+                return updated;
+              }
+
+              if (event.type === "text") {
                 const parts = [...lastMsg.parts];
                 const lastPart = parts[parts.length - 1];
-                if (lastPart && lastPart.type === event.type) {
+                if (lastPart && lastPart.type === "text") {
                   parts[parts.length - 1] = { ...lastPart, text: (lastPart.text ?? "") + event.text };
                 } else {
-                  parts.push({ type: event.type, text: event.text });
+                  parts.push({ type: "text", text: event.text });
                 }
-                updated[updated.length - 1] = { ...lastMsg, parts, liveStatus: undefined, liveStatusDetail: undefined };
+                updated[updated.length - 1] = {
+                  ...lastMsg,
+                  parts,
+                  liveStatus: undefined,
+                  liveStatusDetail: undefined,
+                };
                 return updated;
               }
 
@@ -1595,9 +1515,17 @@ export function TradingWorkspace() {
               }
 
               if (event.type === "status") {
+                const hasReasoning = lastMsg.parts.some(
+                  (p) => p.type === "reasoning" && p.text?.trim(),
+                );
+                if (hasReasoning) return prev;
                 updated[updated.length - 1] = {
                   ...lastMsg,
-                  liveStatus: event.label,
+                  liveStatus: liveStatusFromMessage(
+                    lastMsg.parts,
+                    lastMsg.toolPods ?? [],
+                    event.label,
+                  ),
                   liveStatusDetail: event.detail,
                 };
                 return updated;
@@ -1611,7 +1539,13 @@ export function TradingWorkspace() {
                 } else {
                   pods.push({ toolUseId: event.toolUseId, name: event.name, status: "running", args: event.args });
                 }
-                updated[updated.length - 1] = { ...lastMsg, toolPods: pods };
+                const parts = appendToolRefPart(lastMsg.parts, event.toolUseId);
+                updated[updated.length - 1] = {
+                  ...lastMsg,
+                  parts,
+                  toolPods: pods,
+                  liveStatus: liveStatusFromMessage(parts, pods, lastMsg.liveStatus),
+                };
                 return updated;
               }
 
@@ -1633,9 +1567,22 @@ export function TradingWorkspace() {
                 updated[updated.length - 1] = {
                   ...lastMsg,
                   toolPods: pods,
-                  liveStatus: event.ok ? event.name.replace(/_/g, " ") : "Tool failed",
-                  liveStatusDetail: event.ok ? "Done" : event.error,
+                  liveStatus: liveStatusFromMessage(lastMsg.parts, pods, lastMsg.liveStatus),
                 };
+                return updated;
+              }
+
+              if (
+                event.type === "subagent_start" ||
+                event.type === "subagent_reasoning" ||
+                event.type === "subagent_text" ||
+                event.type === "subagent_tool_start" ||
+                event.type === "subagent_tool_end" ||
+                event.type === "subagent_end"
+              ) {
+                const subAgents = applySubagentStreamEvent(lastMsg.subAgents ?? [], event);
+                if (!subAgents) return prev;
+                updated[updated.length - 1] = { ...lastMsg, subAgents };
                 return updated;
               }
 
@@ -1691,10 +1638,33 @@ export function TradingWorkspace() {
                       role: assistantMsg.role,
                       parts: assistantMsg.parts,
                       toolPods: assistantMsg.toolPods,
+                      subAgents: assistantMsg.subAgents,
                     },
                   ],
                 }),
-              }).catch((err) => console.warn("Failed to persist chat messages", err));
+              })
+                .then(async (persistRes) => {
+                  if (!persistRes.ok) return;
+                  const persistJson = (await persistRes.json()) as {
+                    title?: string | null;
+                    updated_at?: string | null;
+                  };
+                  if (!persistJson.title && !persistJson.updated_at) return;
+                  setConversations((prev) =>
+                    sortConversations(
+                      prev.map((c) =>
+                        c.id === convId
+                          ? {
+                              ...c,
+                              title: persistJson.title?.trim() || c.title,
+                              updated_at: persistJson.updated_at ?? c.updated_at,
+                            }
+                          : c,
+                      ),
+                    ),
+                  );
+                })
+                .catch((err) => console.warn("Failed to persist chat messages", err));
             }
           }
         }
@@ -1754,13 +1724,13 @@ Provide:
       if (typeof window !== "undefined") {
         sessionStorage.setItem("chat:pending", JSON.stringify({ prompt, tags: [] }));
       }
-      setActiveTab("command");
+      setActiveTab("chat");
     },
     [setActiveTab],
   );
 
   useEffect(() => {
-    if (mode !== "command" || pendingBootstrapped.current) return;
+    if (mode !== "chat" || pendingBootstrapped.current) return;
     const raw = sessionStorage.getItem("chat:pending");
     if (!raw) return;
     pendingBootstrapped.current = true;
@@ -1798,46 +1768,34 @@ Provide:
         />
       </TabPanel>
 
-      <TabPanel tab="investing" activeTab={mode}>
-        <InvestingSection
-          balance={balance}
-          summary={summary}
-          accountLoading={accountLoading && summary == null}
-          accountRefreshing={accountRefreshing}
-          positionsRefreshing={positionsRefreshing}
-          tradingMode={tradingMode}
-          positions={positions}
-          sidebarQuotes={sidebarQuotes}
-          onManagePosition={setActivePositionId}
-          onRefresh={() => void reloadPositions()}
-          isActive={isTabActive("investing")}
-        />
+      <TabPanel tab="markets" activeTab={mode}>
+        <MarketsTerminal />
       </TabPanel>
 
-      <TabPanel tab="command" activeTab={mode}>
+      <TabPanel tab="chat" activeTab={mode}>
         {messages.length === 0 ? <PageBackground overlay="minimal" variant="orb" /> : null}
-        <ChatWidgetProvider onWidgetAction={handleWidgetAction}>
-        <div className="relative flex h-full w-full overflow-hidden">
-          <div className="relative mx-auto flex h-full min-w-0 flex-1 flex-col overflow-hidden">
-          <OrchestratorCycleControls />
-          {sessionNumber ? (
-            <div className="flex shrink-0 items-center justify-between gap-2 px-4 pt-2">
-              <p className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">
-                Session {sessionNumber} · Memory from prior sessions included
-              </p>
-              <button
-                type="button"
-                onClick={() => void handleNewSession()}
-                disabled={newSessionLoading || !conversationId}
-                className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-medium text-zinc-300 hover:bg-white/10 disabled:opacity-50"
-              >
-                {newSessionLoading ? "Saving…" : "New session"}
-              </button>
-            </div>
-          ) : null}
+        <div className="relative mx-auto flex h-full w-full max-w-5xl overflow-hidden">
+          <ConversationPicker
+            conversations={conversations}
+            activeConversationId={conversationId}
+            onSelect={(id) => void selectConversation(id)}
+            onNewChat={() => void createNewChat()}
+            onDelete={(id) => void deleteConversationById(id)}
+            disabled={loading || switchingConversation}
+            className="min-w-0 flex-1"
+          >
+          <ChatWidgetProvider onWidgetAction={handleWidgetAction}>
+          <div
+            className={cn(
+              "relative mx-auto flex h-full w-full overflow-hidden",
+              openAgent ? "max-w-none" : "max-w-3xl",
+            )}
+          >
+            <div className="relative flex h-full min-w-0 flex-1 flex-col overflow-hidden">
           {messages.length === 0 ? (
             <ChatLandingHero
               showBrandMark={false}
+              tone="chat"
               value={value}
               onChange={setValue}
               onSend={(content) => {
@@ -1849,8 +1807,9 @@ Provide:
               taggedAssets={taggedAssets}
               onRemoveTaggedAsset={removeTaggedAsset}
               onToggleTaggedAsset={toggleTaggedAsset}
-              placeholderSuggestions={CHAT_LANDING_PROMPT_SUGGESTIONS}
               maxTaggedAssets={MAX_TAGGED_ASSETS}
+              selectedAiTools={selectedAiTools}
+              onSelectedAiToolsChange={setSelectedAiTools}
             />
           ) : (
             <div className="relative flex min-h-0 flex-1 flex-col px-4 py-4">
@@ -1872,6 +1831,7 @@ Provide:
                         isAssistantStreaming={loading && isLastMessage}
                         livePrices={sidebarQuotes}
                         onClosePosition={closePosition}
+                        onOpenAgentDetail={(agent) => setOpenAgentId(agent.id)}
                         rootRef={
                           isActiveUserTurn
                             ? (el) => {
@@ -1920,7 +1880,10 @@ Provide:
                     variant="landing"
                     taggedAssets={taggedAssets}
                     onRemoveTaggedAsset={removeTaggedAsset}
+                    onToggleTaggedAsset={toggleTaggedAsset}
                     maxTaggedAssets={MAX_TAGGED_ASSETS}
+                    selectedAiTools={selectedAiTools}
+                    onSelectedAiToolsChange={setSelectedAiTools}
                   />
                   {isQuestionActive && activeQuestion ? (
                     <div className="absolute bottom-0 left-0 right-0 z-50 pointer-events-auto">
@@ -1937,10 +1900,18 @@ Provide:
               </div>
             </div>
           )}
+            </div>
           </div>
-          <WealthMonitorPanel />
+          </ChatWidgetProvider>
+          </ConversationPicker>
+          {openAgent ? (
+            <AgentDetailPane
+              agent={openAgent}
+              onClose={() => setOpenAgentId(null)}
+              className="hidden w-[min(420px,38%)] shrink-0 md:flex"
+            />
+          ) : null}
         </div>
-        </ChatWidgetProvider>
       </TabPanel>
 
       {activePositionRow ? (

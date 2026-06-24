@@ -75,7 +75,7 @@ export function InvestingSection({
                 ) : null}
               </div>
               <p className="text-[11px] text-zinc-500">
-                Manual testing · Capital.com prices · {tradingMode === "demo" ? "Demo" : "Live"} wallet
+                Autonomous growth manager · Capital.com · {tradingMode === "demo" ? "Demo" : "Live"}
               </p>
             </div>
           </div>

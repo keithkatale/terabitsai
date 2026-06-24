@@ -1,6 +1,10 @@
 import { resolvePlatformAccount } from "@/lib/ledger/ledger-service";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import {
+  isPlaceholderConversationTitle,
+  resolveConversationTitleAfterFirstUserMessage,
+} from "@/lib/chat/conversation-title";
 import { randomUUID } from "crypto";
 
 export type TradingMode = "demo" | "live";
@@ -16,6 +20,7 @@ export type PersistedChatMessage = {
   role: "user" | "assistant" | "system";
   parts: PersistedMessagePart[];
   toolPods?: unknown;
+  subAgents?: unknown;
 };
 
 export type ConversationRow = {
@@ -51,7 +56,11 @@ function toPersistedMessageId(id: string): string {
   return UUID_RE.test(id) ? id : randomUUID();
 }
 
-export async function createConversation(userId: string, mode: TradingMode) {
+export async function createConversation(
+  userId: string,
+  mode: TradingMode,
+  title = "New conversation",
+) {
   const supabase = await createSupabaseServerClient();
 
   let accountId: string | null = null;
@@ -88,13 +97,59 @@ export async function createConversation(userId: string, mode: TradingMode) {
       mode,
       session_number: sessionNumber,
       is_active: true,
-      title: `Session ${sessionNumber}`,
+      title: title.slice(0, 120),
     })
     .select("id, session_number, mode, title, context_summary, is_active, created_at, updated_at")
     .single();
 
   if (error) throw new Error(error.message);
   return data as ConversationRow;
+}
+
+export async function activateConversation(
+  userId: string,
+  conversationId: string,
+  mode: TradingMode,
+) {
+  const supabase = await createSupabaseServerClient();
+
+  const { data: existing } = await supabase
+    .from("conversations")
+    .select("id")
+    .eq("id", conversationId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (!existing) throw new Error("Conversation not found");
+
+  await supabase
+    .from("conversations")
+    .update({ is_active: false, updated_at: new Date().toISOString() })
+    .eq("user_id", userId)
+    .eq("mode", mode)
+    .eq("is_active", true);
+
+  const { data, error } = await supabase
+    .from("conversations")
+    .update({ is_active: true, updated_at: new Date().toISOString() })
+    .eq("id", conversationId)
+    .eq("user_id", userId)
+    .select("id, session_number, mode, title, context_summary, is_active, created_at, updated_at")
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data as ConversationRow;
+}
+
+export async function deleteConversation(userId: string, conversationId: string) {
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase
+    .from("conversations")
+    .delete()
+    .eq("id", conversationId)
+    .eq("user_id", userId);
+
+  if (error) throw new Error(error.message);
 }
 
 export async function getActiveConversation(userId: string, mode: TradingMode) {
@@ -119,14 +174,14 @@ export async function getOrCreateActiveConversation(userId: string, mode: Tradin
   return createConversation(userId, mode);
 }
 
-export async function listConversations(userId: string, mode: TradingMode, limit = 20) {
+export async function listConversations(userId: string, mode: TradingMode, limit = 30) {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("conversations")
     .select("id, session_number, mode, title, context_summary, is_active, created_at, updated_at")
     .eq("user_id", userId)
     .eq("mode", mode)
-    .order("created_at", { ascending: false })
+    .order("updated_at", { ascending: false })
     .limit(limit);
 
   if (error) throw new Error(error.message);
@@ -147,7 +202,7 @@ export async function loadConversationMessages(conversationId: string, userId: s
 
   const { data, error } = await supabase
     .from("chat_messages")
-    .select("id, role, parts, tool_pods, sequence, created_at")
+    .select("id, role, parts, tool_pods, sub_agents, sequence, created_at")
     .eq("conversation_id", conversationId)
     .order("sequence", { ascending: true });
 
@@ -158,6 +213,7 @@ export async function loadConversationMessages(conversationId: string, userId: s
     role: row.role as PersistedChatMessage["role"],
     parts: (row.parts ?? []) as PersistedMessagePart[],
     toolPods: row.tool_pods ?? undefined,
+    subAgents: row.sub_agents ?? undefined,
     createdAt: row.created_at as string | undefined,
   }));
 }
@@ -166,14 +222,14 @@ export async function appendConversationMessages(
   conversationId: string,
   userId: string,
   messages: PersistedChatMessage[],
-) {
-  if (messages.length === 0) return;
+): Promise<{ title: string | null }> {
+  if (messages.length === 0) return { title: null };
 
   const supabase = await createSupabaseServerClient();
 
   const { data: conv } = await supabase
     .from("conversations")
-    .select("id")
+    .select("id, title")
     .eq("id", conversationId)
     .eq("user_id", userId)
     .maybeSingle();
@@ -196,24 +252,53 @@ export async function appendConversationMessages(
     role: msg.role,
     parts: msg.parts,
     tool_pods: msg.toolPods ?? null,
+    sub_agents: msg.subAgents ?? null,
     sequence: sequence++,
   }));
 
   const { error } = await supabase.from("chat_messages").insert(rows);
   if (error) throw new Error(error.message);
 
-  const firstUserText = messages
-    .find((m) => m.role === "user")
-    ?.parts.find((p) => p.type === "text" && p.text?.trim())?.text?.trim();
+  let firstUserText =
+    messages
+      .find((m) => m.role === "user")
+      ?.parts.find((p) => p.type === "text" && p.text?.trim())?.text?.trim() ?? "";
+
+  if (!firstUserText && isPlaceholderConversationTitle(String(conv.title ?? ""))) {
+    const { data: firstUserRow } = await supabase
+      .from("chat_messages")
+      .select("parts")
+      .eq("conversation_id", conversationId)
+      .eq("role", "user")
+      .order("sequence", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (firstUserRow?.parts) {
+      const parts = firstUserRow.parts as PersistedMessagePart[];
+      firstUserText =
+        parts.find((p) => p.type === "text" && p.text?.trim())?.text?.trim() ?? "";
+    }
+  }
 
   const updates: Record<string, string> = {
     updated_at: new Date().toISOString(),
   };
+
+  let nextTitle: string | null = null;
   if (firstUserText) {
-    updates.title = firstUserText.slice(0, 80);
+    nextTitle = resolveConversationTitleAfterFirstUserMessage(
+      firstUserText,
+      String(conv.title ?? "New conversation"),
+    );
+    if (nextTitle !== conv.title) {
+      updates.title = nextTitle;
+    }
   }
 
   await supabase.from("conversations").update(updates).eq("id", conversationId);
+
+  return { title: nextTitle ?? (updates.title ? updates.title : null) };
 }
 
 /** Background jobs (orchestrator) — bypass RLS via service role. */
@@ -251,6 +336,7 @@ export async function appendConversationMessagesAdmin(
     role: msg.role,
     parts: msg.parts,
     tool_pods: msg.toolPods ?? null,
+    sub_agents: msg.subAgents ?? null,
     sequence: sequence++,
   }));
 
@@ -293,7 +379,7 @@ export async function loadConversationMessagesAdmin(conversationId: string, user
 
   const { data, error } = await admin
     .from("chat_messages")
-    .select("id, role, parts, tool_pods, sequence, created_at")
+    .select("id, role, parts, tool_pods, sub_agents, sequence, created_at")
     .eq("conversation_id", conversationId)
     .order("sequence", { ascending: true });
 
@@ -304,6 +390,7 @@ export async function loadConversationMessagesAdmin(conversationId: string, user
     role: row.role as PersistedChatMessage["role"],
     parts: (row.parts ?? []) as PersistedMessagePart[],
     toolPods: row.tool_pods ?? undefined,
+    subAgents: row.sub_agents ?? undefined,
     created_at: row.created_at as string,
   }));
 }
@@ -504,9 +591,8 @@ Your #1 job is helping the user reach their balance target: $${initial.toFixed(2
 - NEVER say you cannot execute trades, cannot access the brokerage, or need manual placement when autonomous is enabled.
 - Call get_account_state and manage_goals(check_progress) when discussing portfolio health.
 - Report what you DID (opened, closed, sized) — act first, explain after.
-- Background Wealth Monitor directs you every ~2 minutes — treat those messages as orders to execute.
 - User may ask side questions — answer them, but stay goal-aware.
-- When achieved, celebrate and prompt for a new balance target.
+- When achieved, celebrate and prompt for a new balance target. Autonomous growth runs on the Investing tab — not in this chat.
 
 ## AVAILABLE TRADING SKILLS
 

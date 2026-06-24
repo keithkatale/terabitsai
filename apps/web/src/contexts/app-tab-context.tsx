@@ -4,12 +4,14 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from "react";
+import { usePathname, useRouter } from "next/navigation";
 
-export type AppTab = "home" | "investing" | "command";
+export type AppTab = "home" | "markets" | "chat";
 
 const TAB_ALIASES: Record<string, AppTab> = {
   home: "home",
@@ -17,17 +19,17 @@ const TAB_ALIASES: Record<string, AppTab> = {
   wallet: "home",
   personal: "home",
   portfolio: "home",
-  investing: "investing",
-  chat: "command",
-  command: "command",
-  assets: "command",
-  markets: "command",
-  news: "command",
-  signals: "command",
-  engine: "command",
-  autonomous: "command",
-  manager: "command",
-  wealth: "command",
+  markets: "markets",
+  investing: "markets",
+  chat: "chat",
+  command: "chat",
+  assets: "markets",
+  news: "chat",
+  signals: "markets",
+  engine: "markets",
+  autonomous: "markets",
+  manager: "markets",
+  wealth: "markets",
 };
 
 export function parseAppTab(value: string | null | undefined): AppTab {
@@ -35,40 +37,91 @@ export function parseAppTab(value: string | null | undefined): AppTab {
   return TAB_ALIASES[value] ?? "home";
 }
 
-function readTabFromLocation(): AppTab {
-  if (typeof window === "undefined") return "home";
-  return parseAppTab(new URLSearchParams(window.location.search).get("tab"));
+export function tabPath(tab: AppTab, conversationId?: string | null): string {
+  switch (tab) {
+    case "home":
+      return "/app/wallet";
+    case "markets":
+      return "/app/markets";
+    case "chat":
+      return conversationId ? `/app/chat/${conversationId}` : "/app/chat";
+    default:
+      return "/app/wallet";
+  }
+}
+
+export function parseTabFromPathname(pathname: string): {
+  tab: AppTab;
+  conversationId: string | null;
+} {
+  if (pathname.startsWith("/app/chat/")) {
+    const id = pathname.slice("/app/chat/".length).split("/")[0];
+    return { tab: "chat", conversationId: id || null };
+  }
+  if (pathname === "/app/chat") {
+    return { tab: "chat", conversationId: null };
+  }
+  if (pathname.startsWith("/app/markets") || pathname.startsWith("/app/investing")) {
+    return { tab: "markets", conversationId: null };
+  }
+  if (
+    pathname === "/app" ||
+    pathname.startsWith("/app/wallet") ||
+    pathname.startsWith("/app/home")
+  ) {
+    return { tab: "home", conversationId: null };
+  }
+  return { tab: "home", conversationId: null };
 }
 
 type AppTabContextValue = {
   activeTab: AppTab;
+  routeConversationId: string | null;
   setActiveTab: (tab: AppTab) => void;
+  navigateToConversation: (conversationId: string, opts?: { replace?: boolean }) => void;
   isTabActive: (tab: AppTab) => boolean;
 };
 
 const AppTabContext = createContext<AppTabContextValue | null>(null);
 
 export function AppTabProvider({ children }: { children: ReactNode }) {
-  const [activeTab, setActiveTabState] = useState<AppTab>(readTabFromLocation);
+  const router = useRouter();
+  const pathname = usePathname();
+  const route = useMemo(() => parseTabFromPathname(pathname), [pathname]);
+  const [activeTab, setActiveTabState] = useState<AppTab>(route.tab);
 
-  const setActiveTab = useCallback((tab: AppTab) => {
-    setActiveTabState(tab);
+  useEffect(() => {
+    setActiveTabState(route.tab);
+  }, [route.tab]);
 
-    if (typeof window !== "undefined") {
-      const url = new URL(window.location.href);
-      url.pathname = "/app";
-      url.searchParams.set("tab", tab);
-      window.history.replaceState(null, "", url.toString());
-    }
-  }, []);
+  const setActiveTab = useCallback(
+    (tab: AppTab) => {
+      router.push(tabPath(tab));
+    },
+    [router],
+  );
+
+  const navigateToConversation = useCallback(
+    (conversationId: string, opts?: { replace?: boolean }) => {
+      const href = tabPath("chat", conversationId);
+      if (opts?.replace) {
+        router.replace(href);
+      } else {
+        router.push(href);
+      }
+    },
+    [router],
+  );
 
   const value = useMemo(
     () => ({
       activeTab,
+      routeConversationId: route.conversationId,
       setActiveTab,
+      navigateToConversation,
       isTabActive: (tab: AppTab) => activeTab === tab,
     }),
-    [activeTab, setActiveTab],
+    [activeTab, route.conversationId, setActiveTab, navigateToConversation],
   );
 
   return <AppTabContext.Provider value={value}>{children}</AppTabContext.Provider>;

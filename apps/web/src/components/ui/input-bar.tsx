@@ -11,6 +11,9 @@ import {
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { TypingPlaceholderOverlay } from "@/components/ui/typing-placeholder";
+import { PromptBox } from "@/components/ui/chatgpt-prompt-input";
+import { AssetLogoIcon } from "@/components/ui/asset-logo";
+import type { AiToolId } from "@/lib/chat/ai-tools";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -59,7 +62,10 @@ export type InputBarProps = {
   variant?: "default" | "landing";
   taggedAssets?: TaggedAsset[];
   onRemoveTaggedAsset?: (symbol: string) => void;
+  onToggleTaggedAsset?: (symbol: string) => void;
   maxTaggedAssets?: number;
+  selectedAiTools?: AiToolId[];
+  onSelectedAiToolsChange?: (tools: AiToolId[]) => void;
 };
 
 const PaperclipIcon = ({ className = "w-[18px] h-[18px]" }) => (
@@ -110,7 +116,7 @@ const StopIcon = ({ className = "w-[12px] h-[12px]" }) => (
 const StreamingStopIcon = () => (
   <span className="relative flex items-center justify-center w-5 h-5">
     <svg
-      className="animate-spin h-5 w-5 text-white absolute"
+      className="animate-spin h-5 w-5 text-black absolute"
       xmlns="http://www.w3.org/2000/svg"
       fill="none"
       viewBox="0 0 24 24"
@@ -134,7 +140,7 @@ const StreamingStopIcon = () => (
       height="7"
       viewBox="0 0 24 24"
       fill="currentColor"
-      className="text-white relative z-10"
+      className="text-black relative z-10"
     >
       <rect x="6" y="6" width="12" height="12" rx="1" />
     </svg>
@@ -183,8 +189,15 @@ function AssetTagChip({
   onRemove?: () => void;
 }) {
   return (
-    <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-blue-400/25 bg-blue-500/10 pl-2 pr-1 py-0.5 text-[11px] font-semibold text-blue-100">
-      <span className="font-mono text-[10px]">{tag.symbol}</span>
+    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-blue-400/25 bg-blue-500/10 py-0.5 pl-1 pr-1 text-[11px] font-semibold text-blue-100">
+      <AssetLogoIcon
+        symbol={tag.symbol}
+        assetClass={tag.assetClass}
+        sector={tag.sector ?? undefined}
+        size="xs"
+        className="size-4 shrink-0 overflow-hidden rounded-full"
+      />
+      <span className="max-w-[72px] truncate font-mono text-[10px]">{tag.symbol}</span>
       {onRemove ? (
         <button
           type="button"
@@ -339,7 +352,10 @@ export const InputBar = memo(function InputBar({
   variant = "default",
   taggedAssets = [],
   onRemoveTaggedAsset,
+  onToggleTaggedAsset,
   maxTaggedAssets = 3,
+  selectedAiTools = [],
+  onSelectedAiToolsChange,
 }: InputBarProps) {
   const [internalInput, setInternalInput] = useState("");
   const [focused, setFocused] = useState(false);
@@ -425,63 +441,21 @@ export const InputBar = memo(function InputBar({
     return (
       <div className={cn("shrink-0 w-full", className)}>
         <div className="mx-auto max-w-2xl">
-          <div
-            className="neo-surface relative cursor-text overflow-hidden rounded-full px-5 py-2.5 shadow-2xl"
-            onClick={handleContainerClick}
-          >
-            {hasTags ? (
-              <div className="mb-2 flex flex-wrap items-center gap-1.5 border-b border-[var(--terminal-border)] pb-2">
-                {taggedAssets.map((tag) => (
-                  <AssetTagChip
-                    key={tag.symbol}
-                    tag={tag}
-                    onRemove={
-                      onRemoveTaggedAsset
-                        ? () => onRemoveTaggedAsset(tag.symbol)
-                        : undefined
-                    }
-                  />
-                ))}
-              </div>
-            ) : null}
-
-            <div className="flex items-center gap-2">
-              <div className="relative min-w-0 flex-1">
-                <TypingPlaceholderOverlay
-                  suggestions={placeholderSuggestions ?? []}
-                  visible={showTypingPlaceholder}
-                />
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  onFocus={() => setFocused(true)}
-                  onBlur={() => setFocused(false)}
-                  placeholder={showTypingPlaceholder ? " " : placeholder}
-                  disabled={disabled}
-                  className={cn(
-                    "relative z-[1] h-9 w-full bg-transparent border-0 outline-none text-[14px] leading-none text-zinc-100 placeholder:text-zinc-500",
-                    disabled && "opacity-50 cursor-not-allowed",
-                  )}
-                />
-              </div>
-
-              <SendButton
-                state={sendState}
-                onClick={() => {
-                  if (isStreaming) onStop?.();
-                  else if (hasInput || hasTags) handleSubmit();
-                }}
-              />
-            </div>
-          </div>
-          {taggedAssets.length >= maxTaggedAssets ? (
-            <p className="mt-1.5 text-[10px] text-zinc-500 text-center">
-              Max {maxTaggedAssets} assets — remove one to pin another.
-            </p>
-          ) : null}
+          <PromptBox
+            value={input}
+            onValueChange={setInput}
+            onSend={handleSubmit}
+            onStop={onStop}
+            status={status}
+            disabled={disabled}
+            placeholder={showTypingPlaceholder ? " " : placeholder}
+            taggedAssets={taggedAssets}
+            onToggleTaggedAsset={onToggleTaggedAsset}
+            onRemoveTaggedAsset={onRemoveTaggedAsset}
+            maxTaggedAssets={maxTaggedAssets}
+            selectedAiTools={selectedAiTools}
+            onSelectedAiToolsChange={onSelectedAiToolsChange}
+          />
         </div>
       </div>
     );
@@ -490,83 +464,21 @@ export const InputBar = memo(function InputBar({
   return (
     <div className={cn("shrink-0 px-3 pb-3 w-full", className)}>
       <div className="mx-auto max-w-2xl">
-        <div
-          className="neo-surface relative cursor-text overflow-hidden rounded-full"
-          onClick={handleContainerClick}
-        >
-          <div
-            className={cn(
-              "grid transition-[grid-template-rows] duration-200 ease-out",
-              hasContextItems ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
-            )}
-          >
-            <div className="overflow-hidden">
-              {hasContextItems && (
-                <div className="flex flex-wrap items-center gap-1.5 px-6 pt-3.5 pb-0.5">
-                  {attachedImages.map((img) => (
-                    <ImageChip
-                      key={img.id}
-                      url={img.url}
-                      onRemove={
-                        onRemoveImage ? () => onRemoveImage(img.id) : undefined
-                      }
-                    />
-                  ))}
-                  {attachedFiles.map((file) => (
-                    <FileChip
-                      key={file.id}
-                      filename={file.filename}
-                      size={file.size}
-                      onRemove={
-                        onRemoveFile ? () => onRemoveFile(file.id) : undefined
-                      }
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-            <div className="relative min-h-[44px] pt-3.5 pb-0 pr-6 pl-6">
-            <TypingPlaceholderOverlay
-              suggestions={placeholderSuggestions ?? []}
-              visible={showTypingPlaceholder}
-            />
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              onFocus={() => setFocused(true)}
-              onBlur={() => setFocused(false)}
-              placeholder={showTypingPlaceholder ? " " : placeholder}
-              disabled={disabled}
-              rows={1}
-              className={cn(
-                "relative z-[1] w-full resize-none bg-transparent border-0 outline-none text-[14px] leading-[1.6] text-zinc-100 placeholder:text-zinc-500",
-                "overflow-hidden",
-                disabled && "opacity-50 cursor-not-allowed",
-              )}
-            />
-          </div>
-          <div className="flex items-center justify-between gap-3 px-4 pt-1 pb-3">
-            <div className="flex items-center gap-1 min-w-0">
-              {onAttach && (
-                <AttachmentButton onClick={onAttach} disabled={disabled} />
-              )}
-              {leftActions}
-            </div>
-            <div className="flex items-center gap-1">
-              {rightActions}
-              <SendButton
-                state={sendState}
-                onClick={() => {
-                  if (isStreaming) onStop?.();
-                  else if (hasInput) handleSubmit();
-                }}
-              />
-            </div>
-          </div>
-        </div>
+        <PromptBox
+          value={input}
+          onValueChange={setInput}
+          onSend={handleSubmit}
+          onStop={onStop}
+          status={status}
+          disabled={disabled}
+          placeholder={showTypingPlaceholder ? " " : placeholder}
+          taggedAssets={taggedAssets}
+          onToggleTaggedAsset={onToggleTaggedAsset}
+          onRemoveTaggedAsset={onRemoveTaggedAsset}
+          maxTaggedAssets={maxTaggedAssets}
+          selectedAiTools={selectedAiTools}
+          onSelectedAiToolsChange={onSelectedAiToolsChange}
+        />
       </div>
     </div>
   );

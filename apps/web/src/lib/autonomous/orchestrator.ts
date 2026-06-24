@@ -270,6 +270,7 @@ ${conversationSummary || "(no messages yet)"}`;
     directive: enrichedDirective,
     cycleId: params.cycleId,
     narration: params.narration,
+    persistToConversation: false,
   });
 
   return { spoke: true, directive, chatResult };

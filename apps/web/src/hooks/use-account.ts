@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
   fetchAccountPreferences,
@@ -18,13 +18,24 @@ import type { User } from "@supabase/supabase-js";
 
 export function useAccount() {
   const [user, setUser] = useState<User | null>(null);
-  const [tradingMode, setTradingModeState] = useState<TradingMode>(() => readCachedTradingMode());
-  const [summary, setSummary] = useState<LedgerSummaryResponse | null>(() => {
-    return readHomeTabCache(readCachedTradingMode())?.summary ?? null;
-  });
-  const [loading, setLoading] = useState(() => summary == null);
+  const [tradingMode, setTradingModeState] = useState<TradingMode>("demo");
+  const [summary, setSummary] = useState<LedgerSummaryResponse | null>(null);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const cacheHydratedRef = useRef(false);
+
+  useEffect(() => {
+    if (cacheHydratedRef.current) return;
+    cacheHydratedRef.current = true;
+    const cachedMode = readCachedTradingMode();
+    const cached = readHomeTabCache(cachedMode);
+    setTradingModeState(cachedMode);
+    if (cached?.summary) {
+      setSummary(cached.summary);
+      setLoading(false);
+    }
+  }, []);
 
   const refresh = useCallback(async (modeOverride?: TradingMode, silent = false) => {
     const mode = modeOverride ?? tradingMode;

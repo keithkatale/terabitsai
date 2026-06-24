@@ -1192,9 +1192,117 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .assistant-siri-orb::before {
+  .assistant-siri-orb::before,
+  .agent-orb::before {
     animation: none;
   }
+}
+
+/* Sub-agent orb color schemes (faster spin via --assistant-siri-duration on element) */
+.agent-orb {
+  --assistant-siri-duration: 14s;
+  --assistant-siri-blur: 8px;
+  --assistant-siri-contrast: 1.8;
+  display: grid;
+  grid-template-areas: "stack";
+  overflow: hidden;
+  border-radius: 50%;
+  position: relative;
+  flex-shrink: 0;
+  background: radial-gradient(
+    circle,
+    rgba(255, 255, 255, 0.08) 0%,
+    rgba(255, 255, 255, 0.02) 30%,
+    transparent 70%
+  );
+}
+
+.agent-orb::before {
+  content: "";
+  display: block;
+  grid-area: stack;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background:
+    conic-gradient(
+      from calc(var(--assistant-siri-angle) * 1.2) at 30% 65%,
+      var(--assistant-siri-c3) 0deg,
+      transparent 45deg 315deg,
+      var(--assistant-siri-c3) 360deg
+    ),
+    conic-gradient(
+      from calc(var(--assistant-siri-angle) * 0.8) at 70% 35%,
+      var(--assistant-siri-c2) 0deg,
+      transparent 60deg 300deg,
+      var(--assistant-siri-c2) 360deg
+    ),
+    conic-gradient(
+      from calc(var(--assistant-siri-angle) * -1.5) at 65% 75%,
+      var(--assistant-siri-c1) 0deg,
+      transparent 90deg 270deg,
+      var(--assistant-siri-c1) 360deg
+    ),
+    radial-gradient(
+      ellipse 120% 80% at 40% 60%,
+      var(--assistant-siri-c3) 0%,
+      transparent 50%
+    );
+  filter: blur(var(--assistant-siri-blur)) contrast(var(--assistant-siri-contrast)) saturate(1.22);
+  animation: assistant-siri-rotate var(--assistant-siri-duration) linear infinite;
+  transform: translateZ(0);
+}
+
+.agent-orb::after {
+  content: "";
+  display: block;
+  grid-area: stack;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 45% 55%,
+    rgba(255, 255, 255, 0.1) 0%,
+    rgba(255, 255, 255, 0.05) 30%,
+    transparent 60%
+  );
+  mix-blend-mode: overlay;
+}
+
+.agent-orb--cyan {
+  --assistant-siri-c1: oklch(78% 0.18 200);
+  --assistant-siri-c2: oklch(72% 0.16 205);
+  --assistant-siri-c3: oklch(68% 0.19 195);
+}
+
+.agent-orb--blue {
+  --assistant-siri-c1: oklch(72% 0.18 250);
+  --assistant-siri-c2: oklch(66% 0.16 255);
+  --assistant-siri-c3: oklch(60% 0.19 245);
+}
+
+.agent-orb--violet {
+  --assistant-siri-c1: oklch(72% 0.2 300);
+  --assistant-siri-c2: oklch(66% 0.18 305);
+  --assistant-siri-c3: oklch(60% 0.21 295);
+}
+
+.agent-orb--amber {
+  --assistant-siri-c1: oklch(80% 0.17 75);
+  --assistant-siri-c2: oklch(74% 0.15 80);
+  --assistant-siri-c3: oklch(68% 0.18 70);
+}
+
+.agent-orb--rose {
+  --assistant-siri-c1: oklch(72% 0.2 15);
+  --assistant-siri-c2: oklch(66% 0.18 20);
+  --assistant-siri-c3: oklch(60% 0.21 10);
+}
+
+.agent-orb--emerald {
+  --assistant-siri-c1: oklch(76% 0.19 155);
+  --assistant-siri-c2: oklch(70% 0.17 160);
+  --assistant-siri-c3: oklch(64% 0.2 148);
 }
 
 /* Streaming shimmers and loading keyframe helpers */

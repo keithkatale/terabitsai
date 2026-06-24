@@ -217,32 +217,39 @@ export function MarketPreviewQueue({
   useEffect(() => {
     if (!enabled) return;
     let active = true;
+    let quoteTimer: ReturnType<typeof setInterval> | null = null;
 
     const fetchQuotes = async () => {
-      const results = await Promise.allSettled(
-        allSymbols.map(async (symbol) => {
-          const assetClass = assetClassForSymbol(symbol);
-          const res = await fetch(`/api/market/quote?symbol=${symbol}&assetClass=${assetClass}`);
-          if (!res.ok) return null;
-          const data = await res.json();
-          return {
-            symbol,
-            spot: data.spot ?? 0,
-            change24hPct: data.change24hPct ?? 0,
-          };
-        }),
-      );
-      if (!active) return;
+      const batchSize = 4;
       const next: Record<string, Quote> = {};
-      for (const r of results) {
-        if (r.status === "fulfilled" && r.value) {
-          next[r.value.symbol] = {
-            spot: r.value.spot,
-            change24hPct: r.value.change24hPct,
-          };
+      for (let i = 0; i < allSymbols.length; i += batchSize) {
+        if (!active) return;
+        const batch = allSymbols.slice(i, i + batchSize);
+        const results = await Promise.allSettled(
+          batch.map(async (symbol) => {
+            const assetClass = assetClassForSymbol(symbol);
+            const res = await fetch(`/api/market/quote?symbol=${symbol}&assetClass=${assetClass}`);
+            if (!res.ok) return null;
+            const data = await res.json();
+            return {
+              symbol,
+              spot: data.spot ?? 0,
+              change24hPct: data.change24hPct ?? 0,
+            };
+          }),
+        );
+        for (const r of results) {
+          if (r.status === "fulfilled" && r.value) {
+            next[r.value.symbol] = {
+              spot: r.value.spot,
+              change24hPct: r.value.change24hPct,
+            };
+          }
+        }
+        if (Object.keys(next).length > 0) {
+          setQuotes((prev) => ({ ...prev, ...next }));
         }
       }
-      setQuotes(next);
     };
 
     const fetchSparklines = async () => {
@@ -274,13 +281,14 @@ export function MarketPreviewQueue({
       setSparklines(next);
     };
 
-    fetchQuotes();
-    fetchSparklines();
-    const interval = setInterval(fetchQuotes, 30_000);
+    void fetchQuotes();
+    quoteTimer = setInterval(() => void fetchQuotes(), 60_000);
+    const sparklineTimer = window.setTimeout(() => void fetchSparklines(), 1_500);
 
     return () => {
       active = false;
-      clearInterval(interval);
+      if (quoteTimer) clearInterval(quoteTimer);
+      clearTimeout(sparklineTimer);
     };
   }, [allSymbols, enabled]);
 

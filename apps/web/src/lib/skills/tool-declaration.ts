@@ -18,6 +18,7 @@ Available skills:
 - market-regime-detector: Classify market as uptrend/downtrend/ranging (symbols, timeframes)
 - position-sizer: Calculate risk-based position size (symbol, entry_price, stop_loss, account_balance, max_risk_pct)
 - portfolio-heat-calculator: Sum total risk across all open positions ()
+- tradingview-chart-analyst: Visual TA via TradingView + AI vision (symbols, interval, indicators)
 - multi-timeframe-analyzer: Analyze trend alignment across timeframes (symbol, timeframes)
 - support-resistance-identifier: Find key price levels (symbol, timeframe, lookback)
 - trend-strength-scorer: Score trend quality 0-100 (symbol, timeframe)
@@ -50,9 +51,22 @@ Skills provide specialized analysis beyond base knowledge. Use them for:
  * Handler for execute_skill tool calls
  * Add to your tool execution switch statement in route.ts
  */
+export function normalizeSkillToolArgs(
+  args: Record<string, unknown>,
+): { skill_id: string; inputs: Record<string, unknown> } {
+  const skill_id = String(args.skill_id ?? "");
+  const nested = args.inputs;
+  if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+    return { skill_id, inputs: nested as Record<string, unknown> };
+  }
+
+  const { skill_id: _id, inputs: _inputs, ...rest } = args;
+  return { skill_id, inputs: rest };
+}
+
 export async function handleExecuteSkill(params: {
   skill_id: string;
-  inputs: any;
+  inputs: Record<string, unknown>;
   userId: string;
   goalId: string;
   mode: string;
@@ -63,14 +77,14 @@ export async function handleExecuteSkill(params: {
   const context: SkillExecutionContext = {
     userId: params.userId,
     goalId: params.goalId,
-    mode: params.mode as any,
+    mode: params.mode as SkillExecutionContext["mode"],
     accountBalance: params.accountBalance,
   };
 
   const result = await executor.executeSkill(
     params.skill_id,
     params.inputs,
-    context
+    context,
   );
 
   if (!result.success) {

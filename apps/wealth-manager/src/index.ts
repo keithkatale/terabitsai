@@ -5,6 +5,12 @@ import http from "node:http";
 const INTERVAL_MS = Number(process.env.WEALTH_MANAGER_INTERVAL_MS ?? 45_000);
 const PORT = Number(process.env.PORT ?? 8081);
 
+function isWealthMonitorEnabled(): boolean {
+  const v = process.env.WEALTH_MONITOR_ENABLED?.trim().toLowerCase();
+  if (!v) return false;
+  return v === "1" || v === "true" || v === "yes" || v === "on";
+}
+
 function getSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -88,6 +94,16 @@ async function reconcilePositions() {
 async function runTick() {
   const started = Date.now();
   try {
+    if (!isWealthMonitorEnabled()) {
+      await updateHeartbeat({
+        disabled: true,
+        reason: "WEALTH_MONITOR_ENABLED is off",
+        tickAt: new Date().toISOString(),
+      });
+      console.log("[wealth-manager] tick skipped — automated Wealth Monitor disabled");
+      return;
+    }
+
     const events = await processPendingEvents();
     const cycles = await processActiveGoals();
     await updateHeartbeat({

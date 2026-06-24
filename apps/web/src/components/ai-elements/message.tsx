@@ -4,8 +4,9 @@ import * as React from "react";
 import { useMemo } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
-import { ChevronDown, Loader2 } from "lucide-react";
 import { AssistantSiriOrb } from "./assistant-siri-orb";
+import { AgentActivity } from "./agent-activity";
+import { SubAgentWidgetRow } from "./sub-agent-widget";
 import { MarkdownContent } from "./markdown-content";
 import { GenUiRenderer } from "@/components/generative-ui/genui-renderer";
 import { QuantUiRenderer } from "@/components/quant-ui/quant-ui-renderer";
@@ -14,10 +15,23 @@ import { stripInjectedArtifactMarkdown } from "@/lib/genui/strip-artifact-fences
 import { stripInteractiveQuestionMarkup } from "@/lib/chat/interactive-question-helper";
 import { AssetLogoIcon } from "@/components/ui/asset-logo";
 import type { ChatToolPod } from "@/lib/chat/stream-types";
+import type { ActivityPartRef } from "@/lib/chat/activity-timeline";
+import { buildActivityTimeline } from "@/lib/chat/activity-timeline";
+import { deriveLiveTraceFromSteps } from "@/lib/chat/live-trace";
+import type { SubAgentState } from "@/lib/chat/subagent-types";
 
 export interface MessagePart {
-  type: "reasoning" | "text" | "trade-execution" | "genui" | "quant-ui" | "monitor_directive" | "session_divider";
+  type:
+    | "reasoning"
+    | "text"
+    | "tool_ref"
+    | "trade-execution"
+    | "genui"
+    | "quant-ui"
+    | "monitor_directive"
+    | "session_divider";
   text?: string;
+  toolUseId?: string;
   payload?: unknown;
 }
 
@@ -26,6 +40,7 @@ export interface ChatMessageData {
   role: "user" | "assistant" | "system";
   parts: MessagePart[];
   toolPods?: ChatToolPod[];
+  subAgents?: SubAgentState[];
   liveStatus?: string;
   liveStatusDetail?: string;
 }
@@ -46,184 +61,46 @@ export interface TradeData {
   timestamp: number;
 }
 
-function formatToolPreview(value: unknown, maxChars: number): string {
-  try {
-    const s = typeof value === "string" ? value : JSON.stringify(value, null, 2);
-    if (s.length <= maxChars) return s;
-    return `${s.slice(0, maxChars)}…`;
-  } catch {
-    return String(value);
-  }
+function activityPartsFromMessage(parts: MessagePart[]): ActivityPartRef[] {
+  return parts
+    .filter((p) => p.type === "reasoning" || p.type === "tool_ref")
+    .map((p) =>
+      p.type === "tool_ref" && p.toolUseId
+        ? { type: "tool_ref" as const, toolUseId: p.toolUseId }
+        : { type: "reasoning" as const, text: p.text },
+    );
 }
 
-function ToolPodRow({ pod, defaultOpen = false }: { pod: ChatToolPod; defaultOpen?: boolean }) {
-  const label = pod.name.replace(/_/g, " ");
-  const statusLabel =
-    pod.status === "running" ? "Running" : pod.ok === false ? "Failed" : "Done";
-  const hasBody =
-    Boolean(pod.args && Object.keys(pod.args).length > 0) ||
-    (pod.status === "done" && (pod.output != null || Boolean(pod.error)));
-
-  return (
-    <div className="text-[11px] text-zinc-500">
-      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-        <span className="font-mono text-[10px] font-semibold uppercase tracking-tight text-zinc-400">
-          {label}
-        </span>
-        <span
-          className={
-            pod.status === "running"
-              ? "text-[#24ee89]"
-              : pod.ok === false
-                ? "text-red-400"
-                : "text-emerald-400/90"
-          }
-        >
-          {pod.status === "running" ? (
-            <span className="inline-flex items-center gap-1">
-              <span className="inline-block size-1 animate-pulse rounded-full bg-[#24ee89]" aria-hidden />
-              {statusLabel}
-            </span>
-          ) : (
-            statusLabel
-          )}
-        </span>
-        {pod.durationMs != null && pod.status === "done" ? (
-          <span className="text-[10px] text-zinc-600">{pod.durationMs}ms</span>
-        ) : null}
-      </div>
-      {hasBody ? (
-        <details className="group/tool mt-0.5" open={defaultOpen}>
-          <summary className="cursor-pointer list-none py-0.5 text-[10px] text-zinc-500 marker:hidden hover:text-zinc-300 [&::-webkit-details-marker]:hidden">
-            <span className="inline-flex items-center gap-0.5">
-              <ChevronDown
-                className="h-3 w-3 shrink-0 opacity-60 transition-transform group-open/tool:rotate-180"
-                aria-hidden
-              />
-              Inputs &amp; result
-            </span>
-          </summary>
-          <div className="mt-1 space-y-2">
-            {pod.args && Object.keys(pod.args).length > 0 ? (
-              <pre className="max-h-24 overflow-auto whitespace-pre-wrap font-mono text-[10px] leading-relaxed text-zinc-500">
-                {formatToolPreview(pod.args, 2000)}
-              </pre>
-            ) : null}
-            {pod.status === "done" ? (
-              <pre className="max-h-32 overflow-auto whitespace-pre-wrap font-mono text-[10px] leading-relaxed text-zinc-500">
-                {pod.error ? pod.error : formatToolPreview(pod.output ?? {}, 6000)}
-              </pre>
-            ) : null}
-          </div>
-        </details>
-      ) : null}
-    </div>
-  );
-}
-
-function TypingDots() {
-  return (
-    <span className="inline-flex shrink-0 items-end gap-[3px]" aria-hidden>
-      <span className="inline-block size-[5px] animate-bounce rounded-full bg-[#24ee89] [animation-duration:0.6s]" />
-      <span className="inline-block size-[5px] animate-bounce rounded-full bg-[#24ee89] [animation-duration:0.6s] [animation-delay:0.12s]" />
-      <span className="inline-block size-[5px] animate-bounce rounded-full bg-[#24ee89] [animation-duration:0.6s] [animation-delay:0.24s]" />
-    </span>
-  );
-}
-
-function AgentActivity({
+function AgentActivityBridge({
   reasoning,
   toolPods,
   isAssistantStreaming,
   liveStatus,
   liveStatusDetail,
+  collapsed,
+  activityParts,
 }: {
   reasoning: string;
   toolPods: ChatToolPod[];
   isAssistantStreaming: boolean;
   liveStatus?: string;
   liveStatusDetail?: string;
+  collapsed?: boolean;
+  activityParts?: ActivityPartRef[];
 }) {
-  const r = reasoning.trim();
-  const runningPod = [...toolPods].reverse().find((p) => p.status === "running");
-
-  if (isAssistantStreaming) {
-    const label = liveStatus ?? (runningPod ? runningPod.name.replace(/_/g, " ") : "Thinking");
-    const hasDetail = Boolean(runningPod || toolPods.length > 0 || r.length > 0 || liveStatusDetail);
-
-    return (
-      <details key="active" open className="group/act w-full max-w-full mb-2" role="status" aria-live="polite">
-        <summary className="flex cursor-pointer list-none select-none items-center gap-2 py-1 [&::-webkit-details-marker]:hidden">
-          <span className="flex min-w-0 items-center gap-1.5">
-            <span className="truncate text-[12.5px] font-medium text-shimmer text-[#24ee89]">
-              {label}
-              {liveStatusDetail ? (
-                <span className="ml-1.5 font-normal text-zinc-400">· {liveStatusDetail}</span>
-              ) : null}
-            </span>
-            <TypingDots />
-            {hasDetail ? (
-              <ChevronDown className="size-3.5 shrink-0 text-[#24ee89] transition-transform group-open/act:rotate-180 ml-1" aria-hidden />
-            ) : null}
-          </span>
-        </summary>
-        {hasDetail ? (
-          <div className="ml-0.5 mt-1 space-y-2 border-l border-white/[0.08] pl-3">
-            {toolPods.length > 0 ? (
-              <div className="space-y-1.5">
-                {toolPods.map((pod) => (
-                  <ToolPodRow
-                    key={pod.toolUseId}
-                    pod={pod}
-                    defaultOpen={runningPod ? pod.toolUseId === runningPod.toolUseId : false}
-                  />
-                ))}
-              </div>
-            ) : null}
-            {r.length > 0 ? (
-              <details open className="group/cot">
-                <summary className="cursor-pointer list-none py-0.5 text-[10px] text-zinc-500 marker:hidden hover:text-zinc-300 [&::-webkit-details-marker]:hidden">
-                  <span className="inline-flex items-center gap-0.5">
-                    <ChevronDown className="h-3 w-3 shrink-0 opacity-60 transition-transform group-open/cot:rotate-180" aria-hidden />
-                    Chain of thought
-                  </span>
-                </summary>
-                <pre className="mt-1 max-h-36 overflow-y-auto whitespace-pre-wrap font-mono text-[10px] leading-relaxed text-zinc-500">
-                  {r}
-                </pre>
-              </details>
-            ) : null}
-          </div>
-        ) : null}
-      </details>
-    );
-  }
-
-  if (r.length === 0 && toolPods.length === 0) return null;
+  const steps = buildActivityTimeline(activityParts ?? [], toolPods, isAssistantStreaming);
+  const traceLabel = deriveLiveTraceFromSteps(steps, liveStatus);
 
   return (
-    <details key="done" className="group/trace mb-2 w-full max-w-full">
-      <summary className="cursor-pointer list-none select-none py-1 text-[11px] font-medium text-zinc-500 marker:hidden transition-colors hover:text-zinc-300 [&::-webkit-details-marker]:hidden">
-        <span className="inline-flex items-center gap-1.5">
-          <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-55 transition-transform group-open/trace:rotate-180" aria-hidden />
-          How this reply was built
-        </span>
-      </summary>
-      <div className="ml-0.5 mt-1 space-y-2 border-l border-white/[0.08] pl-3">
-        {toolPods.length > 0 ? (
-          <div className="space-y-1.5">
-            {toolPods.map((pod) => (
-              <ToolPodRow key={pod.toolUseId} pod={pod} />
-            ))}
-          </div>
-        ) : null}
-        {r.length > 0 ? (
-          <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap font-mono text-[10px] leading-relaxed text-zinc-500">
-            {r}
-          </pre>
-        ) : null}
-      </div>
-    </details>
+    <AgentActivity
+      reasoning={reasoning}
+      toolPods={toolPods}
+      isStreaming={isAssistantStreaming}
+      liveStatus={traceLabel}
+      liveStatusDetail={liveStatusDetail}
+      collapsed={collapsed}
+      activityParts={activityParts}
+    />
   );
 }
 
@@ -309,6 +186,7 @@ export function ChatMessage({
   hideAssistantOrb = false,
   livePrices,
   onClosePosition,
+  onOpenAgentDetail,
   guestSignInCta = false,
   rootRef,
 }: {
@@ -317,6 +195,7 @@ export function ChatMessage({
   hideAssistantOrb?: boolean;
   livePrices?: Record<string, { spot: number }>;
   onClosePosition?: (id: string) => void;
+  onOpenAgentDetail?: (agent: SubAgentState) => void;
   guestSignInCta?: boolean;
   rootRef?: React.Ref<HTMLDivElement | null>;
 }) {
@@ -380,6 +259,10 @@ export function ChatMessage({
     [message.parts]
   );
   const toolPods = message.toolPods ?? [];
+  const subAgents = message.subAgents ?? [];
+  const activityParts = useMemo(() => activityPartsFromMessage(message.parts), [message.parts]);
+  const hasRunningSubAgents =
+    isAssistantStreaming && subAgents.some((a) => a.status === "running");
   const hasActivity = reasoningText.trim().length > 0 || toolPods.length > 0 || isAssistantStreaming;
   const hasInjectedArtifact = message.parts.some((p) => p.type === "genui" || p.type === "quant-ui");
 
@@ -398,13 +281,19 @@ export function ChatMessage({
       ) : null}
       <div className="w-full sm:max-w-[760px] min-w-0 flex-1 space-y-2 px-0.5">
         {hasActivity ? (
-          <AgentActivity
+          <AgentActivityBridge
             reasoning={reasoningText}
             toolPods={toolPods}
             isAssistantStreaming={isAssistantStreaming}
             liveStatus={message.liveStatus}
             liveStatusDetail={message.liveStatusDetail}
+            collapsed={hasRunningSubAgents}
+            activityParts={activityParts}
           />
+        ) : null}
+
+        {subAgents.length > 0 ? (
+          <SubAgentWidgetRow agents={subAgents} onOpenAgent={onOpenAgentDetail} />
         ) : null}
 
         {(() => {

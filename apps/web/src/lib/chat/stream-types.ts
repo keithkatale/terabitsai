@@ -1,3 +1,5 @@
+import type { SubAgentColorScheme } from "@/lib/chat/subagent-types";
+
 export type ChatToolPod = {
   toolUseId: string;
   name: string;
@@ -23,6 +25,41 @@ export type ChatStreamEvent =
       ok: boolean;
       args?: Record<string, unknown>;
       output?: unknown;
+      error?: string;
+      durationMs: number;
+    }
+  | {
+      type: "subagent_start";
+      id: string;
+      prompt: string;
+      /** Short user-facing trace — shown on the widget (not the full prompt). */
+      assignmentLabel: string;
+      color: SubAgentColorScheme;
+    }
+  | { type: "subagent_reasoning"; id: string; text: string }
+  | { type: "subagent_text"; id: string; text: string }
+  | {
+      type: "subagent_tool_start";
+      id: string;
+      toolUseId: string;
+      name: string;
+      args?: Record<string, unknown>;
+    }
+  | {
+      type: "subagent_tool_end";
+      id: string;
+      toolUseId: string;
+      name: string;
+      ok: boolean;
+      output?: unknown;
+      error?: string;
+      durationMs: number;
+    }
+  | {
+      type: "subagent_end";
+      id: string;
+      status: "done" | "failed";
+      report?: string;
       error?: string;
       durationMs: number;
     };

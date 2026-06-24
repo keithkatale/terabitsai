@@ -1,0 +1,50 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - Dockerfile.chart-renderer
+      - -t
+      - ${_CHART_RENDERER_IMAGE}
+      - .
+
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - ${_CHART_RENDERER_IMAGE}
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_CHART_RENDERER_SERVICE}
+      - --image
+      - ${_CHART_RENDERER_IMAGE}
+      - --region
+      - ${_REGION}
+      - --platform
+      - managed
+      - --allow-unauthenticated
+      - --port
+      - "8080"
+      - --cpu
+      - "1"
+      - --memory
+      - "2Gi"
+      - --timeout
+      - "120"
+      - --set-env-vars
+      - CHART_RENDER_API_KEY=${_CHART_RENDER_API_KEY}
+
+images:
+  - ${_CHART_RENDERER_IMAGE}
+
+substitutions:
+  _CHART_RENDERER_SERVICE: ai-agent-platform-chart-renderer
+  _REGION: us-central1
+  _CHART_RENDERER_IMAGE: us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/ai-agent-platform-chart-renderer:latest
+  _CHART_RENDER_API_KEY: ""
+
+options:
+  logging: CLOUD_LOGGING_ONLY

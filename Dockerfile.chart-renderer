@@ -1,0 +1,19 @@
+# Chart Renderer — TradingView screenshot service for Cloud Run
+FROM mcr.microsoft.com/playwright:v1.52.0-jammy
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+COPY apps/chart-renderer/package.json ./apps/chart-renderer/
+
+RUN npm ci --workspace @quant/chart-renderer
+
+COPY apps/chart-renderer ./apps/chart-renderer
+
+WORKDIR /app/apps/chart-renderer
+
+ENV NODE_ENV=production
+
+EXPOSE 8080
+
+CMD ["npx", "tsx", "src/index.ts"]

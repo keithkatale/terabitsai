@@ -21,8 +21,8 @@ type AttentionPayload = {
 };
 
 /**
- * Compact autonomous controls for the Command tab (pause / kill / settings).
- * Countdown + cycle trigger live only in WealthMonitorPanel to avoid double wakes.
+ * Compact autonomous controls for the Investing tab (pause / kill / settings).
+ * Countdown + cycle trigger live in WealthMonitorPanel on the same tab.
  */
 export function OrchestratorCycleControls() {
   const { setActiveTab } = useAppTab();
@@ -31,27 +31,38 @@ export function OrchestratorCycleControls() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  const refreshAttention = useCallback(async () => {
+  const refreshAttention = useCallback(async (): Promise<boolean> => {
     try {
-      const res = await fetch("/api/autonomous/attention");
+      const res = await fetch("/api/autonomous/attention", { credentials: "include" });
+      if (res.status === 401) return false;
       if (res.ok) setAttention(await res.json());
     } catch {
       /* non-fatal */
     }
+    return true;
   }, []);
 
   useEffect(() => {
-    void refreshAttention();
+    let authLost = false;
+
+    const refresh = async () => {
+      if (authLost) return;
+      const ok = await refreshAttention();
+      if (ok === false) authLost = true;
+    };
+
+    void refresh();
     const es = new EventSource("/api/autonomous/stream");
     es.onmessage = (ev) => {
+      if (authLost) return;
       try {
         const data = JSON.parse(ev.data);
-        if (data.type === "update") void refreshAttention();
+        if (data.type === "update") void refresh();
       } catch {
         /* ignore */
       }
     };
-    const poll = window.setInterval(() => void refreshAttention(), 5_000);
+    const poll = window.setInterval(() => void refresh(), 30_000);
     return () => {
       es.close();
       window.clearInterval(poll);
@@ -132,12 +143,12 @@ export function OrchestratorCycleControls() {
         )}
         title={
           isChecking
-            ? "Wealth Monitor analyzing & directing Command"
+            ? "Wealth Monitor analyzing & executing growth strategy"
             : isPaused
               ? "Autonomous trading paused"
               : autonomousActive
                 ? "Autonomous trading active — see timer in Wealth Monitor panel"
-                : "Autonomous manager"
+                : "Autonomous growth manager"
         }
       >
         <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--terminal-surface)]">
@@ -202,7 +213,7 @@ export function OrchestratorCycleControls() {
             type="button"
             onClick={() => {
               setOpen(false);
-              setActiveTab("investing");
+              setActiveTab("markets");
             }}
             className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
           >

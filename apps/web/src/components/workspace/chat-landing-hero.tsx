@@ -2,22 +2,43 @@
 
 import Link from "next/link";
 import InputBar, { type TaggedAsset } from "@/components/ui/input-bar";
+import type { AiToolId } from "@/lib/chat/ai-tools";
 import { BrandMark } from "@/components/ui/brand-mark";
-import { LandingPromptChips } from "@/components/ai-elements/follow-up-suggestions";
-
-export const CHAT_LANDING_PROMPT_SUGGESTIONS = [
-  "Set my balance goal — help me grow my account",
-  "What balance target should I aim for with my current funds?",
-  "What is the agent team watching today?",
-  "Browse markets and propose a swing trade on BTCUSD",
-  "Show engine status and active signals",
-];
+import { MarketPreviewQueue } from "@/components/market/market-preview-queue";
 
 export const CHAT_LANDING_MAX_TAGGED_ASSETS = 3;
+
+const LANDING_COPY = {
+  welcome: {
+    title: "Understand the Markets",
+    description:
+      "Ask anything about macro trends, asset direction, and risk — AI-first analysis without the noise.",
+    placeholder: "Ask about tagged assets or anything else…",
+    upgrade: (
+      <>
+        <Link href="/app/wallet" className="font-medium text-cyan-400 hover:underline">
+          Open Wallet
+        </Link>
+        {" · "}
+        <Link href="/app/chat" className="font-medium text-cyan-400 hover:underline">
+          Open Chat
+        </Link>
+      </>
+    ),
+  },
+  chat: {
+    title: "Chat",
+    description:
+      "Chat directly with the AI — research, analysis, and ideas on your terms. Open **Markets** for AI-powered chart analysis.",
+    placeholder: "Ask about markets, charts, or your portfolio…",
+    upgrade: null,
+  },
+} as const;
 
 export function ChatLandingHero({
   showUpgradeLink = false,
   showBrandMark = true,
+  tone = "welcome",
   value,
   onChange,
   onSend,
@@ -25,11 +46,13 @@ export function ChatLandingHero({
   taggedAssets,
   onRemoveTaggedAsset,
   onToggleTaggedAsset,
-  placeholderSuggestions = CHAT_LANDING_PROMPT_SUGGESTIONS,
   maxTaggedAssets = CHAT_LANDING_MAX_TAGGED_ASSETS,
+  selectedAiTools = [],
+  onSelectedAiToolsChange,
 }: {
   showUpgradeLink?: boolean;
   showBrandMark?: boolean;
+  tone?: keyof typeof LANDING_COPY;
   value: string;
   onChange: (value: string) => void;
   onSend: (content: string) => void;
@@ -37,24 +60,31 @@ export function ChatLandingHero({
   taggedAssets: TaggedAsset[];
   onRemoveTaggedAsset: (symbol: string) => void;
   onToggleTaggedAsset: (symbol: string) => void;
-  placeholderSuggestions?: string[];
   maxTaggedAssets?: number;
+  selectedAiTools?: AiToolId[];
+  onSelectedAiToolsChange?: (tools: AiToolId[]) => void;
 }) {
+  const copy = LANDING_COPY[tone];
+
+  const handleAssetSelect = (symbol: string) => {
+    const wasTagged = taggedAssets.some((t) => t.symbol === symbol);
+    onToggleTaggedAsset(symbol);
+    if (!wasTagged) {
+      onChange(`Analyze ${symbol} trend and recommend a strategy.`);
+    }
+  };
+
   return (
-    <div className="relative mx-auto flex min-h-full w-full max-w-5xl flex-col items-center justify-center px-4 py-8 pb-10 text-center">
+    <div className="relative mx-auto flex min-h-full w-full max-w-3xl flex-col items-center justify-center px-4 py-8 pb-10 text-center">
       {showBrandMark ? <BrandMark size="lg" className="mb-5" /> : null}
-      {showUpgradeLink ? (
-        <p className="mb-3 text-xs text-zinc-400">
-          <Link href="/app?tab=command" className="font-medium text-cyan-400 hover:underline">
-            Open Command to explore markets and execute trades
-          </Link>
-        </p>
+      {showUpgradeLink && copy.upgrade ? (
+        <p className="mb-3 text-xs text-zinc-400">{copy.upgrade}</p>
       ) : null}
       <h1 className="mb-3 text-3xl font-bold tracking-tight text-white md:text-4xl">
-        Your Wealth Engine
+        {copy.title}
       </h1>
       <p className="mb-7 max-w-md text-sm leading-relaxed text-zinc-300/85">
-        Set a balance goal and your agent team works toward it on autopilot — checking markets every 2 minutes, executing trades, and reporting progress in this chat.
+        {copy.description}
       </p>
       <div className="w-full max-w-xl">
         <InputBar
@@ -63,18 +93,21 @@ export function ChatLandingHero({
           onSend={({ content }) => onSend(content)}
           disabled={loading}
           status={loading ? "streaming" : "ready"}
-          placeholder="Set a balance goal or ask your agent team…"
-          placeholderSuggestions={placeholderSuggestions}
+          placeholder={copy.placeholder}
           variant="landing"
           taggedAssets={taggedAssets}
           onRemoveTaggedAsset={onRemoveTaggedAsset}
+          onToggleTaggedAsset={onToggleTaggedAsset}
           maxTaggedAssets={maxTaggedAssets}
+          selectedAiTools={selectedAiTools}
+          onSelectedAiToolsChange={onSelectedAiToolsChange}
         />
       </div>
-      <LandingPromptChips
-        suggestions={placeholderSuggestions}
-        disabled={loading}
-        onSelect={onSend}
+      <MarketPreviewQueue
+        taggedSymbols={taggedAssets.map((t) => t.symbol)}
+        maxTags={maxTaggedAssets}
+        onSelect={handleAssetSelect}
+        enabled={!loading}
       />
     </div>
   );

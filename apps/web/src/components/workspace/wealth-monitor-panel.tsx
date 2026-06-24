@@ -86,37 +86,37 @@ function activityToChatMessage(item: MonitorActivity): ChatMessageData | null {
       });
       break;
     case "monitor_directive":
-      liveStatus = "Directing Command";
+      liveStatus = "Executing growth strategy";
       if (reasoning) {
         parts.push({
           type: "reasoning",
-          text: `${reasoning}\n\n---\nDecided Command AI should act next.`,
+          text: `${reasoning}\n\n---\nDecided the next autonomous action.`,
         });
       }
       if (directive) {
         parts.push({
           type: "text",
-          text: `**Directive sent to Command**\n\n${directive}`,
+          text: `**Growth directive**\n\n${directive}`,
         });
       }
       break;
     case "monitor_review":
-      liveStatus = "Reviewing Command output";
+      liveStatus = "Reviewing trade outcome";
       if (reasoning) parts.push({ type: "reasoning", text: reasoning });
       {
         const chatOutput = typeof item.payload?.chatOutput === "string" ? item.payload.chatOutput.trim() : "";
         const reviewText =
           taskComplete === false
-            ? "**Task incomplete** — scheduling a follow-up with Command."
+            ? "**Task incomplete** — scheduling a follow-up cycle."
             : "**Task complete** — monitoring until the next wake.";
         parts.push({
           type: "text",
-          text: chatOutput ? `${reviewText}\n\n**Command response:**\n\n${chatOutput}` : reviewText,
+          text: chatOutput ? `${reviewText}\n\n**Agent report:**\n\n${chatOutput}` : reviewText,
         });
       }
       break;
     case "monitor_followup":
-      liveStatus = "Follow-up with Command";
+      liveStatus = "Follow-up cycle";
       if (reasoning) parts.push({ type: "reasoning", text: reasoning });
       if (followUp) {
         parts.push({
@@ -214,9 +214,10 @@ export function WealthMonitorPanel({ className }: Props) {
   const triggerInFlightRef = useRef(false);
   const [triggering, setTriggering] = useState(false);
 
-  const refreshMonitor = useCallback(async () => {
+  const refreshMonitor = useCallback(async (): Promise<boolean> => {
     try {
-      const res = await fetch("/api/autonomous/monitor");
+      const res = await fetch("/api/autonomous/monitor", { credentials: "include" });
+      if (res.status === 401) return false;
       if (res.ok) {
         const json = (await res.json()) as MonitorPayload;
         setData(json);
@@ -226,23 +227,39 @@ export function WealthMonitorPanel({ className }: Props) {
     } finally {
       setLoading(false);
     }
+    return true;
   }, []);
 
-  const refreshAttention = useCallback(async () => {
+  const refreshAttention = useCallback(async (): Promise<boolean> => {
     try {
-      const res = await fetch("/api/autonomous/attention");
+      const res = await fetch("/api/autonomous/attention", { credentials: "include" });
+      if (res.status === 401) return false;
       if (res.ok) setAttention(await res.json());
     } catch {
       /* non-fatal */
     }
+    return true;
   }, []);
 
   useEffect(() => {
-    void refreshMonitor();
-    void refreshAttention();
+    let authLost = false;
+
+    const refreshAll = async () => {
+      if (authLost) return;
+      const [monitorOk, attentionOk] = await Promise.all([
+        refreshMonitor(),
+        refreshAttention(),
+      ]);
+      if (monitorOk === false || attentionOk === false) {
+        authLost = true;
+      }
+    };
+
+    void refreshAll();
 
     const es = new EventSource("/api/autonomous/stream");
     es.onmessage = (ev) => {
+      if (authLost) return;
       try {
         const msg = JSON.parse(ev.data) as {
           type: string;
@@ -266,8 +283,7 @@ export function WealthMonitorPanel({ className }: Props) {
               return { ...prev, activity: merged.slice(-60) };
             });
           }
-          void refreshMonitor();
-          void refreshAttention();
+          void refreshAll();
         }
       } catch {
         /* ignore */
@@ -275,9 +291,8 @@ export function WealthMonitorPanel({ className }: Props) {
     };
 
     const poll = window.setInterval(() => {
-      void refreshMonitor();
-      void refreshAttention();
-    }, triggering ? 2_000 : 5_000);
+      void refreshAll();
+    }, triggering ? 8_000 : 20_000);
 
     return () => {
       es.close();
@@ -365,11 +380,11 @@ export function WealthMonitorPanel({ className }: Props) {
       .find((a) => WORKING_ACTIONS.has(a.action));
     const label =
       latest?.action === "monitor_directive"
-        ? "Directing Command"
+        ? "Executing growth strategy"
         : latest?.action === "monitor_review"
-          ? "Reviewing Command output"
+          ? "Reviewing trade outcome"
           : latest?.action === "monitor_followup"
-            ? "Follow-up with Command"
+            ? "Follow-up cycle"
             : "Analyzing account";
 
     return {
@@ -437,7 +452,7 @@ export function WealthMonitorPanel({ className }: Props) {
               {isChecking
                 ? triggering
                   ? "Waking Wealth Monitor…"
-                  : "Analyzing account & directing Command…"
+                  : "Analyzing account & executing growth strategy…"
                 : "Supervising your goal"}
             </p>
           </div>
@@ -518,7 +533,7 @@ export function WealthMonitorPanel({ className }: Props) {
 
       <footer className="shrink-0 border-t border-white/8 px-3 py-2">
         <p className="text-[9px] leading-relaxed text-zinc-600">
-          Read-only — same reasoning style as Command. Directs Command in the background.
+          Read-only activity feed for the autonomous growth manager on Investing.
         </p>
       </footer>
     </aside>

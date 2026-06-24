@@ -170,9 +170,16 @@ export function useHITLRequests(): HITLApprovalRequest[] {
   const [requests, setRequests] = useState<HITLApprovalRequest[]>([])
 
   useEffect(() => {
+    let cancelled = false;
+
     const fetch_ = async () => {
       try {
-        const res = await fetch("/api/hitl/pending")
+        const res = await fetch("/api/hitl/pending", { credentials: "include" });
+        if (cancelled) return;
+        if (res.status === 401) {
+          cancelled = true;
+          return;
+        }
         if (res.ok) {
           const data = await res.json() as HITLApprovalRequest[]
           setRequests(data)
@@ -183,8 +190,11 @@ export function useHITLRequests(): HITLApprovalRequest[] {
     }
 
     fetch_()
-    const interval = setInterval(fetch_, 3_000)
-    return () => clearInterval(interval)
+    const interval = setInterval(fetch_, 15_000)
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    }
   }, [])
 
   return requests

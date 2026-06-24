@@ -8,6 +8,16 @@ import { readFile } from "fs/promises";
 import { join } from "path";
 import YAML from "yaml";
 import type { TradingMode } from "@/lib/chat/conversation-persistence";
+import { resolveSkillsPath } from "@/lib/skills/resolve-skills-path";
+
+const BUILTIN_SKILL_IDS = new Set([
+  "market-regime-detector",
+  "position-sizer",
+  "portfolio-heat-calculator",
+  "pattern-lookup",
+  "strategy-recommender",
+  "tradingview-chart-analyst",
+]);
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -65,8 +75,14 @@ export class SkillExecutor {
   private readonly CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
   constructor(skillsPath?: string) {
-    // Default to skills/ folder at project root
-    this.skillsPath = skillsPath || join(process.cwd(), "../..", "skills");
+    this.skillsPath = skillsPath || resolveSkillsPath();
+  }
+
+  private isRunnableSkill(metadata: SkillMetadata): boolean {
+    if (metadata.status === "production" || metadata.status === "beta") {
+      return true;
+    }
+    return BUILTIN_SKILL_IDS.has(metadata.id);
   }
 
   /**
@@ -124,11 +140,10 @@ export class SkillExecutor {
         };
       }
 
-      // Check status
-      if (metadata.status !== "production" && metadata.status !== "beta") {
+      if (!this.isRunnableSkill(metadata)) {
         return {
           success: false,
-          error: `Skill ${skillId} is in ${metadata.status} status`,
+          error: `Skill ${skillId} is in ${metadata.status} status and has no implementation`,
           execution_time_ms: Date.now() - startTime,
           skill_id: skillId,
         };
@@ -193,6 +208,9 @@ export class SkillExecutor {
       
       case "strategy-recommender":
         return this.executeStrategyRecommender(inputs, context);
+
+      case "tradingview-chart-analyst":
+        return this.executeTradingViewChartAnalyst(inputs, context);
       
       default:
         // Try to load and execute custom script
@@ -350,33 +368,53 @@ export class SkillExecutor {
    */
   private async executePositionSizer(
     inputs: {
-      symbol: string;
-      entry_price: number;
-      stop_loss: number;
+      symbol?: string;
+      entry_price?: number;
+      stop_loss?: number;
       account_balance?: number;
       max_risk_pct?: number;
+      direction?: "BUY" | "SELL";
     },
     context: SkillExecutionContext
   ): Promise<any> {
-    const accountBalance = inputs.account_balance || context.accountBalance || 10000;
-    const maxRiskPct = inputs.max_risk_pct || 2; // Default 2% risk
+    const entryPrice = Number(inputs.entry_price);
+    if (!Number.isFinite(entryPrice) || entryPrice <= 0) {
+      throw new Error("position-sizer requires a valid entry_price");
+    }
 
-    const riskPerShare = Math.abs(inputs.entry_price - inputs.stop_loss);
+    const accountBalance = inputs.account_balance || context.accountBalance || 10000;
+    const maxRiskPct = inputs.max_risk_pct || 2;
+
+    let stopLoss = inputs.stop_loss != null ? Number(inputs.stop_loss) : NaN;
+    if (!Number.isFinite(stopLoss)) {
+      const isShort = inputs.direction === "SELL";
+      stopLoss = isShort ? entryPrice * 1.02 : entryPrice * 0.98;
+    }
+
+    const riskPerShare = Math.abs(entryPrice - stopLoss);
+    if (!Number.isFinite(riskPerShare) || riskPerShare <= 0) {
+      throw new Error("position-sizer requires a valid stop_loss distinct from entry_price");
+    }
+
     const maxRiskDollars = accountBalance * (maxRiskPct / 100);
     const units = Math.floor(maxRiskDollars / riskPerShare);
 
-    const marginRequired = units * inputs.entry_price;
+    const marginRequired = units * entryPrice;
     const riskDollars = units * riskPerShare;
     const riskPct = (riskDollars / accountBalance) * 100;
 
     return {
+      symbol: inputs.symbol ?? null,
       units,
       margin_required: marginRequired,
       risk_dollars: riskDollars,
       risk_pct: riskPct,
-      entry_price: inputs.entry_price,
-      stop_loss: inputs.stop_loss,
+      entry_price: entryPrice,
+      stop_loss: stopLoss,
+      stop_loss_inferred: inputs.stop_loss == null,
       risk_per_share: riskPerShare,
+      account_balance: accountBalance,
+      max_risk_pct: maxRiskPct,
     };
   }
 
@@ -492,6 +530,24 @@ export class SkillExecutor {
     } catch (error) {
       return { error: "Failed to load strategies", details: String(error) };
     }
+  }
+
+  /**
+   * TradingView Chart Analyst — visual TA via TradingView + Gemini vision
+   */
+  private async executeTradingViewChartAnalyst(
+    inputs: { symbols?: string[]; interval?: string; indicators?: string[] },
+    context: SkillExecutionContext
+  ): Promise<any> {
+    const { executeTradingViewChartAnalyst } = await import(
+      "@/lib/chart/analyze-chart-tool"
+    );
+    return executeTradingViewChartAnalyst({
+      symbols: inputs.symbols,
+      interval: inputs.interval,
+      indicators: inputs.indicators,
+      userId: context.userId,
+    });
   }
 
   /**

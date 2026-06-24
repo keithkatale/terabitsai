@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { processActiveGoals, processPendingEvents } from "@/lib/goals/goal-monitor";
+import { isWealthMonitorEnabled } from "@/lib/autonomous/cycle-config";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +33,14 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  if (!isWealthMonitorEnabled()) {
+    return NextResponse.json({
+      success: true,
+      disabled: true,
+      reason: "Automated Wealth Monitor is disabled (WEALTH_MONITOR_ENABLED)",
+    });
+  }
+
   try {
     let body: { goalId?: string } = {};
     try {
@@ -61,6 +70,14 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   if (!authorizeCron(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  if (!isWealthMonitorEnabled()) {
+    return NextResponse.json({
+      success: true,
+      disabled: true,
+      reason: "Automated Wealth Monitor is disabled (WEALTH_MONITOR_ENABLED)",
+    });
   }
 
   try {

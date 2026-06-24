@@ -1,0 +1,49 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --build-arg
+      - NEXT_PUBLIC_SUPABASE_URL=${_NEXT_PUBLIC_SUPABASE_URL}
+      - --build-arg
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${_NEXT_PUBLIC_SUPABASE_ANON_KEY}
+      - -t
+      - ${_IMAGE}
+      - .
+
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - ${_IMAGE}
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE}
+      - --image
+      - ${_IMAGE}
+      - --region
+      - ${_REGION}
+      - --platform
+      - managed
+      - --allow-unauthenticated
+      - --port
+      - "8080"
+      - --update-env-vars
+      - CHART_RENDER_SERVICE_URL=${_CHART_RENDER_SERVICE_URL},CHART_RENDER_API_KEY=${_CHART_RENDER_API_KEY},WEALTH_MONITOR_ENABLED=false
+
+images:
+  - ${_IMAGE}
+
+substitutions:
+  _SERVICE: ai-agent-platform-web
+  _REGION: us-central1
+  _IMAGE: us-central1-docker.pkg.dev/project-bf065c0a-e475-47c4-b25/cloud-run-source-deploy/ai-agent-platform-web:latest
+  _NEXT_PUBLIC_SUPABASE_URL: https://wsxzbqfeafzccprlllpu.supabase.co
+  _NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndzeHpicWZlYWZ6Y2NwcmxsbHB1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2NTEzNjksImV4cCI6MjA5NzIyNzM2OX0.Z38OBV7d1ki6SD298NzRcQMsEHuit7WGhf4yA3-XqPM
+  _CHART_RENDER_SERVICE_URL: https://ai-agent-platform-chart-renderer-73vs3tcpga-uc.a.run.app
+  _CHART_RENDER_API_KEY: 9a231d279b468c6d25c438a0e19ce73d20c3d977ebd36ce6
+
+options:
+  logging: CLOUD_LOGGING_ONLY

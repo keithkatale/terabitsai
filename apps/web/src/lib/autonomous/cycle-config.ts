@@ -1,6 +1,15 @@
 /** Production cron runs /api/autonomous/cycle every 2 minutes (see vercel.json). */
 export const AUTONOMOUS_CYCLE_INTERVAL_MS = 120_000;
 
+const TRUEISH = new Set(["1", "true", "yes", "on"]);
+
+/** Automated Wealth Monitor cycles (cron, worker, scheduled events). Default: off. */
+export function isWealthMonitorEnabled(): boolean {
+  const v = process.env.WEALTH_MONITOR_ENABLED?.trim().toLowerCase();
+  if (!v) return false;
+  return TRUEISH.has(v);
+}
+
 /** Worker tick when deployed (apps/wealth-manager). Shown when metadata indicates worker. */
 export const WEALTH_MANAGER_INTERVAL_MS = 45_000;
 

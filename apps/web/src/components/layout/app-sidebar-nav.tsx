@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import {
+  ArrowUpRight,
   ChevronLeft,
   ChevronRight,
   Home,
@@ -16,7 +17,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BrandLogoIcon, BrandMark } from "@/components/ui/brand-mark";
-import { useAppTab, type AppTab } from "@/contexts/app-tab-context";
+import { tabPath, useAppTab, type AppTab } from "@/contexts/app-tab-context";
 
 function NavItem({
   href,
@@ -70,24 +71,24 @@ function NavItem({
 }
 
 const APP_NAV_ITEMS: Array<{ tab: AppTab; label: string; icon: typeof Wallet }> = [
-  { tab: "home", label: "Home", icon: Wallet },
-  { tab: "investing", label: "Investing", icon: Briefcase },
-  { tab: "command", label: "Command", icon: MessageSquare },
+  { tab: "home", label: "Wallet", icon: Wallet },
+  { tab: "markets", label: "Markets", icon: Briefcase },
+  { tab: "chat", label: "Chat", icon: MessageSquare },
 ];
 
 function AppTabNav({ expanded }: { expanded: boolean }) {
-  const { activeTab, setActiveTab } = useAppTab();
+  const { activeTab } = useAppTab();
 
   return (
     <>
       {APP_NAV_ITEMS.map(({ tab, label, icon: Icon }) => (
         <NavItem
           key={tab}
+          href={tabPath(tab)}
           icon={<Icon className="size-4" strokeWidth={2} />}
           label={label}
           expanded={expanded}
           active={activeTab === tab}
-          onClick={() => setActiveTab(tab)}
         />
       ))}
     </>
@@ -107,7 +108,10 @@ function SidebarBrandHeader({
         <BrandMark size="sm" showWordmark className="min-w-0 flex-1" />
         <button
           type="button"
-          onClick={onToggle}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggle();
+          }}
           title="Collapse navigation"
           className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-white/[0.05] hover:text-cyan-300"
         >
@@ -119,11 +123,9 @@ function SidebarBrandHeader({
 
   return (
     <div className="flex justify-center border-b border-white/[0.06] px-2 py-3">
-      <button
-        type="button"
-        onClick={onToggle}
-        title="Expand navigation"
+      <div
         className="group relative flex h-10 w-10 items-center justify-center rounded-xl transition-colors hover:bg-white/[0.05]"
+        title="Expand navigation"
       >
         <span className="flex items-center justify-center transition-all duration-200 group-hover:scale-90 group-hover:opacity-0">
           <BrandLogoIcon size="sm" />
@@ -131,7 +133,7 @@ function SidebarBrandHeader({
         <span className="absolute inset-0 flex items-center justify-center opacity-0 transition-all duration-200 group-hover:opacity-100">
           <ChevronRight className="size-4 text-cyan-300" strokeWidth={2.5} />
         </span>
-      </button>
+      </div>
     </div>
   );
 }
@@ -156,28 +158,14 @@ export function AppSidebarNav({
     <nav
       className={cn(
         "relative z-30 hidden h-full shrink-0 flex-col bg-[var(--terminal-surface)] transition-[width] duration-300 ease-in-out select-none lg:flex",
-        expanded ? "w-52" : "w-[3.75rem]",
+        expanded ? "w-52" : "w-[3.75rem] cursor-pointer",
       )}
       aria-label="Main navigation"
+      onClick={() => {
+        if (!expanded) onToggle();
+      }}
     >
-      {showBranding ? (
-        <SidebarBrandHeader expanded={expanded} onToggle={onToggle} />
-      ) : (
-        <div className="flex items-center justify-center p-2">
-          <button
-            type="button"
-            onClick={onToggle}
-            title={expanded ? "Collapse navigation" : "Expand navigation"}
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-zinc-400 transition-colors hover:bg-white/[0.05] hover:text-cyan-300"
-          >
-            {expanded ? (
-              <ChevronLeft className="size-4" strokeWidth={2.5} />
-            ) : (
-              <ChevronRight className="size-4" strokeWidth={2.5} />
-            )}
-          </button>
-        </div>
-      )}
+      <SidebarBrandHeader expanded={expanded} onToggle={onToggle} />
 
       <div className="flex flex-1 flex-col gap-1.5 p-2">
         {showBranding ? (
@@ -187,13 +175,13 @@ export function AppSidebarNav({
             <NavItem
               href="/"
               icon={<Home className="size-4" strokeWidth={2} />}
-              label="Home"
+              label="Welcome"
               expanded={expanded}
               active={onHome}
             />
             <NavItem
-              href="/app"
-              icon={<MessageSquare className="size-4" strokeWidth={2} />}
+              href="/app/wallet"
+              icon={<ArrowUpRight className="size-4" strokeWidth={2} />}
               label="Open app"
               expanded={expanded}
               active={pathname.startsWith("/app")}

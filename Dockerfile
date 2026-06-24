@@ -3,16 +3,20 @@ FROM node:20-alpine AS base
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
+ENV WEALTH_MONITOR_ENABLED=false
+
 FROM base AS deps
 
 COPY package.json package-lock.json ./
 COPY apps/web/package.json ./apps/web/
+COPY apps/chart-renderer/package.json ./apps/chart-renderer/
 COPY apps/engine/package.json ./apps/engine/
 COPY apps/intel-worker/package.json ./apps/intel-worker/
 COPY packages/agents/package.json ./packages/agents/
 COPY packages/broker/package.json ./packages/broker/
 COPY packages/contracts/package.json ./packages/contracts/
 COPY packages/db/package.json ./packages/db/
+COPY packages/db/prisma ./packages/db/prisma/
 COPY packages/hitl/package.json ./packages/hitl/
 COPY packages/indicators/package.json ./packages/indicators/
 COPY packages/market-intel/package.json ./packages/market-intel/

@@ -108,6 +108,13 @@ function prepareSkillInputs(
         // Regime will be passed from market-regime-detector result
       };
 
+    case "tradingview-chart-analyst":
+      return {
+        symbols: ["BTCUSD", "SPY"],
+        interval: "1D",
+        indicators: ["RSI", "MACD", "Volume"],
+      };
+
     default:
       return {};
   }
@@ -161,6 +168,23 @@ Pattern data available for analysis.
 
 **Primary Strategy:** ${strategy.primary_strategy || "N/A"}
 **Based on:** ${strategy.regime || "Unknown"} regime
+`);
+    }
+  }
+
+  // TradingView Chart Analyst
+  if (skillResults["tradingview-chart-analyst"]) {
+    const tv = skillResults["tradingview-chart-analyst"];
+    if (!tv.error && tv.analyses) {
+      const lines = Object.entries(tv.analyses as Record<string, any>)
+        .map(([sym, a]) => {
+          if (a?.error) return `- ${sym}: analysis failed`;
+          return `- ${sym}: ${a?.bias?.toUpperCase() ?? "N/A"} (${a?.confidence ?? 0}% conf) — ${a?.summary ?? ""}`;
+        })
+        .join("\n");
+      sections.push(`## TradingView Visual Analysis
+
+${lines}
 `);
     }
   }

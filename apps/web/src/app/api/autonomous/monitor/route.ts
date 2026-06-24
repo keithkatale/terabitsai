@@ -3,6 +3,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getGoalProfileMd, buildDefaultGoalProfile } from "@/lib/autonomous/goal-profile";
 import { toExtendedGoal } from "@/lib/autonomous/decide-next-action";
+import { isWealthMonitorEnabled } from "@/lib/autonomous/cycle-config";
 import { evaluateBalanceGoal } from "@/lib/goals/goal-evaluator";
 
 export const dynamic = "force-dynamic";
@@ -84,6 +85,7 @@ export async function GET() {
     success: true,
     active: autonomousActive,
     autonomousActive,
+    automatedMonitorEnabled: isWealthMonitorEnabled(),
     goalProfileMd,
     activity: monitorActivity,
     goal: {

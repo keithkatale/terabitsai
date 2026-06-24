@@ -18,7 +18,7 @@ export function TradingModeToggle({
         <button
           key={value}
           type="button"
-          disabled={disabled}
+          {...(disabled ? { disabled: true } : {})}
           onClick={() => onChange(value)}
           className={cn(
             "rounded-lg px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide transition-colors cursor-pointer disabled:opacity-50",

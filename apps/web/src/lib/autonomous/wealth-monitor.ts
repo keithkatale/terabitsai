@@ -446,6 +446,7 @@ export async function runWealthMonitorCycle(params: {
     directive: analysis.chatDirective,
     cycleId,
     narration: analysis.summary,
+    persistToConversation: false,
   });
 
   const review = await runMonitorReview({
@@ -499,6 +500,7 @@ export async function runWealthMonitorCycle(params: {
       directive: review.followUpDirective,
       cycleId,
       narration: "Monitor follow-up — complete the prior directive.",
+      persistToConversation: false,
     });
 
     chatResult = followUp;

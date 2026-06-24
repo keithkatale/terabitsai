@@ -99,7 +99,7 @@ function AuthenticatedAppShellInner() {
 }
 
 /**
- * Single /app surface: tab switches are client state (no route navigation).
+ * Single /app surface: tab switches use client-side Next.js routes.
  */
 export function AuthenticatedAppShell() {
   return (

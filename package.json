@@ -15,6 +15,7 @@
     "dev:engine": "npm run dev -w @quant/engine",
     "dev:intel": "npm run dev -w @quant/intel-worker",
     "dev:wealth": "npm run dev -w @quant/wealth-manager",
+    "dev:chart-renderer": "npm run dev -w @quant/chart-renderer",
     "build": "npm run build:packages && npm run build:web",
     "build:packages": "npm run build -w @quant/contracts && npm run build -w @quant/model-router && npm run build -w @quant/indicators && npm run build -w @quant/risk && npm run build -w @quant/db && npm run build -w @quant/broker && npm run build -w @quant/rag-engine && npm run build -w @quant/market-intel && npm run build -w @quant/strategy && npm run build -w @quant/agents && npm run build -w @quant/memory && npm run build -w @quant/hitl && npm run build -w @quant/mcp-server",
     "build:web": "npm run build -w @terabits/web",

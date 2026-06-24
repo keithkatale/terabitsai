@@ -1,6 +1,7 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { evaluateBalanceGoal } from "@/lib/goals/goal-evaluator";
 import { toExtendedGoal } from "@/lib/autonomous/decide-next-action";
+import { isWealthMonitorEnabled } from "@/lib/autonomous/cycle-config";
 import { runWealthMonitorCycle } from "@/lib/autonomous/wealth-monitor";
 import type {
   GoalEvaluationAction,
@@ -122,7 +123,9 @@ export async function processActiveGoals(limit = 50) {
       reasoning = evaluation.failureReason ?? "Goal failed";
       failed += 1;
     } else if (goal.autonomous_trading && goal.status !== "paused" && !goal.kill_switch) {
-      if (await isCycleCooldown(goal.id)) {
+      if (!isWealthMonitorEnabled()) {
+        reasoning = "Automated Wealth Monitor is disabled";
+      } else if (await isCycleCooldown(goal.id)) {
         reasoning = "Monitor cycle already running";
       } else {
         try {
@@ -192,6 +195,10 @@ export async function processGoalById(
 }
 
 export async function processPendingEvents(limit = 20) {
+  if (!isWealthMonitorEnabled()) {
+    return { processed: 0, skipped: true, reason: "Automated Wealth Monitor is disabled" };
+  }
+
   const admin = createSupabaseAdminClient();
   const { data: events, error } = await admin
     .from("autonomous_events")

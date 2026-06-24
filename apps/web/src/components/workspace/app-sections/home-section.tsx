@@ -20,6 +20,7 @@ import {
   type AllocationSegment,
 } from "@/components/portfolio/portfolio-allocation-donut";
 import { RecentActivityList } from "@/components/account/recent-activity-list";
+import { AutonomousSettingsPanel } from "@/components/workspace/app-sections/autonomous-settings-panel";
 import { AssetLogoIcon } from "@/components/ui/asset-logo";
 import type { TradeData } from "@/components/terminal/types";
 import type { LedgerSummaryResponse, TradingMode } from "@/lib/account/api";
@@ -238,13 +239,17 @@ export function HomeSection({
     <div className="h-full min-h-0 overflow-y-auto pb-20 lg:pb-6">
       <div className="mx-auto max-w-[1400px] p-2 sm:p-3 lg:p-3">
         <div className="flex items-center justify-between gap-3">
-          <h1 className="text-lg font-semibold leading-tight text-white sm:text-xl">Personal Area</h1>
+          <h1 className="text-lg font-semibold leading-tight text-white sm:text-xl">Wallet</h1>
           {isBackgroundRefreshing ? (
             <Loader2
               className="size-4 shrink-0 animate-spin text-zinc-500"
               aria-label="Updating"
             />
           ) : null}
+        </div>
+
+        <div className="mt-3">
+          <AutonomousSettingsPanel tradingMode={tradingMode} />
         </div>
 
         <div className="mt-2 grid grid-cols-1 gap-3 xl:grid-cols-12">

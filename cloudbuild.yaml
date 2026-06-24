@@ -28,6 +28,8 @@ steps:
       - --allow-unauthenticated
       - --port
       - "8080"
+      - --update-env-vars
+      - CHART_RENDER_SERVICE_URL=${_CHART_RENDER_SERVICE_URL},CHART_RENDER_API_KEY=${_CHART_RENDER_API_KEY}
 
   - name: gcr.io/cloud-builders/docker
     args:
@@ -65,16 +67,59 @@ steps:
       - --memory
       - "512Mi"
 
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - Dockerfile.chart-renderer
+      - -t
+      - ${_CHART_RENDERER_IMAGE}
+      - .
+
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - ${_CHART_RENDERER_IMAGE}
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_CHART_RENDERER_SERVICE}
+      - --image
+      - ${_CHART_RENDERER_IMAGE}
+      - --region
+      - ${_REGION}
+      - --platform
+      - managed
+      - --allow-unauthenticated
+      - --port
+      - "8080"
+      - --cpu
+      - "1"
+      - --memory
+      - "2Gi"
+      - --timeout
+      - "120"
+      - --set-env-vars
+      - CHART_RENDER_API_KEY=${_CHART_RENDER_API_KEY}
+
 images:
   - ${_IMAGE}
   - ${_WEALTH_IMAGE}
+  - ${_CHART_RENDERER_IMAGE}
 
 substitutions:
   _SERVICE: ai-agent-platform-web
   _WEALTH_SERVICE: ai-agent-platform-wealth-manager
+  _CHART_RENDERER_SERVICE: ai-agent-platform-chart-renderer
   _REGION: us-central1
-  _IMAGE: us-central1-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/ai-agent-platform-web:latest
-  _WEALTH_IMAGE: us-central1-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/ai-agent-platform-wealth-manager:latest
+  _IMAGE: us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/ai-agent-platform-web:latest
+  _WEALTH_IMAGE: us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/ai-agent-platform-wealth-manager:latest
+  _CHART_RENDERER_IMAGE: us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/ai-agent-platform-chart-renderer:latest
+  _CHART_RENDER_API_KEY: ""
+  _CHART_RENDER_SERVICE_URL: ""
   _NEXT_PUBLIC_SUPABASE_URL: ""
   _NEXT_PUBLIC_SUPABASE_ANON_KEY: ""
 

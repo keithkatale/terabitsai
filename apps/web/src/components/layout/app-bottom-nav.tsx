@@ -1,21 +1,22 @@
 "use client";
 
+import Link from "next/link";
 import { Briefcase, MessageSquare, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useAppTab, type AppTab } from "@/contexts/app-tab-context";
+import { tabPath, useAppTab, type AppTab } from "@/contexts/app-tab-context";
 
 const MOBILE_NAV_ITEMS: Array<{
   tab: AppTab;
   label: string;
   icon: typeof Wallet;
 }> = [
-  { tab: "home", label: "Home", icon: Wallet },
-  { tab: "investing", label: "Investing", icon: Briefcase },
-  { tab: "command", label: "Command", icon: MessageSquare },
+  { tab: "home", label: "Wallet", icon: Wallet },
+  { tab: "markets", label: "Markets", icon: Briefcase },
+  { tab: "chat", label: "Chat", icon: MessageSquare },
 ];
 
 export function AppBottomNav() {
-  const { activeTab, setActiveTab } = useAppTab();
+  const { activeTab } = useAppTab();
 
   return (
     <nav
@@ -28,10 +29,9 @@ export function AppBottomNav() {
       {MOBILE_NAV_ITEMS.map(({ tab, label, icon: Icon }) => {
         const selected = activeTab === tab;
         return (
-          <button
+          <Link
             key={tab}
-            type="button"
-            onClick={() => setActiveTab(tab)}
+            href={tabPath(tab)}
             aria-label={label}
             aria-current={selected ? "page" : undefined}
             className="flex flex-1 flex-col items-center justify-center gap-1 py-1 transition-transform active:scale-95"
@@ -51,7 +51,7 @@ export function AppBottomNav() {
             >
               {label}
             </span>
-          </button>
+          </Link>
         );
       })}
     </nav>

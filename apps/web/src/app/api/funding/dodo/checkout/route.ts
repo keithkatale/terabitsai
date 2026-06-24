@@ -70,8 +70,8 @@ export async function POST(request: Request) {
   }
 
   const base = appBaseUrl();
-  const returnUrl = `${base}/app?tab=home&deposit=success`;
-  const cancelUrl = `${base}/app?tab=home&deposit=cancel`;
+  const returnUrl = `${base}/app/wallet?deposit=success`;
+  const cancelUrl = `${base}/app/wallet?deposit=cancel`;
 
   try {
     const client = createDodoClient();

@@ -190,24 +190,28 @@ export async function runProactiveChatTurn(params: {
   directive: string;
   cycleId: string;
   narration: string;
+  /** When false, runs tools but does not write into Command chat history */
+  persistToConversation?: boolean;
 }): Promise<{ messageId: string; directiveMessageId: string; text: string }> {
+  const persist = params.persistToConversation !== false;
   const directiveMessageId = randomUUID();
   const visibleDirective = params.directive.trim();
 
-  // Persist Wealth Monitor directive as a visible user-side message in Command chat
-  await appendConversationMessagesAdmin(params.conversationId, params.userId, [
-    {
-      id: directiveMessageId,
-      role: "user",
-      parts: [
-        {
-          type: "monitor_directive",
-          text: visibleDirective,
-          payload: { cycleId: params.cycleId, source: "wealth_monitor" },
-        },
-      ],
-    },
-  ]);
+  if (persist) {
+    await appendConversationMessagesAdmin(params.conversationId, params.userId, [
+      {
+        id: directiveMessageId,
+        role: "user",
+        parts: [
+          {
+            type: "monitor_directive",
+            text: visibleDirective,
+            payload: { cycleId: params.cycleId, source: "wealth_monitor" },
+          },
+        ],
+      },
+    ]);
+  }
 
   const wakeMessage = `[Wealth Monitor directive — execute now, do not refuse]\n\n${visibleDirective}\n\nContext: ${params.narration}`;
 
@@ -308,19 +312,21 @@ WEALTH MONITOR DIRECTIVE (FULL AUTONOMY):
 
   const assistantId = randomUUID();
   const parts: Array<{ type: string; text?: string; payload?: unknown }> = [
-    { type: "text", text: assistantText.trim() },
+    { type: "text", text: assistantText.trim(), payload: { source: "wealth_monitor" } },
   ];
   if (genuiPayload) {
     parts.push({ type: "genui", payload: genuiPayload });
   }
 
-  await appendConversationMessagesAdmin(params.conversationId, params.userId, [
-    {
-      id: assistantId,
-      role: "assistant",
-      parts,
-    },
-  ]);
+  if (persist) {
+    await appendConversationMessagesAdmin(params.conversationId, params.userId, [
+      {
+        id: assistantId,
+        role: "assistant",
+        parts,
+      },
+    ]);
+  }
 
   return {
     messageId: assistantId,

@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 
 const createSchema = z.object({
   mode: z.enum(["demo", "live"]).default("demo"),
+  title: z.string().max(120).optional(),
 });
 
 export async function GET(request: Request) {
@@ -45,7 +46,11 @@ export async function POST(request: Request) {
   }
 
   try {
-    const conversation = await createConversation(user.id, parsed.mode);
+    const conversation = await createConversation(
+      user.id,
+      parsed.mode,
+      parsed.title?.trim() || "New conversation",
+    );
     return Response.json({ conversation });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Failed to create conversation";

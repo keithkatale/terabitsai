@@ -91,6 +91,49 @@ skills:
       - wealth-monitor-cycle
       - command-chart-analysis
 
+  - id: tradingview-chart-analyst
+    name: TradingView Chart Analyst
+    category: technical-analysis
+    status: beta
+    autonomous: true
+    priority: 2
+    description: >
+      Visual technical analysis using TradingView charts and Gemini vision.
+      Renders TradingView Advanced Chart with declared symbol/interval/indicators,
+      screenshots the chart, and returns structured analysis (bias, key levels,
+      patterns, indicator reads). Serves TA-only users with TradingView data.
+    triggers:
+      - "User asks for chart analysis or technical analysis"
+      - "Wealth Monitor cycle on watched assets"
+      - "Pattern or support/resistance identification needed"
+    integrations:
+      data_required:
+        - tradingview_widget  # TradingView embed data
+      knowledge_refs:
+        - chart-patterns.json
+        - indicators.json
+    inputs:
+      symbols: ["BTCUSD", "SPY"]
+      interval: "1D"
+      indicators: ["RSI", "MACD", "Volume"]
+    outputs:
+      bias:
+        type: enum
+        values: [bullish, bearish, neutral]
+      confidence:
+        type: number
+        range: [0, 100]
+      keyLevels:
+        type: array
+      patterns:
+        type: array
+      summary:
+        type: string
+    workflows:
+      - wealth-monitor-cycle
+      - command-chart-analysis
+      - ta-signal-generation
+
   - id: support-resistance-identifier
     name: Support/Resistance Identifier
     category: technical-analysis

@@ -8,6 +8,7 @@ import { PortfolioBreakdown } from "./portfolio-breakdown";
 import { TransactionSummary } from "./transaction-summary";
 import { TradeConfirmationWidget } from "./trade-confirmation-widget";
 import { GoalProgressWidget } from "./goal-progress-widget";
+import { TradingViewChart } from "./tradingview-chart";
 
 interface GenerativeUiRegistryProps {
   name: string;
@@ -26,6 +27,8 @@ const COMPONENT_ALIASES: Record<string, string> = {
   tradeconfirmationwidget: "TradeConfirmationWidget",
   goalprogress: "GoalProgressWidget",
   goalprogresswidget: "GoalProgressWidget",
+  tradingviewchart: "TradingViewChart",
+  trading_view_chart: "TradingViewChart",
 };
 
 export function normalizeComponentName(name: string): string {
@@ -59,6 +62,8 @@ export function GenerativeUiRegistry({ name, props = {} }: GenerativeUiRegistryP
     case "GoalProgress":
     case "GoalProgressWidget":
       return <GoalProgressWidget {...cleanProps} />;
+    case "TradingViewChart":
+      return <TradingViewChart {...cleanProps} />;
     default:
       return (
         <div className="p-4 bg-rose-950/20 border border-rose-500/20 rounded-xl text-rose-400 text-xs font-mono my-2 text-left">

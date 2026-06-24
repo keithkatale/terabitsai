@@ -1,5 +1,6 @@
 import { stableStaticAssetId } from "./stable-asset-id";
 import type { AssetRow } from "./types";
+import { EXPANDED_STOCKS_RAW } from "./expanded-assets";
 
 const CRYPTO_RAW = [
   { symbol: "BTCUSD", name: "Bitcoin / USD CFD" },
@@ -338,6 +339,36 @@ export function getCapitalAssetCatalog(): AssetRow[] {
       max_leverage_x: 20,
       min_notional_usd: 10,
       status: "active"
+    });
+  }
+
+  const seen = new Set(assets.map((a) => a.symbol));
+
+  for (const raw of EXPANDED_STOCKS_RAW) {
+    if (seen.has(raw.symbol)) continue;
+    seen.add(raw.symbol);
+
+    const isCrypto = raw.sector === "Crypto";
+    const isEtf = raw.sector === "ETFs" || raw.sector === "Indices" || raw.sector === "Forex" || raw.sector === "Commodities";
+    const assetClass = isCrypto ? "crypto" : isEtf ? "etf" : "stock";
+    const id = stableStaticAssetId(raw.symbol, assetClass);
+    const coin = raw.symbol.replace("USD", "").toLowerCase();
+
+    assets.push({
+      id,
+      symbol: raw.symbol,
+      display_name: raw.name,
+      asset_class: assetClass,
+      provider: "capital",
+      provider_ref: raw.symbol,
+      logo_url: isCrypto ? `https://assets.coincap.io/assets/icons/${coin}@2x.png` : null,
+      sector: raw.sector ?? (assetClass === "stock" ? "US Equities" : "ETFs"),
+      country: "US",
+      is_tradable: true,
+      is_scalpable: true,
+      max_leverage_x: 20,
+      min_notional_usd: 10,
+      status: "active",
     });
   }
 
