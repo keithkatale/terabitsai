@@ -14,7 +14,7 @@ import { extractToolGenui, extractToolQuantUi } from "@/lib/chat/stream-types";
 import { historyContextBlob, parseClientHistory, toGeminiContents, type ChatHistoryTurn } from "@/lib/chat/conversation-history";
 import { augmentMessageWithPinnedAssets, parsePinnedAssets } from "@/lib/chat/pinned-assets";
 import { fetchAccountState } from "@/lib/chat/tools/account-state-tool";
-import { executeBrokerAction, type BrokerActionArgs } from "@/lib/chat/tools/broker-action-tool";
+import { executeBrokerAction, executeAutonomousTrade, type BrokerActionArgs } from "@/lib/chat/tools/broker-action-tool";
 import { manageUserGoals, type ManageGoalArgs } from "@/lib/chat/tools/goal-tool";
 import { fetchFundamentals, fetchMacroData } from "@/lib/chat/tools/macro-tools";
 import { scheduleAgentTask, type ScheduleTaskArgs } from "@/lib/chat/tools/schedule-task-tool";
@@ -30,6 +30,10 @@ import {
 } from "@/lib/chat/conversation-persistence";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { Type } from "@google/genai";
+import {
+  executeSkillDeclaration,
+  handleExecuteSkill,
+} from "@/lib/skills/tool-declaration";
 
 export const dynamic = "force-dynamic";
 
@@ -219,7 +223,7 @@ const getAccountStateDeclaration = {
 const brokerActionDeclaration = {
   name: "broker_action",
   description:
-    "Interact with Capital.com: quotes, candles, positions. place_order/close_position auto-execute when autonomous trading is ON (within risk limits); otherwise returns a confirmation proposal.",
+    "Capital.com API: get_quote, get_candles, get_positions, get_account. For place_order/close_position when autonomous trading is ON, orders execute immediately on Capital.com with no user confirmation. When autonomous is OFF, returns a swipe-to-confirm proposal.",
   parameters: {
     type: Type.OBJECT,
     properties: {
@@ -229,11 +233,32 @@ const brokerActionDeclaration = {
       },
       symbol: { type: Type.STRING },
       direction: { type: Type.STRING, enum: ["BUY", "SELL"] },
-      size: { type: Type.NUMBER },
+      size: { type: Type.NUMBER, description: "Contract size in units (optional — auto-sized from goal risk limits if omitted)" },
       stop_loss: { type: Type.NUMBER },
       take_profit: { type: Type.NUMBER },
       deal_id: { type: Type.STRING },
       timeframe: { type: Type.STRING, description: "1D, 1W, 1M, 3M, 6M, 1Y" },
+      reasoning: { type: Type.STRING, description: "Why you are placing this trade" },
+    },
+    required: ["action"],
+  },
+};
+
+const executeTradeDeclaration = {
+  name: "execute_trade",
+  description:
+    "Execute a trade directly on Capital.com when autonomous trading is ON. No swipe confirmation — the order is placed immediately. Use get_quote first, then call with symbol, direction, optional size/stop_loss/take_profit. For closing, set action to close_position.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      action: { type: Type.STRING, enum: ["place_order", "close_position"] },
+      symbol: { type: Type.STRING },
+      direction: { type: Type.STRING, enum: ["BUY", "SELL"] },
+      size: { type: Type.NUMBER },
+      stop_loss: { type: Type.NUMBER },
+      take_profit: { type: Type.NUMBER },
+      deal_id: { type: Type.STRING },
+      reasoning: { type: Type.STRING },
     },
     required: ["action"],
   },
@@ -366,14 +391,16 @@ export async function POST(req: Request) {
     const tradingMode = rawTradingMode === "live" ? "live" : "demo";
     let memoryContext = "";
     let goalMission = "";
+    let sessionContext: Awaited<ReturnType<typeof getSessionContext>> | null = null;
 
     try {
-      const ctx = await getSessionContext(user.id, tradingMode);
-      memoryContext = buildSessionContextPrompt(ctx);
-      goalMission = buildGoalMissionPrompt(ctx);
+      sessionContext = await getSessionContext(user.id, tradingMode);
+      memoryContext = buildSessionContextPrompt(sessionContext);
+      goalMission = buildGoalMissionPrompt(sessionContext);
     } catch {
       memoryContext =
         typeof clientSessionContext === "string" ? clientSessionContext : "";
+      goalMission = "";
     }
 
     const pinnedAssets = parsePinnedAssets(rawPinned);
@@ -506,20 +533,19 @@ PINNED ASSETS:
 
 AUTONOMOUS WEALTH MANAGER (you LEAD — user MONITORS):
 - You are the user's financial wealth manager with FULL AUTONOMY when autonomous_trading is ON.
-- You HAVE broker_action, get_account_state, and manage_goals — use them. You CAN open/close trades, read positions, and manage the account.
-- FORBIDDEN when autonomous is ON: saying "I cannot execute trades", "requires your approval", "manual placement", or "tools do not allow execution".
-- ORCHESTRATOR WAKE: Messages from Wealth Monitor (monitor_directive) or starting with "[Wealth Monitor]" are ORDERS — execute immediately via broker_action, then report results.
+- You HAVE broker_action, execute_trade, get_account_state, and manage_goals — use them. You CAN open/close trades directly on Capital.com.
+- FORBIDDEN when autonomous is ON: saying "I cannot execute trades", "requires your approval", "swipe to confirm", "manual placement", or "tools do not allow execution".
+- ORCHESTRATOR WAKE: Messages from Wealth Monitor (monitor_directive) or starting with "[Wealth Monitor]" are ORDERS — execute immediately via execute_trade or broker_action place_order, then report results.
+- When autonomous is ON: call execute_trade or broker_action place_order — trades go straight to Capital.com. NEVER show or describe a swipe-to-confirm ticket.
 - When a balance goal exists with autonomous_trading ON, EXECUTE trades and REPORT what you did — never ask "would you like me to propose a trade?"
 - After goal approval or enable_autonomous: narrate what you're doing ("I'm scanning markets…", "I opened a position on…") — act first, explain after.
 - Use manage_goals(set_balance_target) with autonomous_trading:true when user approves a plan — this kicks off immediate autonomous management.
-- Trades within the risk threshold execute automatically; larger trades queue for one-tap confirmation.
 - Use get_account_state to report portfolio state; use GoalProgressWidget via manage_goals(check_progress).
 - NEVER end a message with a menu of options like "would you like me to propose a trade?" — you are in charge.
-- broker_action place_order/close_position: when autonomous trading is ON, trades execute automatically within risk limits; larger trades queue for one-tap confirmation. Always use broker_action to open/close positions — never claim you cannot trade.
 - Use schedule_task only for reminders, not for trading decisions you should make yourself.
 - Use get_macro_data and get_fundamentals for context you weave into narration.
 - Use query_trading_knowledge for chart patterns, strategies, indicators, risk rules, and trading psychology from the structured knowledge base.
-- Risk rule: respect max_risk_per_trade on the goal; never exceed confirmation_threshold without queueing.${memoryContext}`;
+- Risk rule: respect max_risk_per_trade and max_position_pct on the goal.${memoryContext}`;
 
     const encoder = new TextEncoder();
 
@@ -562,6 +588,8 @@ AUTONOMOUS WEALTH MANAGER (you LEAD — user MONITORS):
                     getCatalystBriefDeclaration,
                     getAccountStateDeclaration,
                     brokerActionDeclaration,
+                    executeTradeDeclaration,
+                    executeSkillDeclaration,
                     scheduleTaskDeclaration,
                     manageGoalsDeclaration,
                     getMacroDataDeclaration,
@@ -742,7 +770,59 @@ AUTONOMOUS WEALTH MANAGER (you LEAD — user MONITORS):
                       deal_id: args?.deal_id as string | undefined,
                       timeframe: args?.timeframe as string | undefined,
                       conversation_id: typeof conversationId === "string" ? conversationId : undefined,
+                      reasoning: args?.reasoning as string | undefined,
                     });
+                  } else if (name === "execute_trade") {
+                    toolResult = await executeAutonomousTrade(user.id, tradingMode, {
+                      action: (args?.action as "place_order" | "close_position" | undefined) ?? "place_order",
+                      symbol: args?.symbol as string | undefined,
+                      direction: args?.direction as "BUY" | "SELL" | undefined,
+                      size: args?.size as number | undefined,
+                      stop_loss: args?.stop_loss as number | undefined,
+                      take_profit: args?.take_profit as number | undefined,
+                      deal_id: args?.deal_id as string | undefined,
+                      conversation_id: typeof conversationId === "string" ? conversationId : undefined,
+                      reasoning: args?.reasoning as string | undefined,
+                    });
+                  } else if (name === "execute_skill") {
+                    const { skill_id, inputs } = args as { skill_id?: string; inputs?: any };
+                    
+                    // Get the active goal ID from session context
+                    const balanceGoal = sessionContext?.goals?.find((g: any) => g.goal_type === "balance_target");
+                    
+                    // Fetch account state for balance
+                    let accountBal: number | undefined;
+                    try {
+                      const accState = await fetchAccountState(user.id, tradingMode);
+                      accountBal = accState?.balance?.total_balance;
+                    } catch {
+                      accountBal = undefined;
+                    }
+                    
+                    if (!skill_id) {
+                      toolResult = { error: true, message: "skill_id is required" };
+                    } else {
+                      const skillResult = await handleExecuteSkill({
+                        skill_id,
+                        inputs: inputs || {},
+                        userId: user.id,
+                        goalId: balanceGoal?.id || "",
+                        mode: tradingMode,
+                        accountBalance: accountBal,
+                      });
+
+                      if (skillResult.error) {
+                        toolResult = { error: true, message: skillResult.message };
+                      } else {
+                        toolResult = {
+                          success: true,
+                          skill_id: skillResult.skill_id,
+                          data: skillResult.data,
+                          execution_time_ms: skillResult.execution_time_ms,
+                          cached: skillResult.cached || false,
+                        };
+                      }
+                    }
                   } else if (name === "schedule_task") {
                     toolResult = await scheduleAgentTask(user.id, tradingMode, {
                       task_type: args?.task_type as ScheduleTaskArgs["task_type"],

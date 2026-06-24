@@ -32,7 +32,10 @@ export type AgentActivityAction =
   | "monitor_directive"
   | "monitor_review"
   | "monitor_followup"
-  | "monitor_goal_update";
+  | "monitor_goal_update"
+  | "skills_execute"
+  | "skills_complete"
+  | "skills_error";
 
 export type OrchestratorDirective = {
   summary: string;

@@ -73,7 +73,7 @@ export function LandingPromptChips({
             disabled={disabled}
             onClick={() => onSelect(suggestion)}
             className={cn(
-              "w-full rounded-xl border px-3.5 py-2.5 text-left text-[11px] font-normal leading-snug transition-all duration-200",
+              "w-full rounded-full border px-3.5 py-2.5 text-left text-[11px] font-normal leading-snug transition-all duration-200",
               "border-zinc-800/60 bg-zinc-950/30 text-zinc-400",
               "hover:border-zinc-700 hover:bg-zinc-900/50 hover:text-zinc-200",
               "active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50",

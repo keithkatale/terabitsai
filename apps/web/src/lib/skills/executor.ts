@@ -7,7 +7,6 @@
 import { readFile } from "fs/promises";
 import { join } from "path";
 import YAML from "yaml";
-import { capitalAdapter } from "@/lib/brokers/capital/adapter";
 import type { TradingMode } from "@/lib/chat/conversation-persistence";
 
 // ============================================================================
@@ -211,26 +210,28 @@ export class SkillExecutor {
     const symbols = inputs.symbols || ["SPY", "QQQ", "BTCUSD"];
     const timeframes = inputs.timeframes || ["1D"];
 
+    // Import capitalAdapter dynamically to avoid build issues
+    const { capitalAdapter } = await import("@/lib/execution/capital-adapter");
+
     // Fetch candles from Capital.com for each symbol
     const symbolAnalyses = await Promise.all(
       symbols.map(async (symbol) => {
         try {
-          // Fetch 1D candles (200 bars for moving averages)
-          const candles = await capitalAdapter.getCandles({
-            userId: context.userId,
+    // Fetch 1D candles (200 bars for moving averages)
+          const candles = await capitalAdapter.fetchCandles(
             symbol,
-            resolution: "1D",
-            count: 200,
-          });
+            "crypto", // asset class - could be inferred
+            200, // rangeDays
+          );
 
           if (!candles || candles.length < 200) {
             return { symbol, regime: "ranging", score: 0, error: "Insufficient data" };
           }
 
           // Calculate indicators
-          const closes = candles.map((c) => c.close);
-          const highs = candles.map((c) => c.high);
-          const lows = candles.map((c) => c.low);
+          const closes = candles.map((c) => c.c);
+          const highs = candles.map((c) => c.h);
+          const lows = candles.map((c) => c.l);
 
           const sma20 = this.calculateSMA(closes, 20);
           const sma50 = this.calculateSMA(closes, 50);
@@ -386,10 +387,11 @@ export class SkillExecutor {
     inputs: { positions?: any[] },
     context: SkillExecutionContext
   ): Promise<any> {
+    // Import capitalAdapter dynamically
+    const { capitalAdapter } = await import("@/lib/execution/capital-adapter");
+
     // Fetch current positions from Capital.com
-    const positions = await capitalAdapter.getPositions({
-      userId: context.userId,
-    });
+    const positions = await capitalAdapter.getOpenPositions();
 
     if (!positions || positions.length === 0) {
       return {
@@ -407,10 +409,11 @@ export class SkillExecutor {
     for (const position of positions) {
       // Estimate risk as (size * abs(current_price - stop_loss))
       // For simplicity, assume stop is 5% below entry for longs
-      const stopDistance = Math.abs(position.openLevel) * 0.05;
+      const entryLevel = position.entryPrice;
+      const stopDistance = Math.abs(entryLevel) * 0.05;
       const riskDollars = position.size * stopDistance;
       
-      riskBySymbol[position.market.epic] = riskDollars;
+      riskBySymbol[position.epic] = riskDollars;
       totalRiskDollars += riskDollars;
     }
 

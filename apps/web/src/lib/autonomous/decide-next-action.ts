@@ -173,6 +173,7 @@ export async function decideNextAction(
     setup,
     reasoning: judgment.reasoning,
     cycleId,
+    queueIfAboveThreshold: false,
   });
 
   if (execResult.executed) {

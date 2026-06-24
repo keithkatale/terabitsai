@@ -66,7 +66,7 @@ export function PromptInputSubmit({ status, className, disabled, ...props }: Pro
       type="submit"
       disabled={disabled || status === "streaming"}
       className={cn(
-        "px-2 py-2 rounded-lg text-sm transition-colors border border-zinc-700 hover:border-zinc-600 hover:bg-zinc-800 flex items-center justify-center gap-1",
+        "p-2.5 rounded-full text-sm transition-colors border border-zinc-700 hover:border-zinc-600 hover:bg-zinc-800 flex items-center justify-center gap-1",
         disabled
           ? "text-zinc-500 cursor-not-allowed border-zinc-800"
           : "bg-white text-black border-white hover:bg-zinc-200",

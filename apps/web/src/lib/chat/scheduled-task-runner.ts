@@ -28,7 +28,7 @@ async function executeTask(task: ScheduledTaskRow) {
       }
       const quote = await capitalAdapter.fetchQuote(symbol, assetClassForSymbol(symbol));
       const spot = quote.spot;
-      const condition = payload.condition?.trim();
+      const condition = typeof payload.condition === "string" ? payload.condition.trim() : "";
       let conditionMet: boolean | null = null;
       if (condition) {
         try {

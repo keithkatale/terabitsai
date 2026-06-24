@@ -107,6 +107,40 @@ const StopIcon = ({ className = "w-[12px] h-[12px]" }) => (
   </svg>
 );
 
+const StreamingStopIcon = () => (
+  <span className="relative flex items-center justify-center w-5 h-5">
+    <svg
+      className="animate-spin h-5 w-5 text-white absolute"
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+    >
+      <circle
+        className="opacity-25"
+        cx="12"
+        cy="12"
+        r="10"
+        stroke="currentColor"
+        strokeWidth="3.5"
+      />
+      <path
+        className="opacity-75"
+        fill="currentColor"
+        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+      />
+    </svg>
+    <svg
+      width="7"
+      height="7"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      className="text-white relative z-10"
+    >
+      <rect x="6" y="6" width="12" height="12" rx="1" />
+    </svg>
+  </span>
+);
+
 const XIcon = ({ className = "w-3 h-3" }) => (
   <svg
     width="12"
@@ -203,13 +237,13 @@ function SendButton({
       onClick={onClick}
       aria-label={isStreaming ? "Stop" : "Send"}
       className={cn(
-        "inline-flex items-center justify-center w-9 h-9 rounded-[14px] transition-all duration-150",
+        "inline-flex items-center justify-center w-9 h-9 rounded-full transition-all duration-150",
         isActive
           ? "terminal-btn-primary !p-0 !min-w-9 !min-h-9 text-white"
           : "bg-white/[0.04] text-zinc-600 border border-white/[0.06] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]",
       )}
     >
-      {isStreaming ? <StopIcon /> : <SendIcon />}
+      {isStreaming ? <StreamingStopIcon /> : <SendIcon />}
     </button>
   );
 }
@@ -392,7 +426,7 @@ export const InputBar = memo(function InputBar({
       <div className={cn("shrink-0 w-full", className)}>
         <div className="mx-auto max-w-2xl">
           <div
-            className="terminal-card relative cursor-text rounded-2xl px-3 py-2.5 shadow-2xl"
+            className="neo-surface relative cursor-text overflow-hidden rounded-full px-5 py-2.5 shadow-2xl"
             onClick={handleContainerClick}
           >
             {hasTags ? (
@@ -457,7 +491,7 @@ export const InputBar = memo(function InputBar({
     <div className={cn("shrink-0 px-3 pb-3 w-full", className)}>
       <div className="mx-auto max-w-2xl">
         <div
-          className="relative cursor-text rounded-[20px] neo-surface"
+          className="neo-surface relative cursor-text overflow-hidden rounded-full"
           onClick={handleContainerClick}
         >
           <div
@@ -468,7 +502,7 @@ export const InputBar = memo(function InputBar({
           >
             <div className="overflow-hidden">
               {hasContextItems && (
-                <div className="flex flex-wrap items-center gap-1.5 px-2.5 pt-2.5 pb-0.5">
+                <div className="flex flex-wrap items-center gap-1.5 px-6 pt-3.5 pb-0.5">
                   {attachedImages.map((img) => (
                     <ImageChip
                       key={img.id}
@@ -492,7 +526,7 @@ export const InputBar = memo(function InputBar({
               )}
             </div>
           </div>
-            <div className="relative min-h-[44px] pt-3 pb-0 pr-3 pl-3.5">
+            <div className="relative min-h-[44px] pt-3.5 pb-0 pr-6 pl-6">
             <TypingPlaceholderOverlay
               suggestions={placeholderSuggestions ?? []}
               visible={showTypingPlaceholder}
@@ -514,7 +548,7 @@ export const InputBar = memo(function InputBar({
               )}
             />
           </div>
-          <div className="flex items-center justify-between gap-3 px-2 pt-1 pb-2">
+          <div className="flex items-center justify-between gap-3 px-4 pt-1 pb-3">
             <div className="flex items-center gap-1 min-w-0">
               {onAttach && (
                 <AttachmentButton onClick={onAttach} disabled={disabled} />

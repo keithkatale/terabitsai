@@ -6,6 +6,7 @@ import { fetchAssetChartData } from "@/lib/chat/market-data-tool";
 import { fetchAccountState } from "@/lib/chat/tools/account-state-tool";
 import {
   executeBrokerAction,
+  executeAutonomousTrade,
   type BrokerActionArgs,
 } from "@/lib/chat/tools/broker-action-tool";
 import { manageUserGoals, type ManageGoalArgs } from "@/lib/chat/tools/goal-tool";
@@ -76,7 +77,7 @@ const getAssetMarketDataDeclaration = {
 const brokerActionDeclaration = {
   name: "broker_action",
   description:
-    "Execute trades and manage positions. When autonomous trading is ON, place_order and close_position execute automatically (within risk limits). Use get_quote first, then place_order with symbol, direction, size, stop_loss, take_profit.",
+    "Capital.com API: quotes, positions, account. place_order/close_position execute immediately on Capital.com when autonomous is ON — no user confirmation.",
   parameters: {
     type: Type.OBJECT,
     properties: {
@@ -99,6 +100,26 @@ const brokerActionDeclaration = {
       deal_id: { type: Type.STRING },
       timeframe: { type: Type.STRING },
       reasoning: { type: Type.STRING, description: "Why you are placing this trade" },
+    },
+    required: ["action"],
+  },
+};
+
+const executeTradeDeclaration = {
+  name: "execute_trade",
+  description:
+    "Place or close a trade directly on Capital.com (autonomous mode). No swipe confirmation. Use get_quote first, then execute_trade with symbol, direction, size, stop_loss, take_profit.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      action: { type: Type.STRING, enum: ["place_order", "close_position"] },
+      symbol: { type: Type.STRING },
+      direction: { type: Type.STRING, enum: ["BUY", "SELL"] },
+      size: { type: Type.NUMBER },
+      stop_loss: { type: Type.NUMBER },
+      take_profit: { type: Type.NUMBER },
+      deal_id: { type: Type.STRING },
+      reasoning: { type: Type.STRING },
     },
     required: ["action"],
   },
@@ -145,6 +166,20 @@ async function executeTool(
       cycle_id: ctx.cycleId,
     });
   }
+  if (name === "execute_trade") {
+    return executeAutonomousTrade(ctx.userId, ctx.mode, {
+      action: (args.action as "place_order" | "close_position" | undefined) ?? "place_order",
+      symbol: args.symbol as string | undefined,
+      direction: args.direction as "BUY" | "SELL" | undefined,
+      size: args.size as number | undefined,
+      stop_loss: args.stop_loss as number | undefined,
+      take_profit: args.take_profit as number | undefined,
+      deal_id: args.deal_id as string | undefined,
+      conversation_id: ctx.conversationId,
+      reasoning: args.reasoning as string | undefined,
+      cycle_id: ctx.cycleId,
+    });
+  }
   return { success: false, error: `Unknown tool: ${name}` };
 }
 
@@ -184,8 +219,9 @@ export async function runProactiveChatTurn(params: {
 
 WEALTH MONITOR DIRECTIVE (FULL AUTONOMY):
 - The user message above is from the Wealth Monitor — an ORDER, not a question.
-- Autonomous trading is ON. You MUST execute via broker_action (get_quote → place_order / close_position).
-- FORBIDDEN: "I cannot execute trades", "requires approval", "manual placement", "tools do not allow".
+- Autonomous trading is ON. You MUST execute via execute_trade or broker_action (get_quote → place_order / close_position).
+- Trades go directly to Capital.com — NEVER ask the user to swipe, confirm, or approve.
+- FORBIDDEN: "I cannot execute trades", "requires approval", "swipe to confirm", "manual placement", "tools do not allow".
 - Call get_account_state first if needed, then act. Report what you executed.`;
 
   let assistantText = "";
@@ -210,6 +246,7 @@ WEALTH MONITOR DIRECTIVE (FULL AUTONOMY):
               manageGoalsDeclaration,
               getAssetMarketDataDeclaration,
               brokerActionDeclaration,
+              executeTradeDeclaration,
             ],
           },
         ],

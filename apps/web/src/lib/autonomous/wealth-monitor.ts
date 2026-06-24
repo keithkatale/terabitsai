@@ -20,6 +20,11 @@ import {
   scheduleNextWake,
 } from "./goal-profile";
 import { AUTONOMOUS_CYCLE_INTERVAL_MS } from "./cycle-config";
+import {
+  executeAutonomousSkills,
+  formatSkillResultsForDirective,
+  shouldAllowNewTrades,
+} from "@/lib/skills/monitor-integration";
 
 function parseJsonBlock<T>(raw: string): T | null {
   const match = raw.trim().match(/\{[\s\S]*\}/);
@@ -53,6 +58,8 @@ async function runMonitorAnalysis(params: {
   accountSnapshot: string;
   conversationSummary: string;
   knowledgeContext: string;
+  skillAnalysis?: string;
+  tradeAllowance?: { allowed: boolean; reason: string };
   goalProgress: {
     progressPct: number;
     status: string;
@@ -92,6 +99,11 @@ ${params.accountSnapshot}
 - Status: ${params.goalProgress.status}
 - Mode: ${goal.mode}
 - Max risk/trade: ${goal.max_risk_per_trade}%
+
+${params.skillAnalysis || ""}
+
+${params.tradeAllowance ? `## Trade Allowance
+${params.tradeAllowance.allowed ? "✓ New trades allowed — risk parameters within limits" : `⚠️ ${params.tradeAllowance.reason}`}` : ""}
 
 ## Recent Command chat
 ${params.conversationSummary || "(no conversation yet)"}
@@ -320,12 +332,67 @@ export async function runWealthMonitorCycle(params: {
     2,
   );
 
+  // Execute autonomous skills for this cycle
+  await logAgentActivity({
+    userId: goal.user_id,
+    goalId: goal.id,
+    cycleId,
+    phase: "monitor",
+    action: "skills_execute",
+    reasoning: "Executing autonomous trading skills",
+  });
+
+  let skillResults: Record<string, any> = {};
+  let skillAnalysis = "";
+  let tradeAllowance = { allowed: true, reason: "No skills executed" };
+
+  try {
+    skillResults = await executeAutonomousSkills({
+      userId: goal.user_id,
+      goalId: goal.id,
+      mode,
+      cycleId,
+      accountBalance: goalProgress.currentBalance,
+    });
+
+    skillAnalysis = formatSkillResultsForDirective(skillResults);
+    tradeAllowance = shouldAllowNewTrades(skillResults);
+
+    await logAgentActivity({
+      userId: goal.user_id,
+      goalId: goal.id,
+      cycleId,
+      phase: "monitor",
+      action: "skills_complete",
+      reasoning: `Skills executed. Trade allowance: ${tradeAllowance.allowed ? "allowed" : tradeAllowance.reason}`,
+      payload: {
+        skillResults: Object.keys(skillResults),
+        tradeAllowed: tradeAllowance.allowed,
+        tradeReason: tradeAllowance.reason,
+      },
+    });
+  } catch (error) {
+    console.error("[Monitor] Skill execution failed:", error);
+    skillAnalysis = "## Skill Analysis\n\n⚠️ Skills execution failed. Proceeding with basic analysis.";
+    
+    await logAgentActivity({
+      userId: goal.user_id,
+      goalId: goal.id,
+      cycleId,
+      phase: "monitor",
+      action: "skills_error",
+      reasoning: `Skill execution error: ${error}`,
+    });
+  }
+
   const analysis = await runMonitorAnalysis({
     goalRow: params.goalRow,
     currentProfile: existingProfile,
     accountSnapshot,
     conversationSummary: summarizeMessages(convMessages ?? []),
     knowledgeContext,
+    skillAnalysis,
+    tradeAllowance,
     goalProgress: {
       progressPct: goalProgress.progressPct,
       status: goalProgress.status,

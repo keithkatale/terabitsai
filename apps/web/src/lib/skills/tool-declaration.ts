@@ -3,7 +3,7 @@
  * Add this to apps/web/src/app/api/chat/route.ts
  */
 
-import { Type } from "@google-cloud/vertexai";
+import { Type } from "@google/genai";
 import { getSkillExecutor, type SkillExecutionContext } from "@/lib/skills/executor";
 
 /**
@@ -42,7 +42,7 @@ Skills provide specialized analysis beyond base knowledge. Use them for:
         description: "Skill-specific input parameters (see skill documentation)",
       },
     },
-    required: ["skill_id", "inputs"],
+    required: ["skill_id"],
   },
 };
 

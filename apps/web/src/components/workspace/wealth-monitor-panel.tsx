@@ -56,12 +56,12 @@ const WORKING_ACTIONS = new Set([
 ]);
 
 function activityToChatMessage(item: MonitorActivity): ChatMessageData | null {
-  const payloadReasoning = (item.payload?.reasoning as string | undefined)?.trim();
-  const lineReasoning = item.reasoning?.trim() ?? "";
+  const payloadReasoning = typeof item.payload?.reasoning === "string" ? item.payload.reasoning.trim() : "";
+  const lineReasoning = typeof item.reasoning === "string" ? item.reasoning.trim() : "";
   const reasoning = payloadReasoning || lineReasoning;
-  const summary = (item.payload?.summary as string | undefined)?.trim();
-  const directive = (item.payload?.chatDirective as string | undefined)?.trim();
-  const followUp = (item.payload?.followUpDirective as string | undefined)?.trim();
+  const summary = typeof item.payload?.summary === "string" ? item.payload.summary.trim() : "";
+  const directive = typeof item.payload?.chatDirective === "string" ? item.payload.chatDirective.trim() : "";
+  const followUp = typeof item.payload?.followUpDirective === "string" ? item.payload.followUpDirective.trim() : "";
   const taskComplete = item.payload?.taskComplete as boolean | undefined;
   const nextWakeMs = item.payload?.nextWakeMs as number | undefined;
 
@@ -104,7 +104,7 @@ function activityToChatMessage(item: MonitorActivity): ChatMessageData | null {
       liveStatus = "Reviewing Command output";
       if (reasoning) parts.push({ type: "reasoning", text: reasoning });
       {
-        const chatOutput = (item.payload?.chatOutput as string | undefined)?.trim();
+        const chatOutput = typeof item.payload?.chatOutput === "string" ? item.payload.chatOutput.trim() : "";
         const reviewText =
           taskComplete === false
             ? "**Task incomplete** — scheduling a follow-up with Command."
@@ -379,9 +379,11 @@ export function WealthMonitorPanel({ className }: Props) {
         {
           type: "reasoning",
           text:
-            (latest?.payload?.reasoning as string | undefined) ??
-            latest?.reasoning ??
-            "Evaluating positions, goal progress, and market context…",
+            typeof latest?.payload?.reasoning === "string"
+              ? latest.payload.reasoning
+              : typeof latest?.reasoning === "string"
+                ? latest.reasoning
+                : "Evaluating positions, goal progress, and market context…",
         },
       ],
       liveStatus: label,

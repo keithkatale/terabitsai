@@ -105,7 +105,7 @@ export function VercelV0Chat() {
             </h1>
 
             <div className="w-full">
-                <div className="relative bg-neutral-900 rounded-xl border border-neutral-800">
+                <div className="relative bg-neutral-900 rounded-full border border-neutral-800">
                     <div className="overflow-y-auto">
                         <Textarea
                             ref={textareaRef}
@@ -117,7 +117,7 @@ export function VercelV0Chat() {
                             onKeyDown={handleKeyDown}
                             placeholder="Ask v0 a question..."
                             className={cn(
-                                "w-full px-4 py-3",
+                                "w-full px-6 pt-4 pb-2",
                                 "resize-none",
                                 "bg-transparent",
                                 "border-none",
@@ -133,11 +133,11 @@ export function VercelV0Chat() {
                         />
                     </div>
 
-                    <div className="flex items-center justify-between p-3">
+                    <div className="flex items-center justify-between px-6 pb-4 pt-1">
                         <div className="flex items-center gap-2">
                             <button
                                 type="button"
-                                className="group p-2 hover:bg-neutral-800 rounded-lg transition-colors flex items-center gap-1"
+                                className="group p-2 hover:bg-neutral-800 rounded-full transition-colors flex items-center gap-1"
                             >
                                 <Paperclip className="w-4 h-4 text-white" />
                                 <span className="text-xs text-zinc-400 hidden group-hover:inline transition-opacity">
@@ -148,7 +148,7 @@ export function VercelV0Chat() {
                         <div className="flex items-center gap-2">
                             <button
                                 type="button"
-                                className="px-2 py-1 rounded-lg text-sm text-zinc-400 transition-colors border border-dashed border-zinc-700 hover:border-zinc-600 hover:bg-zinc-800 flex items-center justify-between gap-1"
+                                className="px-3 py-1 rounded-full text-sm text-zinc-400 transition-colors border border-dashed border-zinc-700 hover:border-zinc-600 hover:bg-zinc-800 flex items-center justify-between gap-1"
                             >
                                 <PlusIcon className="w-4 h-4" />
                                 Project
@@ -156,7 +156,7 @@ export function VercelV0Chat() {
                             <button
                                 type="button"
                                 className={cn(
-                                    "px-1.5 py-1.5 rounded-lg text-sm transition-colors border border-zinc-700 hover:border-zinc-600 hover:bg-zinc-800 flex items-center justify-between gap-1",
+                                    "p-2.5 rounded-full text-sm transition-colors border border-zinc-700 hover:border-zinc-600 hover:bg-zinc-800 flex items-center justify-between gap-1",
                                     value.trim()
                                         ? "bg-white text-black"
                                         : "text-zinc-400"

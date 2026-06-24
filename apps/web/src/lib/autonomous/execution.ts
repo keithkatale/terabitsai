@@ -15,26 +15,46 @@ import type { ExtendedUserGoal } from "./types";
 import { logAgentActivity } from "./activity-log";
 import { toExtendedGoal } from "./decide-next-action";
 
+async function fetchAutonomousGoal(
+  userId: string,
+  mode?: "demo" | "live",
+): Promise<ExtendedUserGoal | null> {
+  const admin = createSupabaseAdminClient();
+  const base = () =>
+    admin
+      .from("user_goals")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("goal_type", "balance_target")
+      .eq("autonomous_trading", true)
+      .eq("kill_switch", false)
+      .in("status", ["active", "in_progress"])
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+  if (mode) {
+    const { data: modeMatch } = await base().eq("mode", mode).maybeSingle();
+    if (modeMatch) return toExtendedGoal(modeMatch as Record<string, unknown>);
+  }
+
+  const { data } = await base().maybeSingle();
+  if (!data) return null;
+  return toExtendedGoal(data as Record<string, unknown>);
+}
+
 export async function getActiveAutonomousGoal(
   userId: string,
   mode: "demo" | "live",
 ): Promise<ExtendedUserGoal | null> {
-  const admin = createSupabaseAdminClient();
-  const { data } = await admin
-    .from("user_goals")
-    .select("*")
-    .eq("user_id", userId)
-    .eq("mode", mode)
-    .eq("goal_type", "balance_target")
-    .eq("autonomous_trading", true)
-    .eq("kill_switch", false)
-    .in("status", ["active", "in_progress"])
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  return fetchAutonomousGoal(userId, mode);
+}
 
-  if (!data) return null;
-  return toExtendedGoal(data as Record<string, unknown>);
+export async function isAutonomousTradingActive(
+  userId: string,
+  mode: "demo" | "live",
+): Promise<boolean> {
+  const goal = await fetchAutonomousGoal(userId, mode);
+  return goal != null;
 }
 
 function buildSetupFromBrokerArgs(params: {
@@ -84,6 +104,7 @@ export async function executeAutonomousBrokerOrder(params: {
   conversation_id?: string;
   reasoning?: string;
   cycleId?: string;
+  queueIfAboveThreshold?: boolean;
 }) {
   const goal = await getActiveAutonomousGoal(params.userId, params.mode);
   if (!goal) return null;
@@ -102,12 +123,14 @@ export async function executeAutonomousBrokerOrder(params: {
   });
 
   const cycleId = params.cycleId ?? `chat-${Date.now()}`;
+  const queueIfAboveThreshold = params.queueIfAboveThreshold ?? false;
   const result = await executeTradeSetup({
     goal,
     setup,
     reasoning: params.reasoning ?? `Autonomous ${params.direction} ${symbol}`,
     cycleId,
-    queueIfAboveThreshold: true,
+    queueIfAboveThreshold,
+    sizeOverride: params.size,
   });
 
   if (result.executed) {
@@ -120,31 +143,21 @@ export async function executeAutonomousBrokerOrder(params: {
       message: result.message,
       symbol,
       direction: params.direction,
+      size: result.size,
+      entry_price: result.entryPrice,
+      mode: params.mode,
     };
   }
 
   if (result.queued) {
     return {
-      success: true,
+      success: false,
       executed: false,
       queued: true,
       autonomous: true,
       trade_id: result.tradeId,
-      requires_confirmation: true,
-      message: result.message,
-      genui: {
-        type: "component",
-        name: "TradeConfirmationWidget",
-        props: {
-          symbol,
-          direction: params.direction,
-          size: params.size ?? 0.1,
-          leverage: 5,
-          estimatedPrice: entry,
-          mode: params.mode,
-          tradeLogId: result.tradeId,
-        },
-      },
+      error: result.message,
+      message: `${result.message} Autonomous mode does not use swipe confirmation — adjust size or risk limits.`,
     };
   }
 
@@ -152,6 +165,7 @@ export async function executeAutonomousBrokerOrder(params: {
     success: false,
     autonomous: true,
     error: result.message,
+    message: result.message,
   };
 }
 
@@ -226,11 +240,14 @@ export async function executeTradeSetup(params: {
   reasoning: string;
   cycleId: string;
   queueIfAboveThreshold?: boolean;
+  sizeOverride?: number;
 }): Promise<{
   executed: boolean;
   queued: boolean;
   tradeId?: string;
   dealId?: string;
+  size?: number;
+  entryPrice?: number;
   message: string;
 }> {
   const { goal, setup, reasoning, cycleId } = params;
@@ -348,8 +365,22 @@ export async function executeTradeSetup(params: {
     const assetClass = assetClassForSymbol(symbol);
     const quote = await capitalAdapter.fetchQuoteStrict(symbol, assetClass);
     const indicativePrice = direction === "BUY" ? quote.ask : quote.bid;
-    const notional = marginUsd * leverage;
-    const size = Math.round((notional / indicativePrice) * 1_000_000) / 1_000_000;
+    const maxMargin = accountBalance * ((goal.max_position_pct ?? 10) / 100);
+    let size: number;
+    if (params.sizeOverride != null && params.sizeOverride > 0) {
+      size = params.sizeOverride;
+      const marginNeeded = (size * indicativePrice) / leverage;
+      if (marginNeeded > maxMargin + 0.01) {
+        return {
+          executed: false,
+          queued: false,
+          message: `Requested size exceeds max position cap ($${maxMargin.toFixed(2)} margin)`,
+        };
+      }
+    } else {
+      const notional = marginUsd * leverage;
+      size = Math.round((notional / indicativePrice) * 1_000_000) / 1_000_000;
+    }
 
     const { data: logRow, error: logError } = await admin
       .from("ai_trade_log")
@@ -453,7 +484,9 @@ export async function executeTradeSetup(params: {
       queued: false,
       tradeId: logRow.id,
       dealId: capitalResult.dealId,
-      message: `Executed ${direction} ${symbol} @ ${entryPrice}`,
+      size,
+      entryPrice,
+      message: `Executed ${direction} ${size} ${symbol} @ ${entryPrice} via Capital.com`,
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Execution failed";

@@ -3,6 +3,7 @@ import { capitalAdapter } from "@/lib/execution/capital-adapter";
 import {
   executeAutonomousBrokerClose,
   executeAutonomousBrokerOrder,
+  isAutonomousTradingActive,
 } from "@/lib/autonomous/execution";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -52,6 +53,7 @@ async function tradeLogDb() {
   }
 }
 
+/** Manual mode only — logs a pending trade and returns swipe-to-confirm UI. */
 async function logTradeProposal(
   userId: string,
   mode: "demo" | "live",
@@ -90,6 +92,7 @@ async function logTradeProposal(
   return {
     success: true as const,
     requires_confirmation: true,
+    autonomous: false,
     trade_log_id: logRow.id,
     proposal: {
       action,
@@ -115,8 +118,8 @@ async function logTradeProposal(
     },
     message:
       mode === "live"
-        ? "Live trade proposal logged. Ask the user to swipe to confirm on the trade ticket."
-        : "Paper trade proposal logged. Ask the user to swipe to confirm on the trade ticket.",
+        ? "Autonomous trading is off. Ask the user to swipe to confirm on the trade ticket."
+        : "Autonomous trading is off. Ask the user to swipe to confirm on the trade ticket.",
   };
 }
 
@@ -161,32 +164,45 @@ export async function executeBrokerAction(
       return { success: false, error: "symbol and direction are required for place_order" };
     }
 
-    const autoResult = await executeAutonomousBrokerOrder({
-      userId,
-      mode,
-      symbol,
-      direction,
-      size: args.size,
-      stop_loss: args.stop_loss,
-      take_profit: args.take_profit,
-      conversation_id: args.conversation_id,
-      reasoning: args.reasoning,
-      cycleId: args.cycle_id,
-    });
+    const autonomous = await isAutonomousTradingActive(userId, mode);
+    if (autonomous) {
+      const autoResult = await executeAutonomousBrokerOrder({
+        userId,
+        mode,
+        symbol,
+        direction,
+        size: args.size,
+        stop_loss: args.stop_loss,
+        take_profit: args.take_profit,
+        conversation_id: args.conversation_id,
+        reasoning: args.reasoning,
+        cycleId: args.cycle_id,
+        queueIfAboveThreshold: false,
+      });
 
-    if (autoResult) {
+      if (!autoResult) {
+        return {
+          success: false,
+          autonomous: true,
+          error: "Autonomous goal not found — enable autonomous trading on your balance goal first.",
+        };
+      }
+
       if (autoResult.executed) {
         return {
           ...autoResult,
-          message: `Trade executed automatically: ${autoResult.message}`,
+          message: `Trade executed on Capital.com: ${autoResult.message}`,
         };
       }
-      if (autoResult.queued) {
-        return autoResult;
-      }
-      if (!autoResult.success) {
-        return autoResult;
-      }
+
+      return {
+        ...autoResult,
+        success: false,
+        message:
+          autoResult.message ??
+          autoResult.error ??
+          "Trade could not be executed — check risk limits or account balance.",
+      };
     }
 
     let estimatedPrice: number | undefined;
@@ -202,19 +218,29 @@ export async function executeBrokerAction(
   }
 
   if (action === "close_position") {
-    const autoResult = await executeAutonomousBrokerClose({
-      userId,
-      mode,
-      deal_id: args.deal_id,
-      symbol: args.symbol,
-      reasoning: args.reasoning,
-      cycleId: args.cycle_id,
-    });
+    const autonomous = await isAutonomousTradingActive(userId, mode);
 
-    if (autoResult) {
+    if (autonomous) {
+      const autoResult = await executeAutonomousBrokerClose({
+        userId,
+        mode,
+        deal_id: args.deal_id,
+        symbol: args.symbol,
+        reasoning: args.reasoning,
+        cycleId: args.cycle_id,
+      });
+
+      if (!autoResult) {
+        return {
+          success: false,
+          autonomous: true,
+          error: "Autonomous goal not found — enable autonomous trading on your balance goal first.",
+        };
+      }
+
       const msg =
-        autoResult.success && "message" in autoResult
-          ? `Position closed automatically: ${autoResult.message ?? "done"}`
+        autoResult.success && "message" in autoResult && autoResult.message
+          ? `Position closed on Capital.com: ${autoResult.message}`
           : ("error" in autoResult ? autoResult.error : undefined) ?? "Close failed";
       return { ...autoResult, message: msg };
     }
@@ -223,4 +249,14 @@ export async function executeBrokerAction(
   }
 
   return { success: false, error: `Unknown action: ${action}` };
+}
+
+/** Direct autonomous trade execution via Capital.com — no user confirmation. */
+export async function executeAutonomousTrade(
+  userId: string,
+  mode: "demo" | "live",
+  args: Omit<BrokerActionArgs, "action"> & { action?: "place_order" | "close_position" },
+) {
+  const action = args.action ?? "place_order";
+  return executeBrokerAction(userId, mode, { ...args, action });
 }
