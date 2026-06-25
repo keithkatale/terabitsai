@@ -1,9 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import {
+  getPostAuthPath,
+  isExistingUserSignUp,
+  isUserAlreadyRegisteredError,
+} from "@/lib/auth/post-auth";
 import { PageBackground } from "@/components/ui/page-background";
 import { BrandMark } from "@/components/ui/brand-mark";
 
@@ -13,32 +18,61 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [checkEmail, setCheckEmail] = useState(false);
+  const [loginHref, setLoginHref] = useState("/login");
+
+  useEffect(() => {
+    const next = new URLSearchParams(window.location.search).get("next");
+    setLoginHref(next ? `/login?next=${encodeURIComponent(next)}` : "/login");
+  }, []);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
+    const postAuthPath = getPostAuthPath(window.location.search);
+    const trimmedEmail = email.trim();
+
     try {
       const supabase = createSupabaseBrowserClient();
+
+      const signInExisting = async () => {
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email: trimmedEmail,
+          password,
+        });
+        if (signInError) throw signInError;
+        window.location.href = postAuthPath;
+      };
+
       const { data, error: signUpError } = await supabase.auth.signUp({
-        email: email.trim(),
+        email: trimmedEmail,
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback?next=/`,
+          emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(postAuthPath)}`,
         },
       });
-      if (signUpError) throw signUpError;
 
       if (data.session) {
-        window.location.href = "/";
+        window.location.href = postAuthPath;
         return;
       }
+
+      const existingAccount =
+        (signUpError && isUserAlreadyRegisteredError(signUpError)) ||
+        isExistingUserSignUp(data);
+
+      if (existingAccount) {
+        await signInExisting();
+        return;
+      }
+
+      if (signUpError) throw signUpError;
 
       setCheckEmail(true);
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Could not create account."
+        err instanceof Error ? err.message : "Could not create account.",
       );
     } finally {
       setLoading(false);
@@ -58,7 +92,7 @@ export default function SignupPage() {
             Click it to activate your Terabits AI account.
           </p>
           <Link
-            href="/login"
+            href={loginHref}
             className="inline-block mt-6 text-sm text-blue-400 font-semibold hover:text-blue-300"
           >
             Back to sign in
@@ -132,7 +166,7 @@ export default function SignupPage() {
 
           <p className="mt-6 text-center text-sm text-zinc-500">
             Already have an account?{" "}
-            <Link href="/login" className="text-blue-400 font-semibold hover:text-blue-300">
+            <Link href={loginHref} className="text-blue-400 font-semibold hover:text-blue-300">
               Sign in
             </Link>
           </p>

@@ -61,6 +61,8 @@ import type { SubAgentState } from "@/lib/chat/subagent-types";
 import { normalizeSubAgentList } from "@/lib/chat/subagent-types";
 import { applySubagentStreamEvent } from "@/lib/chat/subagent-stream";
 import { AgentDetailPane } from "@/components/workspace/agent-detail-pane";
+import { ResizablePane } from "@/components/ui/resizable-pane";
+import { PremiumUpgradeGate } from "@/components/subscription/premium-upgrade-gate";
 import {
   buildHistoryFromMessages,
   messagesToPredictPayload,
@@ -323,12 +325,13 @@ function toPickerItem(row: {
 // --- Main workspace ---
 export function TradingWorkspace() {
   const {
-    activeTab: mode,
+    activeTab: activeTabRaw,
     setActiveTab,
     isTabActive,
     routeConversationId,
     navigateToConversation,
   } = useAppTab();
+  const mode = activeTabRaw ?? "chat";
   const [value, setValue] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [openAgentId, setOpenAgentId] = useState<string | null>(null);
@@ -359,6 +362,16 @@ export function TradingWorkspace() {
   const lastUserMessageRef = useRef<HTMLDivElement | null>(null);
   const pendingChatScrollRef = useRef(false);
   const [responseSpacerHeight, setResponseSpacerHeight] = useState(0);
+  const [userPlan, setUserPlan] = useState<"free" | "pro" | "premium">("free");
+
+  useEffect(() => {
+    fetch("/api/subscription/status", { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.plan) setUserPlan(d.plan);
+      })
+      .catch(() => {});
+  }, []);
 
   const resetCommandChatUi = useCallback(() => {
     setMessages([]);
@@ -1001,10 +1014,10 @@ export function TradingWorkspace() {
 
     try {
       const result = await purchaseAssetAtMarket(tradingMode, {
-        symbol: trade.symbol,
+      symbol: trade.symbol,
         side: trade.direction === "BUY" ? "buy" : "sell",
-        size: trade.size,
-        leverage: trade.leverage,
+      size: trade.size,
+      leverage: trade.leverage,
       });
 
       if (trade.tradeLogId) {
@@ -1030,15 +1043,15 @@ export function TradingWorkspace() {
         size: result.trade.size,
         leverage: result.trade.leverage,
         margin: result.trade.margin,
-        tp: trade.tp,
-        sl: trade.sl,
-        status: "OPEN",
-        timestamp: trade.timestamp,
-      };
+      tp: trade.tp,
+      sl: trade.sl,
+      status: "OPEN",
+      timestamp: trade.timestamp,
+    };
 
-      const receiptMessage: ChatMessage = {
+    const receiptMessage: ChatMessage = {
         id: crypto.randomUUID(),
-        role: "assistant",
+      role: "assistant",
         parts: [
           {
             type: "trade-execution",
@@ -1049,8 +1062,8 @@ export function TradingWorkspace() {
             }),
           },
         ],
-      };
-      setMessages((prev) => [...prev, receiptMessage]);
+    };
+    setMessages((prev) => [...prev, receiptMessage]);
 
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("quant-trade-executed", { detail: { symbol: trade.symbol } }));
@@ -1076,10 +1089,10 @@ export function TradingWorkspace() {
     const handleTradeFromWidget = (e: Event) => {
       const customEvent = e as CustomEvent;
       const { symbol, direction, size, price, leverage, tradeLogId } = customEvent.detail;
-
+      
       const effectiveLeverage = leverage ?? 5;
       const margin = (size * price) / effectiveLeverage;
-
+      
       handleTradeExecute({
         id: crypto.randomUUID(),
         symbol,
@@ -1196,25 +1209,25 @@ export function TradingWorkspace() {
 
         if (request.action === "cash_out") {
           openWithdraw();
-        }
+    }
 
-        const receiptMessage: ChatMessage = {
-          id: Date.now().toString(),
-          role: "assistant",
-          parts: [
-            {
-              type: "trade-execution",
-              text: JSON.stringify({
-                ...pos,
+    const receiptMessage: ChatMessage = {
+      id: Date.now().toString(),
+      role: "assistant",
+      parts: [
+        {
+          type: "trade-execution",
+          text: JSON.stringify({
+            ...pos,
                 closePrice: result.closePrice,
                 pnl: result.pnl,
                 status: isFullClose ? "CLOSED" : "OPEN",
-                timestamp: Math.floor(Date.now() / 1000),
-              }),
-            },
-          ],
-        };
-        setMessages((prev) => [...prev, receiptMessage]);
+            timestamp: Math.floor(Date.now() / 1000),
+          }),
+        },
+      ],
+    };
+    setMessages((prev) => [...prev, receiptMessage]);
       } catch (err) {
         console.error("Position action failed:", err);
         await reloadPositions();
@@ -1778,20 +1791,24 @@ Provide:
   return (
     <div className="relative h-full min-h-0 w-full">
       <TabPanel tab="home" activeTab={mode}>
+        {userPlan !== "premium" ? (
+          <PremiumUpgradeGate currentPlan={userPlan} />
+        ) : (
         <HomeSection
           balance={balance}
           summary={summary}
           userEmail={user?.email}
           accountLoading={accountLoading}
-          accountRefreshing={accountRefreshing}
-          positionsRefreshing={positionsRefreshing}
+            accountRefreshing={accountRefreshing}
+            positionsRefreshing={positionsRefreshing}
           tradingMode={tradingMode}
           positions={positions}
           sidebarQuotes={sidebarQuotes}
           onDeposit={openDeposit}
           onWithdraw={openWithdraw}
-          onManagePosition={setActivePositionId}
+            onManagePosition={setActivePositionId}
         />
+        )}
       </TabPanel>
 
       <TabPanel tab="markets" activeTab={mode}>
@@ -1800,7 +1817,7 @@ Provide:
 
       <TabPanel tab="chat" activeTab={mode}>
         {messages.length === 0 ? <PageBackground overlay="minimal" variant="orb" /> : null}
-        <div className="relative mx-auto flex h-full w-full max-w-5xl overflow-hidden">
+        <div className="relative flex h-full w-full overflow-hidden">
           <ConversationPicker
             conversations={conversations}
             activeConversationId={conversationId}
@@ -1811,12 +1828,7 @@ Provide:
             className="min-w-0 flex-1"
           >
           <ChatWidgetProvider onWidgetAction={handleWidgetAction}>
-          <div
-            className={cn(
-              "relative mx-auto flex h-full w-full overflow-hidden",
-              openAgent ? "max-w-none" : "max-w-3xl",
-            )}
-          >
+          <div className="relative flex h-full w-full overflow-hidden">
             <div className="relative flex h-full min-w-0 flex-1 flex-col overflow-hidden">
           {messages.length === 0 ? (
             <ChatLandingHero
@@ -1888,26 +1900,26 @@ Provide:
               </Conversation>
               <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-[var(--background)] via-[var(--background)]/95 to-transparent pb-3 pt-6">
                 <div className="relative">
-                  <InputBar
-                    value={value}
-                    onChange={setValue}
-                    onSend={({ content }) => {
-                      const tags = [...taggedAssets];
-                      setTaggedAssets([]);
-                      handleSend(content, tags);
-                    }}
+                <InputBar
+                  value={value}
+                  onChange={setValue}
+                  onSend={({ content }) => {
+                    const tags = [...taggedAssets];
+                    setTaggedAssets([]);
+                    handleSend(content, tags);
+                  }}
                     disabled={loading || isQuestionActive}
-                    status={loading ? "streaming" : "ready"}
+                  status={loading ? "streaming" : "ready"}
                     placeholder={
                       isQuestionActive
                         ? "Answer the question below…"
                         : "Continue the conversation…"
                     }
-                    variant="landing"
-                    taggedAssets={taggedAssets}
-                    onRemoveTaggedAsset={removeTaggedAsset}
+                  variant="landing"
+                  taggedAssets={taggedAssets}
+                  onRemoveTaggedAsset={removeTaggedAsset}
                     onToggleTaggedAsset={toggleTaggedAsset}
-                    maxTaggedAssets={MAX_TAGGED_ASSETS}
+                  maxTaggedAssets={MAX_TAGGED_ASSETS}
                     selectedAiTools={selectedAiTools}
                     onSelectedAiToolsChange={setSelectedAiTools}
                   />
@@ -1927,16 +1939,24 @@ Provide:
             </div>
           )}
             </div>
+            {openAgent ? (
+              <ResizablePane
+                minWidth={320}
+                maxWidth={700}
+                defaultWidth={420}
+                side="right"
+                className="hidden shrink-0 md:flex"
+              >
+                <AgentDetailPane
+                  agent={openAgent}
+                  onClose={() => setOpenAgentId(null)}
+                  className="h-full w-full"
+                />
+              </ResizablePane>
+            ) : null}
           </div>
           </ChatWidgetProvider>
           </ConversationPicker>
-          {openAgent ? (
-            <AgentDetailPane
-              agent={openAgent}
-              onClose={() => setOpenAgentId(null)}
-              className="hidden w-[min(420px,38%)] shrink-0 md:flex"
-            />
-          ) : null}
         </div>
       </TabPanel>
 

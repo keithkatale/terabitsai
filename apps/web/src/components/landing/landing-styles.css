@@ -245,3 +245,38 @@
   mix-blend-mode: overlay;
   pointer-events: none;
 }
+
+/* ── Pricing cards ── */
+
+.landing-pricing-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.landing-pricing-card:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.landing-pricing-card--highlighted {
+  border-color: rgba(89, 136, 255, 0.55);
+  box-shadow:
+    0 0 0 1px rgba(49, 107, 255, 0.15),
+    0 24px 48px -16px rgba(49, 107, 255, 0.25);
+}
+
+.landing-pricing-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  border: 1px solid rgba(89, 136, 255, 0.45);
+  background: linear-gradient(145deg, rgba(49, 107, 255, 0.35) 0%, rgba(30, 74, 140, 0.28) 100%);
+  padding: 0.25rem 0.75rem;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #e8f0ff;
+  white-space: nowrap;
+}

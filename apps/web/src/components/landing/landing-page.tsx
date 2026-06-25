@@ -4,7 +4,7 @@ import Image from "next/image";
 import { Manrope, Inter, Poppins } from "next/font/google";
 import { useAccount } from "@/hooks/use-account";
 import { LandingHero } from "./landing-hero";
-import { LandingBlueGlow } from "./landing-blue-glow";
+import { LandingPixelSection } from "./landing-pixel-section";
 import {
   ComparisonBars,
   FaqItem,
@@ -104,13 +104,6 @@ export function LandingPage() {
               select — powered by TradingView and Gemini.
             </p>
           </div>
-          <Image
-            src="/landing/feature-personalize.png"
-            alt="AI chart analysis and market research"
-            width={1225}
-            height={486}
-            className="h-auto w-full max-w-[920px]"
-          />
           <TestimonialRow
             avatarSrc="/landing/avatar-2.png"
             name="Jordan Park"
@@ -197,24 +190,23 @@ export function LandingPage() {
             ))}
           </div>
         </section>
+      </main>
 
-        {/* Footer CTA */}
-        <section className="relative flex w-full flex-col items-center gap-8 overflow-hidden pb-24 pt-6 text-center">
-          <LandingBlueGlow variant="footer" />
-          <div className="landing-footer-glow pointer-events-none absolute inset-x-0 bottom-0 top-0" />
-          <h2 className="landing-section-title relative z-10 max-w-[680px] text-[clamp(1.75rem,3.5vw,3rem)]">
+      <LandingPixelSection className="py-20 md:py-28">
+        <div className="mx-auto flex max-w-3xl flex-col items-center gap-8 px-6 text-center">
+          <h2 className="font-serif text-4xl font-normal leading-tight tracking-tight text-white sm:text-5xl md:text-6xl">
             Upgrade your
-            <br />
+            <br className="hidden sm:block" />
             market research with AI
           </h2>
-          <div className="relative z-10 flex flex-col items-center gap-2.5">
+          <div className="flex flex-col items-center gap-2.5">
             <LandingCtaButton href={ctaHref}>Try for free</LandingCtaButton>
-            <p className="font-[family-name:var(--font-manrope)] text-sm font-semibold tracking-[-0.28px] text-white/25">
+            <p className="font-[family-name:var(--font-manrope)] text-sm font-semibold tracking-[-0.28px] text-white/50">
               No card required.
             </p>
           </div>
-        </section>
-      </main>
+        </div>
+      </LandingPixelSection>
 
       {/* Sticky footer banner */}
       <div className="landing-sticky-footer fixed inset-x-0 bottom-0 z-50 flex h-[88px] items-center justify-center gap-8 px-6">

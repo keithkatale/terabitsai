@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { usePathname } from "next/navigation";
 import { AppShell } from "@/components/layout/app-shell";
 import { AppTopBar } from "@/components/layout/app-top-bar";
 import { TradingWorkspace } from "@/components/workspace/trading-workspace";
@@ -11,7 +12,13 @@ import {
   useHITLRequests,
 } from "@/components/terminal/hitl-approval-modal";
 
-function AuthenticatedAppShellInner() {
+function isSetupRoute(pathname: string): boolean {
+  return pathname === "/app/setup" || pathname.startsWith("/app/setup/");
+}
+
+function AuthenticatedAppShellInner({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  const onSetup = isSetupRoute(pathname);
   const {
     user,
     signOut,
@@ -74,19 +81,22 @@ function AuthenticatedAppShellInner() {
         onSignOut={signOut}
         headerClassName="p-0"
         mainClassName="overflow-hidden"
+        hideBottomNav={onSetup}
         appTopBar={
-          <AppTopBar
-            tradingMode={tradingMode}
-            onTradingModeChange={setTradingMode}
-            walletAvailable={balance?.wallet_available ?? 0}
-            accountLoading={accountInitialLoading}
-            onDeposit={openDeposit}
-            engineStatus={engineStatus}
-            pendingHitl={pendingHitl.length}
-          />
+          onSetup ? undefined : (
+            <AppTopBar
+              tradingMode={tradingMode}
+              onTradingModeChange={setTradingMode}
+              walletAvailable={balance?.wallet_available ?? 0}
+              accountLoading={accountInitialLoading}
+              onDeposit={openDeposit}
+              engineStatus={engineStatus}
+              pendingHitl={pendingHitl.length}
+            />
+          )
         }
       >
-        <TradingWorkspace />
+        {onSetup ? children : <TradingWorkspace />}
       </AppShell>
 
       {activeHitl ? (
@@ -101,11 +111,11 @@ function AuthenticatedAppShellInner() {
 /**
  * Single /app surface: tab switches use client-side Next.js routes.
  */
-export function AuthenticatedAppShell() {
+export function AuthenticatedAppShell({ children }: { children: ReactNode }) {
   return (
     <AppTabProvider>
       <AppAccountProvider>
-        <AuthenticatedAppShellInner />
+        <AuthenticatedAppShellInner>{children}</AuthenticatedAppShellInner>
       </AppAccountProvider>
     </AppTabProvider>
   );

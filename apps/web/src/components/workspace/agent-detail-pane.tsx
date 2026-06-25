@@ -24,7 +24,7 @@ export function AgentDetailPane({
   return (
     <aside
       className={cn(
-        "flex h-full min-h-0 w-full max-w-md flex-col border-l border-white/[0.08] bg-[#050508]/95 backdrop-blur-md",
+        "flex h-full min-h-0 w-full flex-col border-l border-white/[0.08] bg-[#050508]/95 backdrop-blur-md",
         className,
       )}
     >

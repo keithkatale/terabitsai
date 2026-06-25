@@ -22,6 +22,8 @@ function isAuthRequired(pathname: string): boolean {
   if (pathname.startsWith("/api/funding")) return true;
   if (pathname.startsWith("/api/subscriptions")) return true;
   if (pathname.startsWith("/api/subscription")) return true;
+  if (pathname.startsWith("/api/onboard")) return true;
+  if (pathname.startsWith("/api/credits")) return true;
   return false;
 }
 
@@ -102,7 +104,36 @@ export async function middleware(request: NextRequest) {
   }
 
   if (AUTH_PATHS.has(pathname)) {
-    return NextResponse.redirect(new URL("/", request.url));
+    return NextResponse.redirect(new URL("/app/chat", request.url));
+  }
+
+  const setupExempt =
+    pathname === "/app/setup" ||
+    pathname.startsWith("/api/onboard") ||
+    pathname.startsWith("/api/credits");
+
+  if (!setupExempt && (pathname === "/app" || pathname.startsWith("/app/"))) {
+    const { data: profile, error: profileError } = await supabase
+      .from("user_account_profiles")
+      .select("onboarding_completed")
+      .eq("user_id", user!.id)
+      .maybeSingle();
+
+    if (!profileError && !profile?.onboarding_completed) {
+      return NextResponse.redirect(new URL("/app/setup", request.url));
+    }
+  }
+
+  if (pathname === "/app/setup" || pathname.startsWith("/app/setup/")) {
+    const { data: profile, error: profileError } = await supabase
+      .from("user_account_profiles")
+      .select("onboarding_completed")
+      .eq("user_id", user!.id)
+      .maybeSingle();
+
+    if (!profileError && profile?.onboarding_completed) {
+      return NextResponse.redirect(new URL("/app/chat", request.url));
+    }
   }
 
   if (isProRequired(pathname)) {
@@ -149,6 +180,7 @@ export const config = {
     "/api/hitl/:path*",
     "/api/funding/:path*",
     "/api/subscriptions/:path*",
-    "/api/subscription/:path*",
+    "/api/onboard/:path*",
+    "/api/credits/:path*",
   ],
 };

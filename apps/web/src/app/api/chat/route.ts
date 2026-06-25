@@ -24,6 +24,17 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { runAgentLoop } from "@/lib/chat/agent-loop";
 import { orchestratorToolDeclarations } from "@/lib/chat/tool-declarations";
 import { subAgentColorAt } from "@/lib/chat/subagent-types";
+import { getUserPlan } from "@/lib/subscription/access";
+import { buildPlanContextPrompt, filterToolsForPlan } from "@/lib/subscription/plan-context";
+import {
+  buildCreditsPrompt,
+  deductCredits,
+  ensureTrialCredits,
+} from "@/lib/subscription/credits";
+import {
+  buildAccountProfilePrompt,
+  getUserAccountProfile,
+} from "@/lib/account/user-profile";
 
 export const dynamic = "force-dynamic";
 
@@ -61,6 +72,25 @@ export async function POST(req: Request) {
     }
 
     const tradingMode = rawTradingMode === "live" ? "live" : "demo";
+    const userPlan = await getUserPlan(user.id);
+    const accountProfile = await getUserAccountProfile(user.id);
+    const credits = await ensureTrialCredits(user.id);
+    const planContext = buildPlanContextPrompt(userPlan);
+    const profileContext = buildAccountProfilePrompt(accountProfile);
+    const creditsContext = buildCreditsPrompt(credits.balance);
+
+    const creditCheck = await deductCredits(user.id);
+    if (!creditCheck.ok) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "Free trial credits exhausted. Upgrade at /pricing to continue.",
+          creditsRemaining: creditCheck.balance,
+        }),
+        { status: 402, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
     let memoryContext = "";
     let goalMission = "";
     let sessionContext: Awaited<ReturnType<typeof getSessionContext>> | null = null;
@@ -86,16 +116,19 @@ export async function POST(req: Request) {
     const conversationHistory = parseClientHistory(rawHistory);
     const isFirstTurn = conversationHistory.length === 0;
 
-    const firstTurnDirective = isFirstTurn
-      ? `\n\nFIRST TURN OF SESSION: Before your visible reply, call manage_goals(operation=list) and get_account_state. Lead with goal setup (if none) or goal progress (if active).`
-      : "";
+    const firstTurnDirective =
+      userPlan === "premium" && isFirstTurn
+        ? `\n\nFIRST TURN OF SESSION: Before your visible reply, call manage_goals(operation=list) and get_account_state. Lead with goal setup (if none) or goal progress (if active).`
+        : isFirstTurn
+          ? `\n\nFIRST TURN OF SESSION: Greet the user and understand what they need. On free/pro plans you provide analysis and signals only — do not offer managed trading or autonomous execution.`
+          : "";
 
     const tradingModeLabel =
       tradingMode === "live"
         ? "LIVE — the user trades on a real Capital.com account with real money. Never describe trades as simulated or paper. Trade tickets execute against their live balance."
         : "DEMO — paper trading only. Trades update a simulated portfolio; label them as paper/demo.";
 
-    const systemInstruction = `${goalMission}${firstTurnDirective}${aiToolsHint}
+    const systemInstruction = `${goalMission}${firstTurnDirective}${planContext}${profileContext}${creditsContext}${aiToolsHint}
 
 TRADING MODE: ${tradingModeLabel}
 
@@ -284,10 +317,12 @@ AUTONOMOUS WEALTH MANAGER (you LEAD — user MONITORS):
               sendEvent,
             };
 
+            const allowedTools = filterToolsForPlan(orchestratorToolDeclarations, userPlan);
+
             const { pendingGenui, pendingQuantUi } = await runAgentLoop({
               contents,
               systemInstruction,
-              functionDeclarations: orchestratorToolDeclarations,
+              functionDeclarations: allowedTools,
               toolCtx,
               maxLoops: 6,
               onEvent: (event) => {

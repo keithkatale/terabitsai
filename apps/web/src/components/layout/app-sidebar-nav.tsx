@@ -37,10 +37,10 @@ function NavItem({
   onClick?: () => void;
 }) {
   const className = cn(
-    "terminal-nav-item group flex w-full items-center text-xs font-semibold transition-all duration-200",
-    expanded ? "h-10 justify-start gap-3 px-3" : "mx-auto h-10 w-10 justify-center",
+    "terminal-nav-item group w-full items-center text-left text-xs font-semibold transition-all duration-200",
+    expanded ? "h-10 justify-start gap-3 px-3" : "h-10 justify-start gap-0 px-3",
     primary
-      ? cn("terminal-btn terminal-btn-primary", expanded ? "!justify-start" : "!min-h-10 !min-w-10 !p-0")
+      ? "terminal-btn terminal-btn-primary !justify-start"
       : active
         ? "terminal-nav-item-active"
         : "text-zinc-400 hover:text-zinc-100",
@@ -51,7 +51,7 @@ function NavItem({
       <span className={cn("relative shrink-0", active && !primary && "text-white")}>
         {icon}
       </span>
-      {expanded ? <span className="truncate">{label}</span> : null}
+      {expanded ? <span className="min-w-0 truncate">{label}</span> : null}
     </>
   );
 
@@ -71,9 +71,9 @@ function NavItem({
 }
 
 const APP_NAV_ITEMS: Array<{ tab: AppTab; label: string; icon: typeof Wallet }> = [
-  { tab: "home", label: "Wallet", icon: Wallet },
-  { tab: "markets", label: "Markets", icon: Briefcase },
   { tab: "chat", label: "Chat", icon: MessageSquare },
+  { tab: "markets", label: "Markets", icon: Briefcase },
+  { tab: "home", label: "Wallet", icon: Wallet },
 ];
 
 function AppTabNav({ expanded }: { expanded: boolean }) {
@@ -144,12 +144,14 @@ export function AppSidebarNav({
   user,
   onSignOut,
   showBranding = false,
+  minimalChrome = false,
 }: {
   expanded: boolean;
   onToggle: () => void;
   user: { email?: string | null } | null;
   onSignOut: () => void;
   showBranding?: boolean;
+  minimalChrome?: boolean;
 }) {
   const pathname = usePathname();
   const onHome = pathname === "/";
@@ -170,7 +172,7 @@ export function AppSidebarNav({
       <div className="flex flex-1 flex-col gap-1.5 p-2">
         {showBranding ? (
           <AppTabNav expanded={expanded} />
-        ) : (
+        ) : minimalChrome ? null : (
           <>
             <NavItem
               href="/"
@@ -180,7 +182,7 @@ export function AppSidebarNav({
               active={onHome}
             />
             <NavItem
-              href="/app/wallet"
+              href="/app/chat"
               icon={<ArrowUpRight className="size-4" strokeWidth={2} />}
               label="Open app"
               expanded={expanded}
@@ -212,7 +214,7 @@ export function AppSidebarNav({
               expanded={expanded}
             />
             <NavItem
-              href="/signup"
+              href="/signup?next=/app"
               icon={<UserPlus className="size-4" strokeWidth={2} />}
               label="Get started"
               expanded={expanded}

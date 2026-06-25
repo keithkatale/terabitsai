@@ -1,41 +1,9 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { BrandMark } from "@/components/ui/brand-mark";
 import { ResponsiveHeroBanner } from "@/components/ui/responsive-hero-banner";
 import { useAccount } from "@/hooks/use-account";
-import "@/components/landing/pixel-blast.css";
-
-const PixelBlast = dynamic(() => import("@/components/landing/pixel-blast.jsx"), {
-  ssr: false,
-});
-
-function HeroPixelBackground() {
-  return (
-    <>
-      <div className="landing-hero-pixel-blur">
-        <PixelBlast
-          variant="square"
-          pixelSize={12}
-          color="#1e4a8c"
-          patternScale={2.4}
-          patternDensity={0.72}
-          pixelSizeJitter={0.25}
-          enableRipples={false}
-          liquid
-          liquidStrength={0.08}
-          liquidRadius={1.2}
-          liquidWobbleSpeed={3.5}
-          speed={0.3}
-          edgeFade={0}
-          transparent
-          autoPauseOffscreen={false}
-        />
-      </div>
-      <div className="landing-hero-pixel-dim" />
-    </>
-  );
-}
+import { LandingPixelBackground } from "./landing-pixel-background";
 
 export function LandingHero() {
   const { user } = useAccount();
@@ -46,7 +14,7 @@ export function LandingHero() {
       className="!min-h-0 pb-4"
       minHeightClass="min-h-0"
       logo={<BrandMark size="sm" />}
-      backgroundSlot={<HeroPixelBackground />}
+      backgroundSlot={<LandingPixelBackground />}
       navLinks={[
         { label: "Features", href: "#features", isActive: false },
         { label: "Pricing", href: "/pricing" },

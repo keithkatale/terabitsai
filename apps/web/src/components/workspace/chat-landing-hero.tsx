@@ -16,7 +16,7 @@ const LANDING_COPY = {
     placeholder: "Ask about tagged assets or anything else…",
     upgrade: (
       <>
-        <Link href="/app/wallet" className="font-medium text-cyan-400 hover:underline">
+        <Link href="/pricing?upgrade=managed" className="font-medium text-cyan-400 hover:underline">
           Open Wallet
         </Link>
         {" · "}
@@ -75,7 +75,7 @@ export function ChatLandingHero({
   };
 
   return (
-    <div className="relative mx-auto flex min-h-full w-full max-w-3xl flex-col items-center justify-center px-4 py-8 pb-10 text-center">
+    <div className="relative flex min-h-full w-full flex-col items-center justify-center px-4 py-8 pb-10 text-center">
       {showBrandMark ? <BrandMark size="lg" className="mb-5" /> : null}
       {showUpgradeLink && copy.upgrade ? (
         <p className="mb-3 text-xs text-zinc-400">{copy.upgrade}</p>
@@ -86,7 +86,7 @@ export function ChatLandingHero({
       <p className="mb-7 max-w-md text-sm leading-relaxed text-zinc-300/85">
         {copy.description}
       </p>
-      <div className="w-full max-w-xl">
+      <div className="w-full max-w-2xl px-4">
         <InputBar
           value={value}
           onChange={onChange}

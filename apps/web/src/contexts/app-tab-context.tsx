@@ -46,14 +46,17 @@ export function tabPath(tab: AppTab, conversationId?: string | null): string {
     case "chat":
       return conversationId ? `/app/chat/${conversationId}` : "/app/chat";
     default:
-      return "/app/wallet";
+      return "/app/chat";
   }
 }
 
 export function parseTabFromPathname(pathname: string): {
-  tab: AppTab;
+  tab: AppTab | null;
   conversationId: string | null;
 } {
+  if (pathname === "/app/setup" || pathname.startsWith("/app/setup/")) {
+    return { tab: null, conversationId: null };
+  }
   if (pathname.startsWith("/app/chat/")) {
     const id = pathname.slice("/app/chat/".length).split("/")[0];
     return { tab: "chat", conversationId: id || null };
@@ -75,7 +78,7 @@ export function parseTabFromPathname(pathname: string): {
 }
 
 type AppTabContextValue = {
-  activeTab: AppTab;
+  activeTab: AppTab | null;
   routeConversationId: string | null;
   setActiveTab: (tab: AppTab) => void;
   navigateToConversation: (conversationId: string, opts?: { replace?: boolean }) => void;
@@ -88,7 +91,7 @@ export function AppTabProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const route = useMemo(() => parseTabFromPathname(pathname), [pathname]);
-  const [activeTab, setActiveTabState] = useState<AppTab>(route.tab);
+  const [activeTab, setActiveTabState] = useState<AppTab | null>(route.tab);
 
   useEffect(() => {
     setActiveTabState(route.tab);

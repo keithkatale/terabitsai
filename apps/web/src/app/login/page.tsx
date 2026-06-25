@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { getPostAuthPath } from "@/lib/auth/post-auth";
 import { PageBackground } from "@/components/ui/page-background";
 import { BrandMark } from "@/components/ui/brand-mark";
 
@@ -12,6 +13,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [signupHref, setSignupHref] = useState("/signup");
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -19,6 +21,8 @@ export default function LoginPage() {
     if (err === "auth_callback_failed") {
       setError("Sign-in could not be completed. Please try again.");
     }
+    const next = params.get("next");
+    setSignupHref(next ? `/signup?next=${encodeURIComponent(next)}` : "/signup");
   }, []);
 
   const onSubmit = async (e: React.FormEvent) => {
@@ -34,9 +38,7 @@ export default function LoginPage() {
       });
       if (signInError) throw signInError;
 
-      const next =
-        new URLSearchParams(window.location.search).get("next") || "/";
-      window.location.href = next;
+      window.location.href = getPostAuthPath(window.location.search);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Could not sign in. Try again."
@@ -111,7 +113,7 @@ export default function LoginPage() {
           <p className="mt-6 text-center text-sm text-zinc-500">
             No account?{" "}
             <Link
-              href="/signup"
+              href={signupHref}
               className="text-blue-400 font-semibold hover:text-blue-300"
             >
               Create one

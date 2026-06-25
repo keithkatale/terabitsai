@@ -237,7 +237,7 @@ export function ChatMessage({
     if (monitorPart) {
       return (
         <div ref={rootRef} className="flex justify-end w-full animate-fade-in">
-          <div className="max-w-[85%] sm:max-w-[640px] rounded-xl border border-cyan-500/30 bg-cyan-950/40 px-3.5 py-2.5 text-sm leading-relaxed text-zinc-100">
+          <div className="max-w-[85%] rounded-xl border border-cyan-500/30 bg-cyan-950/40 px-3.5 py-2.5 text-sm leading-relaxed text-zinc-100">
             <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-cyan-400">
               Wealth Monitor → Command
             </p>
@@ -249,7 +249,7 @@ export function ChatMessage({
 
     return (
       <div ref={rootRef} className="flex justify-end w-full animate-fade-in">
-        <div className="max-w-[85%] sm:max-w-[640px] whitespace-pre-wrap rounded-xl border border-zinc-800 bg-zinc-900/60 px-3.5 py-2.5 text-sm leading-relaxed text-zinc-200">
+        <div className="max-w-[85%] whitespace-pre-wrap rounded-xl border border-zinc-800 bg-zinc-900/60 px-3.5 py-2.5 text-sm leading-relaxed text-zinc-200">
           {userText}
         </div>
       </div>
@@ -298,7 +298,7 @@ export function ChatMessage({
           <AssistantSiriOrb active={isAssistantStreaming} sizePx={28} className="mt-0.5" />
         </div>
       ) : null}
-      <div className="w-full sm:max-w-[760px] min-w-0 flex-1 space-y-2 px-0.5">
+      <div className="w-full min-w-0 flex-1 space-y-2 px-0.5">
         {hasActivity ? (
           <AgentActivityBridge
             reasoning={reasoningText}
