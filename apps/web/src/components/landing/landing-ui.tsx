@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { AnalyticsEvents, captureEvent } from "@/lib/posthog/analytics";
 
 /** Primary CTA — matches Figma lemlist button (#316bff). */
 export function LandingCtaButton({
@@ -18,6 +19,12 @@ export function LandingCtaButton({
   return (
     <Link
       href={href}
+      onClick={() => {
+        captureEvent(AnalyticsEvents.CTA_CLICKED, {
+          href,
+          label: typeof children === "string" ? children : "cta",
+        });
+      }}
       className={cn(
         "terminal-btn terminal-btn-primary",
         size === "lg" ? "px-7 py-3.5 text-base" : "px-6 py-3 text-sm",

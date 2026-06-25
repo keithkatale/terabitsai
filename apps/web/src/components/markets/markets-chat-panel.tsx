@@ -106,9 +106,13 @@ function liveStatusFromMessage(
 export function MarketsChatPanel({
   open,
   onToggle,
+  fullWidth,
+  hideCollapseOnMobile,
 }: {
   open: boolean;
   onToggle: () => void;
+  fullWidth?: boolean;
+  hideCollapseOnMobile?: boolean;
 }) {
   const { symbol, tvSymbol, displayName, interval, indicators } = useChartContext();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -430,7 +434,7 @@ export function MarketsChatPanel({
 
   if (!open) {
     return (
-      <div className="flex h-full w-10 shrink-0 flex-col items-center border-l border-white/6 bg-black/30 py-3">
+      <div className="flex h-full w-10 shrink-0 flex-col items-center border-l border-white/6 bg-black/30 py-3 max-lg:hidden">
         <button
           type="button"
           onClick={onToggle}
@@ -449,7 +453,12 @@ export function MarketsChatPanel({
 
   return (
     <ChatWidgetProvider onWidgetAction={handleWidgetAction}>
-      <aside className="flex h-full w-[min(440px,42vw)] shrink-0 flex-col border-l border-white/6 bg-[var(--terminal-surface)]">
+      <aside
+        className={cn(
+          "flex h-full shrink-0 flex-col border-l border-white/6 bg-[var(--terminal-surface)]",
+          fullWidth ? "w-full max-w-none" : "w-[min(440px,42vw)]",
+        )}
+      >
         {/* Header */}
         <div className="flex items-center justify-between gap-2 border-b border-white/6 px-3 py-2.5">
           <div className="flex items-center gap-2">
@@ -462,7 +471,10 @@ export function MarketsChatPanel({
           <button
             type="button"
             onClick={onToggle}
-            className="rounded-lg p-1.5 text-zinc-500 hover:text-zinc-300"
+            className={cn(
+              "rounded-lg p-1.5 text-zinc-500 hover:text-zinc-300",
+              hideCollapseOnMobile && "max-lg:hidden",
+            )}
             title="Collapse panel"
           >
             <ChevronRight className="size-4" />

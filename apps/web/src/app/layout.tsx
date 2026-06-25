@@ -1,6 +1,8 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import { DM_Sans } from "next/font/google";
+import { PostHogProvider } from "@/components/providers/posthog-provider";
+import { PostHogConfigScript } from "@/components/posthog-config-script";
 import { SupabaseConfigScript } from "@/components/supabase-config-script";
 
 export const dynamic = "force-dynamic";
@@ -16,8 +18,8 @@ export const metadata: Metadata = {
   title: "Terabits AI",
   description: "AI-powered trading terminal with paper wallet, live market data, and generative analysis",
   icons: {
-    icon: "/benchmark-logo-black-bg.png",
-    apple: "/benchmark-logo-black-bg.png",
+    icon: "/benchmark.png",
+    apple: "/benchmark.png",
   },
 };
 
@@ -26,7 +28,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={dmSans.variable}>
       <body className={dmSans.className}>
         <SupabaseConfigScript />
-        {children}
+        <PostHogConfigScript />
+        <PostHogProvider>{children}</PostHogProvider>
       </body>
     </html>
   );

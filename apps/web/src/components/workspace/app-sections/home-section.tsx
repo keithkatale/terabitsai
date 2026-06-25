@@ -236,7 +236,7 @@ export function HomeSection({
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-20 lg:pb-6">
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-[calc(var(--app-bottom-nav-height)+1rem+env(safe-area-inset-bottom,0px))] lg:pb-6">
       <div className="mx-auto max-w-[1400px] p-2 sm:p-3 lg:p-3">
         <div className="flex items-center justify-between gap-3">
           <h1 className="text-lg font-semibold leading-tight text-white sm:text-xl">Wallet</h1>

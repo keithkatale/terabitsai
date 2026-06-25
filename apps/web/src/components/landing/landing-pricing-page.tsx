@@ -87,7 +87,7 @@ export function LandingPricingPage() {
 
   return (
     <div
-      className={`landing-page min-h-screen font-[family-name:var(--font-inter)] ${manrope.variable} ${inter.variable} ${poppins.variable}`}
+      className={`landing-page min-h-screen pb-[calc(var(--landing-sticky-footer-height)+env(safe-area-inset-bottom,0px))] font-[family-name:var(--font-inter)] sm:pb-0 ${manrope.variable} ${inter.variable} ${poppins.variable}`}
     >
       <ResponsiveHeroBanner
         className="pb-2"
@@ -113,7 +113,7 @@ export function LandingPricingPage() {
         secondaryButtonHref="/#features"
       />
 
-      <main className="mx-auto flex max-w-[980px] flex-col items-center gap-[var(--landing-section-gap)] px-6 pt-16 md:pt-20">
+      <main className="mx-auto flex max-w-[980px] flex-col items-center gap-[var(--landing-section-gap)] px-4 pt-12 sm:px-6 sm:pt-16 md:pt-20">
         <section className="flex w-full flex-col items-center gap-4 text-center">
           <h2 className="landing-section-title text-[clamp(1.75rem,3.5vw,2.75rem)]">
             Transparent pricing

@@ -1,7 +1,7 @@
 import Image from "next/image";
 import { cn } from "@/lib/utils";
 
-export const APP_LOGO_SRC = "/benchmark-logo-black-bg.png";
+export const APP_LOGO_SRC = "/benchmark.png";
 
 const sizeConfig = {
   sm: { box: "h-7 w-7 rounded-[10px]", px: 28, word: "text-sm" },

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Briefcase, MessageSquare, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { tabPath, useAppTab, type AppTab } from "@/contexts/app-tab-context";
+import { AnalyticsEvents, captureEvent } from "@/lib/posthog/analytics";
 
 const MOBILE_NAV_ITEMS: Array<{
   tab: AppTab;
@@ -22,8 +23,9 @@ export function AppBottomNav() {
     <nav
       aria-label="App navigation"
       className={cn(
-        "fixed bottom-[calc(16px+env(safe-area-inset-bottom,0px))] left-4 right-4 z-45",
-        "flex items-center justify-between rounded-[24px] border border-white/8 bg-[var(--terminal-surface)]/95 px-3 py-2 shadow-[0_16px_40px_rgba(0,0,0,0.55)] backdrop-blur-xl lg:hidden",
+        "app-bottom-nav-docked fixed inset-x-0 bottom-0 z-50 lg:hidden",
+        "flex items-stretch justify-around border-t border-white/10 bg-[var(--terminal-surface)]",
+        "pt-1 pb-[env(safe-area-inset-bottom,0px)]",
       )}
     >
       {MOBILE_NAV_ITEMS.map(({ tab, label, icon: Icon }) => {
@@ -34,8 +36,13 @@ export function AppBottomNav() {
             href={tabPath(tab)}
             aria-label={label}
             aria-current={selected ? "page" : undefined}
+            onClick={() => {
+              if (!selected) {
+                captureEvent(AnalyticsEvents.TAB_CHANGED, { tab });
+              }
+            }}
             className={cn(
-              "flex flex-1 flex-col items-center justify-center gap-1 rounded-full py-2 transition-transform active:scale-95",
+              "flex min-h-[var(--app-bottom-nav-height)] flex-1 flex-col items-center justify-center gap-0.5 px-2 transition-colors active:bg-white/[0.04]",
               selected && "terminal-nav-item-active",
             )}
           >

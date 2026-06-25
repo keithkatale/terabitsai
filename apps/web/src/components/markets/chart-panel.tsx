@@ -6,6 +6,7 @@ import { useChartContext } from "@/contexts/chart-context";
 import { useChartAnalysis } from "@/hooks/use-chart-analysis";
 import { AiAnalysisPanel } from "./ai-analysis-panel";
 import { ChartToolbar } from "./chart-toolbar";
+import { AnalyticsEvents, captureEvent } from "@/lib/posthog/analytics";
 
 export function ChartPanel() {
   const {
@@ -41,8 +42,9 @@ export function ChartPanel() {
 
   const handleAnalyze = useCallback(() => {
     setAnalysisOpen(true);
+    captureEvent(AnalyticsEvents.CHART_ANALYZED, { symbol, interval });
     void runAnalysis({ bypassCache: true });
-  }, [runAnalysis]);
+  }, [runAnalysis, symbol, interval]);
 
   return (
     <div className="flex min-w-0 flex-1 overflow-hidden bg-zinc-950">

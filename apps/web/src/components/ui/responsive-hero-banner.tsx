@@ -98,8 +98,8 @@ export function ResponsiveHeroBanner({
       <div className="pointer-events-none absolute inset-0 ring-1 ring-white/5 ring-inset" />
 
       <header className="relative z-10">
-        <div className="mx-6">
-          <div className="flex items-center justify-between pt-4">
+        <div className="mx-4 sm:mx-6">
+          <div className="flex items-center justify-between gap-3 pt-3 sm:pt-4">
             {logo ? (
               <Link href="/" className="inline-flex shrink-0">
                 {logo}
@@ -169,10 +169,10 @@ export function ResponsiveHeroBanner({
       </header>
 
       <div className="relative z-10">
-        <div className="mx-auto max-w-7xl px-6 pb-16 pt-16 sm:pt-20 md:pt-24 lg:pt-28">
+        <div className="mx-auto max-w-7xl px-4 pb-12 pt-12 sm:px-6 sm:pb-16 sm:pt-16 md:pt-20 lg:pt-24">
           <div className="mx-auto max-w-3xl text-center">
             {badgeText ? (
-              <div className="animate-fade-slide-in-1 mb-6 inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/5 px-2.5 py-2 backdrop-blur-md">
+              <div className="animate-fade-slide-in-1 mb-5 inline-flex max-w-full flex-wrap items-center justify-center gap-2 rounded-full border border-white/15 bg-white/5 px-2.5 py-2 backdrop-blur-md sm:mb-6 sm:gap-3">
                 <span className="inline-flex items-center rounded-full border border-[#316bff]/35 bg-[#316bff]/20 px-2 py-0.5 text-xs font-semibold text-cyan-200">
                   {badgeLabel}
                 </span>
@@ -180,7 +180,7 @@ export function ResponsiveHeroBanner({
               </div>
             ) : null}
 
-            <h1 className="animate-fade-slide-in-2 font-serif text-4xl font-normal leading-tight tracking-tight text-white sm:text-5xl md:text-6xl lg:text-7xl">
+            <h1 className="animate-fade-slide-in-2 font-serif text-[clamp(2rem,8vw,4.5rem)] font-normal leading-[1.08] tracking-tight text-white sm:text-5xl md:text-6xl lg:text-7xl">
               {title}
               {titleLine2 ? (
                 <>

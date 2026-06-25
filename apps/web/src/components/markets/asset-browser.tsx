@@ -29,9 +29,10 @@ function categoryForAsset(asset: ReturnType<typeof getCapitalAssetCatalog>[0]): 
   return "all";
 }
 
-export function AssetBrowser({ collapsed, onToggleCollapsed }: {
+export function AssetBrowser({ collapsed, onToggleCollapsed, fullWidth }: {
   collapsed: boolean;
   onToggleCollapsed: () => void;
+  fullWidth?: boolean;
 }) {
   const catalog = useMemo(() => getCapitalAssetCatalog(), []);
   const {
@@ -124,7 +125,12 @@ export function AssetBrowser({ collapsed, onToggleCollapsed }: {
   }
 
   return (
-    <aside className="flex h-full w-[min(280px,32vw)] shrink-0 flex-col border-r border-white/6 bg-black/20">
+    <aside
+      className={cn(
+        "flex h-full shrink-0 flex-col border-r border-white/6 bg-black/20",
+        fullWidth ? "w-full max-w-none" : "w-[min(280px,32vw)]",
+      )}
+    >
       <div className="flex items-center justify-between gap-2 border-b border-white/6 px-3 py-2.5">
         <span className="text-xs font-bold uppercase tracking-wider text-zinc-400">Markets</span>
         <button

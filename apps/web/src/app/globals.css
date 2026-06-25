@@ -70,6 +70,10 @@
   --quant-accent-zinc: #a1a1aa;
   --quant-accent-zinc-soft: rgba(161, 161, 170, 0.1);
   --quant-accent-zinc-border: rgba(113, 113, 122, 0.35);
+
+  /* Docked mobile app nav (full-width, flush to bottom) */
+  --app-bottom-nav-height: 3.5rem;
+  --landing-sticky-footer-height: 4.5rem;
 }
 
 * {

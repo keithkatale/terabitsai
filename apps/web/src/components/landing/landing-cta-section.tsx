@@ -14,7 +14,7 @@ export function LandingCtaSection({
   return (
     <section
       className={cn(
-        "w-full px-6 py-[var(--landing-section-gap)]",
+        "w-full px-4 py-[var(--landing-section-gap)] sm:px-6",
         className,
       )}
     >

@@ -8,6 +8,7 @@ import { AssistantSiriOrb } from "@/components/ai-elements/agent-orb";
 import { cn } from "@/lib/utils";
 import type { OnboardProfileDraft, ProfileFieldKey } from "@/lib/onboard/profile-types";
 import type { ProfileQuestionPayload } from "@/lib/onboard/profile-question-fallback";
+import { AnalyticsEvents, captureEvent } from "@/lib/posthog/analytics";
 
 type TranscriptLine = { role: "user" | "assistant"; content: string };
 
@@ -237,6 +238,7 @@ export function SetupQuestionnaire() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to save profile");
+      captureEvent(AnalyticsEvents.ONBOARDING_COMPLETED);
       router.replace(chatDraftPath());
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to complete setup");

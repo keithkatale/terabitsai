@@ -45,8 +45,6 @@ type ConversationPickerProps = {
   children?: ReactNode;
 };
 
-const PANEL_WIDTH = 260;
-
 export function ConversationPicker({
   conversations,
   activeConversationId,
@@ -58,9 +56,17 @@ export function ConversationPicker({
   children,
 }: ConversationPickerProps) {
   const router = useRouter();
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const titleId = useId();
   const panelId = useId();
+
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const sync = () => setOpen(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
 
   const active =
     conversations.find((c) => c.id === activeConversationId) ?? conversations[0];
@@ -78,16 +84,26 @@ export function ConversationPicker({
   }, [disabled, onNewChat]);
 
   return (
-    <div className={cn("flex h-full min-h-0 w-full overflow-hidden", className)}>
+    <div className={cn("relative flex h-full min-h-0 w-full overflow-hidden", className)}>
+      {open ? (
+        <button
+          type="button"
+          aria-label="Close conversations"
+          className="absolute inset-0 z-20 bg-black/50 lg:hidden"
+          onClick={() => setOpen(false)}
+        />
+      ) : null}
       <aside
         id={panelId}
         aria-labelledby={titleId}
         className={cn(
           "flex h-full shrink-0 flex-col overflow-hidden border-r border-white/[0.08] bg-[var(--terminal-surface)] transition-[width] duration-300 ease-out",
-          open ? "w-[260px]" : "w-0 border-r-0",
+          open
+            ? "w-full max-lg:absolute max-lg:inset-y-0 max-lg:left-0 max-lg:z-30 max-lg:shadow-2xl lg:w-[260px]"
+            : "w-0 border-r-0",
         )}
       >
-        <div className="flex h-full min-h-0 flex-col" style={{ width: PANEL_WIDTH }}>
+        <div className="flex h-full min-h-0 w-full flex-col lg:w-[260px]">
           <header className="flex shrink-0 items-center justify-between gap-2 border-b border-white/[0.08] px-3 py-2.5">
             <div className="min-w-0">
               <p id={titleId} className="text-sm font-semibold text-white">

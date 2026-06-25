@@ -96,6 +96,13 @@ export function ChartProvider({ children }: { children: ReactNode }) {
     if (prefs.interval) setIntervalState(prefs.interval);
     if (prefs.indicators?.length) setIndicatorsState(prefs.indicators);
     if (prefs.watchlist?.length) setWatchlist(prefs.watchlist);
+
+    const isMobile = window.matchMedia("(max-width: 1023px)").matches;
+    if (isMobile) {
+      setAiPanelOpen(false);
+      setBrowserCollapsed(true);
+    }
+
     setHydrated(true);
   }, []);
 

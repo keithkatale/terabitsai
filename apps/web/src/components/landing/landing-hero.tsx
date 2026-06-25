@@ -13,7 +13,7 @@ export function LandingHero() {
   return (
     <ResponsiveHeroBanner
       className="pb-4"
-      minHeightClass="min-h-[88vh]"
+      minHeightClass="min-h-[min(88svh,920px)]"
       logo={<BrandMark size="sm" />}
       backgroundSlot={<LandingHeroBackground />}
       backgroundScrim={false}

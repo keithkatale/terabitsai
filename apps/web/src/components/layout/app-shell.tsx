@@ -70,7 +70,7 @@ export function AppShell({
             isAppRoute && !isSetupRoute ? "p-0" : "p-0",
             isAppRoute &&
               !isSetupRoute &&
-              "pb-[calc(88px+env(safe-area-inset-bottom,0px))] lg:pb-0",
+              "pb-[calc(var(--app-bottom-nav-height)+env(safe-area-inset-bottom,0px))] lg:pb-0",
             mainClassName,
           )}
         >
