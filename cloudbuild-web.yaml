@@ -2,29 +2,31 @@ steps:
   - name: gcr.io/cloud-builders/docker
     args:
       - build
+      - -f
+      - Dockerfile
       - --build-arg
       - NEXT_PUBLIC_SUPABASE_URL=${_NEXT_PUBLIC_SUPABASE_URL}
       - --build-arg
       - NEXT_PUBLIC_SUPABASE_ANON_KEY=${_NEXT_PUBLIC_SUPABASE_ANON_KEY}
       - -t
-      - ${_IMAGE}
+      - ${_AR_HOSTNAME}/${_AR_PROJECT_ID}/${_AR_REPOSITORY}/${_REPO_NAME}/${_SERVICE_NAME}:$COMMIT_SHA
       - .
 
   - name: gcr.io/cloud-builders/docker
     args:
       - push
-      - ${_IMAGE}
+      - ${_AR_HOSTNAME}/${_AR_PROJECT_ID}/${_AR_REPOSITORY}/${_REPO_NAME}/${_SERVICE_NAME}:$COMMIT_SHA
 
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
     entrypoint: gcloud
     args:
       - run
       - deploy
-      - ${_SERVICE}
+      - ${_SERVICE_NAME}
       - --image
-      - ${_IMAGE}
+      - ${_AR_HOSTNAME}/${_AR_PROJECT_ID}/${_AR_REPOSITORY}/${_REPO_NAME}/${_SERVICE_NAME}:$COMMIT_SHA
       - --region
-      - ${_REGION}
+      - ${_DEPLOY_REGION}
       - --platform
       - managed
       - --allow-unauthenticated
@@ -42,12 +44,15 @@ steps:
       - NEXT_PUBLIC_SUPABASE_URL=${_NEXT_PUBLIC_SUPABASE_URL},NEXT_PUBLIC_SUPABASE_ANON_KEY=${_NEXT_PUBLIC_SUPABASE_ANON_KEY},CHART_RENDER_SERVICE_URL=${_CHART_RENDER_SERVICE_URL},CHART_RENDER_API_KEY=${_CHART_RENDER_API_KEY},WEALTH_MONITOR_ENABLED=false
 
 images:
-  - ${_IMAGE}
+  - ${_AR_HOSTNAME}/${_AR_PROJECT_ID}/${_AR_REPOSITORY}/${_REPO_NAME}/${_SERVICE_NAME}:$COMMIT_SHA
 
 substitutions:
-  _SERVICE: ai-agent-platform-web
-  _REGION: us-central1
-  _IMAGE: us-central1-docker.pkg.dev/project-bf065c0a-e475-47c4-b25/cloud-run-source-deploy/terabitsai/ai-agent-platform-web:$COMMIT_SHA
+  _AR_HOSTNAME: us-central1-docker.pkg.dev
+  _AR_PROJECT_ID: project-bf065c0a-e475-47c4-b25
+  _AR_REPOSITORY: cloud-run-source-deploy
+  _REPO_NAME: terabitsai
+  _SERVICE_NAME: ai-agent-platform-web
+  _DEPLOY_REGION: us-central1
   _NEXT_PUBLIC_SUPABASE_URL: https://wsxzbqfeafzccprlllpu.supabase.co
   _NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndzeHpicWZlYWZ6Y2NwcmxsbHB1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2NTEzNjksImV4cCI6MjA5NzIyNzM2OX0.Z38OBV7d1ki6SD298NzRcQMsEHuit7WGhf4yA3-XqPM
   _CHART_RENDER_SERVICE_URL: https://ai-agent-platform-chart-renderer-73vs3tcpga-uc.a.run.app

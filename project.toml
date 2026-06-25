@@ -1,5 +1,6 @@
-# Google Cloud Buildpacks fallback — npm workspaces monorepo, Next.js standalone.
-# Primary deploy uses Dockerfile via cloudbuild-web.yaml (GitHub trigger).
+# Google Cloud Buildpacks fallback — NOT used for production deploy.
+# The GitHub trigger must use cloudbuild-web.yaml (Dockerfile). Buildpacks
+# mis-detect this monorepo and produce images without Node.js in PATH.
 [[build.env]]
 name = "GOOGLE_NODE_RUN_SCRIPTS"
 value = "build"
