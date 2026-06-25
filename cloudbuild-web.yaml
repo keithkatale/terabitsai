@@ -35,6 +35,9 @@ steps:
       - --memory
       - "2Gi"
       - --cpu-boost
+      - --quiet
+      - --update-labels
+      - managed-by=gcp-cloud-build-deploy-cloud-run,commit-sha=$COMMIT_SHA,gcb-build-id=$BUILD_ID
       - --update-env-vars
       - NEXT_PUBLIC_SUPABASE_URL=${_NEXT_PUBLIC_SUPABASE_URL},NEXT_PUBLIC_SUPABASE_ANON_KEY=${_NEXT_PUBLIC_SUPABASE_ANON_KEY},CHART_RENDER_SERVICE_URL=${_CHART_RENDER_SERVICE_URL},CHART_RENDER_API_KEY=${_CHART_RENDER_API_KEY},WEALTH_MONITOR_ENABLED=false
 
@@ -44,7 +47,7 @@ images:
 substitutions:
   _SERVICE: ai-agent-platform-web
   _REGION: us-central1
-  _IMAGE: us-central1-docker.pkg.dev/project-bf065c0a-e475-47c4-b25/cloud-run-source-deploy/ai-agent-platform-web:latest
+  _IMAGE: us-central1-docker.pkg.dev/project-bf065c0a-e475-47c4-b25/cloud-run-source-deploy/terabitsai/ai-agent-platform-web:$COMMIT_SHA
   _NEXT_PUBLIC_SUPABASE_URL: https://wsxzbqfeafzccprlllpu.supabase.co
   _NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndzeHpicWZlYWZ6Y2NwcmxsbHB1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2NTEzNjksImV4cCI6MjA5NzIyNzM2OX0.Z38OBV7d1ki6SD298NzRcQMsEHuit7WGhf4yA3-XqPM
   _CHART_RENDER_SERVICE_URL: https://ai-agent-platform-chart-renderer-73vs3tcpga-uc.a.run.app

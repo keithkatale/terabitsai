@@ -1,13 +1,17 @@
-# Google Cloud Buildpacks — npm workspaces monorepo, Next.js standalone on Cloud Run
+# Google Cloud Buildpacks fallback — npm workspaces monorepo, Next.js standalone.
+# Primary deploy uses Dockerfile via cloudbuild-web.yaml (GitHub trigger).
 [[build.env]]
-name = "GOOGLE_ENTRYPOINT"
-value = "node apps/web/.next/standalone/apps/web/server.js"
+name = "GOOGLE_NODE_RUN_SCRIPTS"
+value = "build"
+
+[[build.env]]
+name = "GOOGLE_PACKAGE_MANAGER"
+value = "npm"
+
+[[build.env]]
+name = "GOOGLE_NODEJS_VERSION"
+value = "20"
 
 [[build.env]]
 name = "HOSTNAME"
 value = "0.0.0.0"
-
-# Build packages in dependency order before the web app
-[[build.env]]
-name = "GOOGLE_BUILD_COMMAND"
-value = "npm run build"
