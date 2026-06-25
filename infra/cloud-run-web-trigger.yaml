@@ -1,0 +1,22 @@
+name: rmgpgab-ai-agent-platform-web-us-central1-keithkatale-terabidcz
+description: Build and deploy to Cloud Run service ai-agent-platform-web on push to "^main$"
+github:
+  owner: keithkatale
+  name: terabitsai
+  push:
+    branch: ^main$
+filename: cloudbuild-web.yaml
+includeBuildLogs: INCLUDE_BUILD_LOGS_WITH_STATUS
+serviceAccount: projects/project-bf065c0a-e475-47c4-b25/serviceAccounts/1087505105808-compute@developer.gserviceaccount.com
+substitutions:
+  _AR_HOSTNAME: us-central1-docker.pkg.dev
+  _AR_PROJECT_ID: project-bf065c0a-e475-47c4-b25
+  _AR_REPOSITORY: cloud-run-source-deploy
+  _DEPLOY_REGION: us-central1
+  _PLATFORM: managed
+  _SERVICE_NAME: ai-agent-platform-web
+  _TRIGGER_ID: c43c0b34-7811-4e90-ae40-a30971020b0e
+tags:
+  - gcp-cloud-build-deploy-cloud-run
+  - gcp-cloud-build-deploy-cloud-run-managed
+  - ai-agent-platform-web
