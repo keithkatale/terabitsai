@@ -17,7 +17,7 @@ export const plans: Plan[] = [
     period: "forever",
     description: "AI market analysis in a focused chat experience.",
     features: [
-      "Unlimited AI chat on /",
+      "Unlimited AI chat on /try",
       "Market reasoning & education",
       "No live terminal or market panels",
     ],

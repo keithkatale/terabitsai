@@ -54,6 +54,7 @@ import type { ChatStreamEvent, ChatToolPod } from "@/lib/chat/stream-types";
 import {
   buildActivityTimeline,
   type ActivityPartRef,
+  applyUserUpdateToParts,
 } from "@/lib/chat/activity-timeline";
 import { deriveLiveTraceFromSteps, LIVE_TRACE_PLANNING } from "@/lib/chat/live-trace";
 import type { SubAgentState } from "@/lib/chat/subagent-types";
@@ -114,6 +115,7 @@ interface MessagePart {
     | "reasoning"
     | "text"
     | "tool_ref"
+    | "user_update"
     | "trade-execution"
     | "genui"
     | "quant-ui"
@@ -147,6 +149,9 @@ function mapPersistedParts(
     if (p.type === "tool_ref" && p.toolUseId) {
       return { type: "tool_ref" as const, toolUseId: p.toolUseId };
     }
+    if (p.type === "user_update") {
+      return { type: "user_update" as const, text: p.text };
+    }
     if (p.type === "reasoning") {
       return { type: "reasoning" as const, text: p.text };
     }
@@ -175,12 +180,16 @@ function isVisibleChatMessage(msg: {
 
 function activityPartsFromMessage(parts: MessagePart[]): ActivityPartRef[] {
   return parts
-    .filter((p) => p.type === "reasoning" || p.type === "tool_ref")
-    .map((p) =>
-      p.type === "tool_ref" && p.toolUseId
-        ? { type: "tool_ref" as const, toolUseId: p.toolUseId }
-        : { type: "reasoning" as const, text: p.text },
-    );
+    .filter((p) => p.type === "reasoning" || p.type === "tool_ref" || p.type === "user_update")
+    .map((p) => {
+      if (p.type === "tool_ref" && p.toolUseId) {
+        return { type: "tool_ref" as const, toolUseId: p.toolUseId };
+      }
+      if (p.type === "user_update") {
+        return { type: "user_update" as const, text: p.text };
+      }
+      return { type: "reasoning" as const, text: p.text };
+    });
 }
 
 function appendReasoningPart(parts: MessagePart[], text: string): MessagePart[] {
@@ -1474,6 +1483,22 @@ export function TradingWorkspace() {
               const lastMsg = updated[updated.length - 1];
               if (!lastMsg || lastMsg.id !== assistantMsgId) return prev;
 
+              if (event.type === "user_update") {
+                const activityParts = activityPartsFromMessage(lastMsg.parts);
+                const nextActivityParts = applyUserUpdateToParts(activityParts, event.message);
+                const parts: MessagePart[] = [
+                  ...lastMsg.parts,
+                  { type: "user_update", text: event.message },
+                ];
+                updated[updated.length - 1] = {
+                  ...lastMsg,
+                  parts,
+                  liveStatus: liveStatusFromMessage(nextActivityParts, lastMsg.toolPods ?? []),
+                  liveStatusDetail: undefined,
+                };
+                return updated;
+              }
+
               if (event.type === "reasoning") {
                 const parts = appendReasoningPart(lastMsg.parts, event.text);
                 updated[updated.length - 1] = {
@@ -1575,6 +1600,7 @@ export function TradingWorkspace() {
               if (
                 event.type === "subagent_start" ||
                 event.type === "subagent_reasoning" ||
+                event.type === "subagent_update" ||
                 event.type === "subagent_text" ||
                 event.type === "subagent_tool_start" ||
                 event.type === "subagent_tool_end" ||

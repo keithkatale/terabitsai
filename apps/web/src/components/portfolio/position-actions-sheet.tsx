@@ -227,7 +227,7 @@ export function PositionActionsSheet({
             })
           }
           className={cn(
-            "terminal-btn terminal-btn-primary w-full rounded-2xl py-3 text-sm font-bold",
+            "terminal-btn terminal-btn-primary w-full py-3 text-sm font-bold",
             action === "liquidate" && "bg-[var(--accent-red)]/90 hover:bg-[var(--accent-red)]",
           )}
         >

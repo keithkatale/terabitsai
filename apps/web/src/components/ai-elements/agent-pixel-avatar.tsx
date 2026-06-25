@@ -3,6 +3,7 @@
 import { cn } from "@/lib/utils";
 import type { SubAgentColorScheme } from "@/lib/chat/subagent-types";
 import PixelBlast from "./pixel-blast.jsx";
+import { AGENT_PIXEL_ACTIVE_SPEED } from "./agent-visual-constants";
 
 export type AgentPixelColorScheme = "green" | SubAgentColorScheme;
 
@@ -47,7 +48,7 @@ export function AgentPixelAvatar({
         pixelSizeJitter={0.2}
         enableRipples={false}
         liquid={false}
-        speed={active ? 7.8 : 0}
+        speed={active ? AGENT_PIXEL_ACTIVE_SPEED : 0}
         edgeFade={0}
         transparent
         autoPauseOffscreen={false}

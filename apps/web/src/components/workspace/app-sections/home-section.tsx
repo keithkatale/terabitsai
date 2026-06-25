@@ -105,7 +105,7 @@ function FundButton({
     <button
       type="button"
       onClick={onClick}
-      className="terminal-btn terminal-btn-primary inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-2xl text-sm font-semibold"
+      className="terminal-btn terminal-btn-primary inline-flex h-10 flex-1 items-center justify-center gap-2 text-sm font-semibold"
     >
       {icon}
       {label}

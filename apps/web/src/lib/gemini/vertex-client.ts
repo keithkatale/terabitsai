@@ -40,8 +40,18 @@ export function getAgentGeminiModelId(): string {
   const raw =
     process.env.AGENT_LLM_MODEL?.trim() ||
     process.env.GEMINI_MODEL?.trim() ||
-    "gemini-2.5-flash";
+    "gemini-2.5-flash-preview-05-20";
   return normalizeVertexModelIdForGenAiSdk(raw);
+}
+
+/** Check if model supports Gemini native tools (Google Search, URL Context, Code Execution). */
+export function modelSupportsGeminiNativeTools(model: string): boolean {
+  const m = model.toLowerCase();
+  // Claude and other partner models don't support Gemini's native builtin tools
+  if (m.includes("claude") || m.includes("anthropic")) return false;
+  if (m.includes("publishers/anthropic")) return false;
+  // Gemini models support native tools
+  return m.includes("gemini");
 }
 
 /**

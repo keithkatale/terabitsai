@@ -252,7 +252,7 @@ function SendButton({
       className={cn(
         "inline-flex items-center justify-center w-9 h-9 rounded-full transition-all duration-150",
         isActive
-          ? "terminal-btn-primary !p-0 !min-w-9 !min-h-9 text-white"
+          ? "prompt-send-btn !p-0 !min-w-9 !min-h-9"
           : "bg-white/[0.04] text-zinc-600 border border-white/[0.06] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]",
       )}
     >

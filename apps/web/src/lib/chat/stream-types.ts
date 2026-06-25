@@ -14,6 +14,7 @@ export type ChatToolPod = {
 export type ChatStreamEvent =
   | { type: "text"; text: string }
   | { type: "reasoning"; text: string }
+  | { type: "user_update"; message: string }
   | { type: "status"; label: string; detail?: string }
   | { type: "genui"; payload: unknown; source?: string }
   | { type: "quant_ui"; markup: string; source?: string }
@@ -37,6 +38,7 @@ export type ChatStreamEvent =
       color: SubAgentColorScheme;
     }
   | { type: "subagent_reasoning"; id: string; text: string }
+  | { type: "subagent_update"; id: string; message: string }
   | { type: "subagent_text"; id: string; text: string }
   | {
       type: "subagent_tool_start";

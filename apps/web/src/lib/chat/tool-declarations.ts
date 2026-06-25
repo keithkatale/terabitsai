@@ -8,6 +8,10 @@ import {
 import {
   queryTradingKnowledgeDeclaration,
 } from "@/lib/chat/tools/knowledge-tool";
+import {
+  webScrapeDeclaration,
+  httpRequestDeclaration,
+} from "@/lib/chat/tools/web-tools";
 
 export const getAllAssetsDeclaration = {
   name: "get_all_assets",
@@ -143,6 +147,23 @@ export const spawnSubagentsDeclaration = {
       },
     },
     required: ["subagents"],
+  },
+};
+
+export const informUserDeclaration = {
+  name: "inform_user",
+  description:
+    "Send a short informal status update to the user while you work (shown in the live trace only — NOT in the final reply). Use before/while running tools to explain what you are about to do or currently doing.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      message: {
+        type: Type.STRING,
+        description:
+          "Brief update in plain language (1–2 short sentences max). Example: 'Spinning up sub-agents to scan BTC, ETH, and NVDA for day-trade setups.'",
+      },
+    },
+    required: ["message"],
   },
 };
 
@@ -338,6 +359,9 @@ export const SUBAGENT_READ_ONLY_TOOL_NAMES = new Set([
   "get_macro_data",
   "get_fundamentals",
   "query_trading_knowledge",
+  "inform_user",
+  "web_scrape",
+  "http_request",
 ]);
 
 export const subagentReadOnlyDeclarations = [
@@ -353,9 +377,13 @@ export const subagentReadOnlyDeclarations = [
   getMacroDataDeclaration,
   getFundamentalsDeclaration,
   queryTradingKnowledgeDeclaration,
+  informUserDeclaration,
+  webScrapeDeclaration,
+  httpRequestDeclaration,
 ];
 
 export const orchestratorToolDeclarations = [
+  informUserDeclaration,
   getAllAssetsDeclaration,
   getAssetDetailsDeclaration,
   getAssetMarketDataDeclaration,
@@ -375,4 +403,6 @@ export const orchestratorToolDeclarations = [
   getMacroDataDeclaration,
   getFundamentalsDeclaration,
   queryTradingKnowledgeDeclaration,
+  webScrapeDeclaration,
+  httpRequestDeclaration,
 ];

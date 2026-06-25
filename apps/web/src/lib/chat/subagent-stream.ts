@@ -7,12 +7,16 @@ import { deriveLiveTraceFromSteps, LIVE_TRACE_PLANNING } from "@/lib/chat/live-t
 import type { ChatStreamEvent, ChatToolPod } from "@/lib/chat/stream-types";
 import type { SubAgentState } from "@/lib/chat/subagent-types";
 
+function bumpTraceTick(agent: SubAgentState): SubAgentState {
+  return { ...agent, traceTick: Date.now() };
+}
+
 function refreshLiveTrace(agent: SubAgentState): SubAgentState {
   const steps = agent.activitySteps ?? [];
-  return {
+  return bumpTraceTick({
     ...agent,
     liveTrace: deriveLiveTraceFromSteps(steps, agent.assignmentLabel || LIVE_TRACE_PLANNING),
-  };
+  });
 }
 
 function applySubagentToolEndToSteps(
@@ -34,7 +38,7 @@ export function applySubagentStreamEvent(
     const assignmentLabel = event.assignmentLabel?.trim() || LIVE_TRACE_PLANNING;
     return [
       ...agents,
-      {
+      bumpTraceTick({
         id: event.id,
         prompt: event.prompt,
         assignmentLabel,
@@ -45,12 +49,13 @@ export function applySubagentStreamEvent(
         activitySteps: [],
         liveTrace: assignmentLabel,
         report: "",
-      },
+      }),
     ];
   }
 
   const agentId =
     event.type === "subagent_reasoning" ||
+    event.type === "subagent_update" ||
     event.type === "subagent_text" ||
     event.type === "subagent_tool_start" ||
     event.type === "subagent_tool_end" ||
@@ -69,6 +74,16 @@ export function applySubagentStreamEvent(
     agent.reasoning = `${agent.reasoning}${event.text}`;
     agent.activitySteps = applySubagentReasoningToSteps(agent.activitySteps ?? [], event.text);
     agent = refreshLiveTrace(agent);
+    next[idx] = agent;
+    return next;
+  }
+
+  if (event.type === "subagent_update") {
+    const msg = event.message.trim();
+    if (msg) {
+      agent.liveTrace = msg;
+      agent = bumpTraceTick(agent);
+    }
     next[idx] = agent;
     return next;
   }

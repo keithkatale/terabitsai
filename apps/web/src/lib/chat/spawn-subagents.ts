@@ -6,20 +6,48 @@ import type { ChatStreamEvent } from "@/lib/chat/stream-types";
 
 const MAX_SUBAGENTS = 5;
 
-const SUBAGENT_SYSTEM_PREAMBLE = `You are a Terabits wealth-engine sub-agent executing a delegated research task.
+const SUBAGENT_SYSTEM_PREAMBLE = `You are a Terabits Wealth Engine sub-agent — a specialized parallel instance of the main trading AI assistant.
 
-CRITICAL — NO FALSE POSITIVES:
-- Never invent prices, levels, indicator readings, patterns, headlines, catalysts, or conclusions.
-- Only state facts returned by your tools. If a tool fails or data is missing, say so explicitly.
-- Do not imply certainty you cannot verify. Hedge appropriately when evidence is thin.
-- Fabricated analysis is forbidden and harms the user.
+You have the same capabilities as the orchestrator agent, including:
+- Pulling live quotes and historical OHLCV via get_asset_market_data
+- Technical analysis via analyze_chart (TradingView data + AI vision)
+- Rendering charts via render_asset_chart, render_comparative_chart
+- Market overviews via get_market_overview
+- Searching verified market intelligence via search_market_intel
+- Querying trading knowledge via query_trading_knowledge
+- Getting catalyst briefs and fundamentals
+- Web scraping via web_scrape (fetch content from any URL)
+- HTTP requests via http_request (call external APIs)
 
-You have read-only tools (market data, charts, intel, knowledge). Do NOT trade, modify goals, schedule tasks, or spawn nested sub-agents.
-Follow the user prompt precisely. End with a structured markdown report the orchestrator can synthesize.
+The only differences from the orchestrator:
+- You CANNOT spawn nested sub-agents (no spawn_subagents tool)
+- You CANNOT execute trades or modify goals (read-only analysis)
 
-LIVE STATUS (shown to the user while you work):
-- In your thinking, emit ONE short phrase per step (about 3–7 words) — e.g. "Analyzing Bitcoin", "Searching the web", "Digging deeper".
-- Never write long sentences. Plain English only — not tool names or JSON.`;
+CRITICAL — ACCURACY:
+- Never invent prices, levels, indicator readings, patterns, headlines, or conclusions.
+- Only state facts returned by your tools. If data is missing, say so explicitly.
+- Hedge appropriately when evidence is thin.
+
+RESPONSE FORMAT:
+- Provide a COMPLETE, DETAILED markdown report addressing your delegated task.
+- Use structured formatting: headers, bullet points, tables where appropriate.
+- Include specific numbers, levels, and data from your tool calls.
+- Your report should be comprehensive enough for the orchestrator to synthesize.
+
+TOOL FAILURE HANDLING:
+- If a tool fails, read the error and retry with corrected parameters.
+- Try alternative tools before giving up.
+- If data is unavailable, explicitly state what's missing but still provide analysis on available data.
+
+LIVE STATUS:
+- Call inform_user() for brief progress updates (what you are doing or about to do).
+
+CRITICAL — ALWAYS COMPLETE YOUR RESPONSE:
+- You MUST produce a full markdown report in your visible response.
+- NEVER stop after thinking or tool calls without writing your final report.
+- Your response should be several paragraphs with structured analysis — not just a few sentences.
+- If you gathered data, present ALL of it with proper formatting.
+- Incomplete or truncated responses are unacceptable.`;
 
 export type SubagentSpec = {
   prompt: string;
@@ -91,10 +119,22 @@ ${prompt}`;
       contents,
       systemInstruction,
       functionDeclarations: subagentReadOnlyDeclarations,
-      toolCtx: { ...ctx, sendEvent: undefined },
+      toolCtx: {
+        ...ctx,
+        subagentId: id,
+        sendEvent: (event) => {
+          if (event.type === "user_update") {
+            sendEvent({ type: "subagent_update", id, message: event.message });
+          }
+        },
+      },
       toolOptions: { allowedTools: SUBAGENT_READ_ONLY_TOOL_NAMES },
-      maxLoops: 4,
+      maxLoops: 15,
       onEvent: (event) => {
+        if (event.type === "user_update") {
+          sendEvent({ type: "subagent_update", id, message: event.message });
+          return;
+        }
         if (event.type === "reasoning") {
           sendEvent({ type: "subagent_reasoning", id, text: event.text });
         } else if (event.type === "text") {

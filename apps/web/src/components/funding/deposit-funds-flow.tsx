@@ -284,7 +284,7 @@ export function DepositFundsFlow({
               type="button"
               onClick={submitDemo}
               disabled={busy || !validAmount}
-              className="terminal-btn terminal-btn-primary flex h-11 w-full items-center justify-center rounded-2xl text-sm font-semibold disabled:opacity-40"
+              className="terminal-btn terminal-btn-primary flex h-11 w-full items-center justify-center text-sm font-semibold disabled:opacity-40"
             >
               {busy ? <Loader2 className="size-5 animate-spin" /> : "Add demo funds"}
             </button>
@@ -298,7 +298,7 @@ export function DepositFundsFlow({
               type="button"
               onClick={submitCard}
               disabled={busy || !validAmount}
-              className="terminal-btn terminal-btn-primary flex h-11 w-full items-center justify-center rounded-2xl text-sm font-semibold disabled:opacity-40"
+              className="terminal-btn terminal-btn-primary flex h-11 w-full items-center justify-center text-sm font-semibold disabled:opacity-40"
             >
               {busy ? (
                 <Loader2 className="size-5 animate-spin" />

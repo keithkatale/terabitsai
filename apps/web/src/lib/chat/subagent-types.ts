@@ -32,6 +32,8 @@ export type SubAgentState = {
   report?: string;
   error?: string;
   durationMs?: number;
+  /** Bumps on each live trace update — newest stacks on top. */
+  traceTick?: number;
 };
 
 /** @deprecated Legacy persisted shape — normalized on load. */
@@ -43,6 +45,16 @@ export type LegacySubAgentState = SubAgentState & {
 
 export function subAgentColorAt(index: number): SubAgentColorScheme {
   return SUBAGENT_COLOR_PALETTE[index % SUBAGENT_COLOR_PALETTE.length];
+}
+
+export function sortAgentsForOrbStack(agents: SubAgentState[]): SubAgentState[] {
+  return [...agents].sort((a, b) => (a.traceTick ?? 0) - (b.traceTick ?? 0));
+}
+
+export function leadSubAgent(agents: SubAgentState[]): SubAgentState {
+  return agents.reduce((best, agent) =>
+    (agent.traceTick ?? 0) >= (best.traceTick ?? 0) ? agent : best,
+  );
 }
 
 export function subAgentPromptLabel(prompt: string, max = 56): string {
@@ -84,6 +96,7 @@ export function normalizeSubAgentState(raw: unknown): SubAgentState | null {
     report: typeof o.report === "string" ? o.report : undefined,
     error: typeof o.error === "string" ? o.error : undefined,
     durationMs: typeof o.durationMs === "number" ? o.durationMs : undefined,
+    traceTick: typeof o.traceTick === "number" ? o.traceTick : undefined,
   };
 }
 

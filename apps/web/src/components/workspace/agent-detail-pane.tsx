@@ -67,7 +67,7 @@ export function AgentDetailPane({
                 toolPods={agent.toolPods}
                 liveStatus={agent.liveTrace}
                 accentClassName="text-cyan-400"
-                labelOnly
+                highlight="#22d3ee"
                 activitySteps={agent.activitySteps}
               />
             ) : (

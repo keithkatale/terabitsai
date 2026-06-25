@@ -147,7 +147,7 @@ export function ConversationPicker({
                 className={cn(
                   "group mb-1 flex items-center gap-1 rounded-xl border transition-colors",
                   selected
-                    ? "border-cyan-500/30 bg-cyan-500/10"
+                    ? "terminal-nav-item-active"
                     : "border-transparent hover:border-white/8 hover:bg-white/[0.04]",
                 )}
               >
@@ -164,14 +164,14 @@ export function ConversationPicker({
                   <MessageSquare
                     className={cn(
                       "mt-0.5 size-3.5 shrink-0",
-                      selected ? "text-cyan-400" : "text-zinc-500",
+                      selected ? "text-white" : "text-zinc-500",
                     )}
                   />
                   <span className="min-w-0 flex-1">
                     <span
                       className={cn(
                         "block truncate text-[13px] font-medium",
-                        selected ? "text-cyan-100" : "text-zinc-200",
+                        selected ? "text-white" : "text-zinc-200",
                       )}
                     >
                       {item.title?.trim() || "New conversation"}
@@ -181,7 +181,7 @@ export function ConversationPicker({
                     </span>
                   </span>
                   {selected ? (
-                    <Check className="mt-0.5 size-3.5 shrink-0 text-cyan-400" />
+                    <Check className="mt-0.5 size-3.5 shrink-0 text-white" />
                   ) : null}
                 </button>
                 {onDelete && conversations.length > 1 ? (
@@ -216,10 +216,10 @@ export function ConversationPicker({
             aria-controls={panelId}
             aria-label={open ? "Close recent conversations" : "Open recent conversations"}
             className={cn(
-              "inline-flex size-8 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-zinc-400 transition-colors",
-              "hover:bg-white/[0.08] hover:text-zinc-200 active:scale-[0.97]",
+              "terminal-nav-item inline-flex size-8 items-center justify-center border border-white/10 bg-white/[0.04] text-zinc-400",
+              "hover:text-zinc-200 active:scale-[0.97]",
               "disabled:cursor-not-allowed disabled:opacity-50",
-              open && "border-cyan-500/30 bg-cyan-500/10 text-cyan-300",
+              open && "terminal-nav-item-active",
             )}
           >
             <Brain className="size-3.5" strokeWidth={2} />

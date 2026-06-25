@@ -13,6 +13,7 @@ import { manageUserGoals, type ManageGoalArgs } from "@/lib/chat/tools/goal-tool
 import { fetchFundamentals, fetchMacroData } from "@/lib/chat/tools/macro-tools";
 import { scheduleAgentTask, type ScheduleTaskArgs } from "@/lib/chat/tools/schedule-task-tool";
 import { executeQueryTradingKnowledge } from "@/lib/chat/tools/knowledge-tool";
+import { executeWebScrape, executeHttpRequest } from "@/lib/chat/tools/web-tools";
 import { executeAnalyzeChart } from "@/lib/chart/analyze-chart-tool";
 import { handleExecuteSkill, normalizeSkillToolArgs } from "@/lib/skills/tool-declaration";
 import { searchMarketIntel, getLatestCatalystBrief, getMacroRegime } from "@quant/market-intel";
@@ -25,6 +26,8 @@ export type ToolRunContext = {
   conversationId?: string;
   sessionContext: Awaited<ReturnType<typeof getSessionContext>> | null;
   sendEvent?: (event: ChatStreamEvent) => void;
+  /** When set, inform_user routes to subagent_update stream events. */
+  subagentId?: string;
 };
 
 export type RunToolOptions = {
@@ -133,6 +136,19 @@ export async function runToolByName(
     };
   }
 
+  if (name === "inform_user") {
+    const message = String(args?.message ?? "").trim();
+    if (!message) return { success: false, error: "message is required" };
+    if (ctx.sendEvent) {
+      if (ctx.subagentId) {
+        ctx.sendEvent({ type: "subagent_update", id: ctx.subagentId, message });
+      } else {
+        ctx.sendEvent({ type: "user_update", message });
+      }
+    }
+    return { success: true, acknowledged: true };
+  }
+
   if (name === "spawn_subagents") {
     if (allowed === SUBAGENT_READ_ONLY_TOOL_NAMES) {
       return { success: false, error: "Sub-agents cannot spawn nested sub-agents." };
@@ -140,11 +156,7 @@ export async function runToolByName(
     if (!ctx.sendEvent) {
       return { success: false, error: "spawn_subagents requires stream context." };
     }
-    const subagentsList = (args?.subagents || []) as Array<{
-      role: string;
-      asset_symbol: string;
-      instruction: string;
-    }>;
+    const subagentsList = (args?.subagents || []) as Array<Record<string, unknown>>;
     const { runSpawnSubagents } = await import("@/lib/chat/spawn-subagents");
     return runSpawnSubagents(subagentsList, ctx);
   }
@@ -266,6 +278,23 @@ export async function runToolByName(
       query: args?.query as string | undefined,
       category: args?.category as string | undefined,
     });
+  }
+
+  if (name === "web_scrape") {
+    const url = String(args?.url ?? "").trim();
+    if (!url) return { success: false, error: "url is required" };
+    return executeWebScrape(url);
+  }
+
+  if (name === "http_request") {
+    const url = String(args?.url ?? "").trim();
+    if (!url) return { success: false, error: "url is required" };
+    return executeHttpRequest(
+      url,
+      (args?.method as string) ?? "GET",
+      args?.headers as Record<string, string> | undefined,
+      args?.body as string | undefined,
+    );
   }
 
   return { success: false, error: "Unknown tool name" };

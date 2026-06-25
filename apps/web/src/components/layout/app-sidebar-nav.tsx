@@ -37,18 +37,18 @@ function NavItem({
   onClick?: () => void;
 }) {
   const className = cn(
-    "group flex w-full items-center rounded-xl text-xs font-semibold transition-all duration-200",
+    "terminal-nav-item group flex w-full items-center text-xs font-semibold transition-all duration-200",
     expanded ? "h-10 justify-start gap-3 px-3" : "mx-auto h-10 w-10 justify-center",
     primary
-      ? cn("terminal-btn-primary", expanded ? "!justify-start" : "!min-h-10 !min-w-10 !p-0")
+      ? cn("terminal-btn terminal-btn-primary", expanded ? "!justify-start" : "!min-h-10 !min-w-10 !p-0")
       : active
-        ? "bg-cyan-500/10 text-cyan-300"
-        : "text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-100",
+        ? "terminal-nav-item-active"
+        : "text-zinc-400 hover:text-zinc-100",
   );
 
   const content = (
     <>
-      <span className={cn("relative shrink-0", active && !primary && "text-cyan-400")}>
+      <span className={cn("relative shrink-0", active && !primary && "text-white")}>
         {icon}
       </span>
       {expanded ? <span className="truncate">{label}</span> : null}

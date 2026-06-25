@@ -153,17 +153,15 @@ export function AssetBrowser({ collapsed, onToggleCollapsed }: {
         ) : null}
       </div>
 
-      <div className="flex gap-1 overflow-x-auto px-3 pb-2 scrollbar-none">
+      <div className="terminal-nav-group mx-3 mb-2 flex gap-1 overflow-x-auto scrollbar-none">
         {CATEGORIES.map((c) => (
           <button
             key={c.id}
             type="button"
             onClick={() => setCategory(c.id)}
             className={cn(
-              "shrink-0 rounded-lg px-2 py-1 text-[9px] font-bold uppercase tracking-wide",
-              category === c.id
-                ? "bg-cyan-500/15 text-cyan-300"
-                : "text-zinc-500 hover:text-zinc-300",
+              "terminal-tab shrink-0 px-2 py-1 text-[9px]",
+              category === c.id ? "terminal-tab-active" : "terminal-tab-idle",
             )}
           >
             {c.label}

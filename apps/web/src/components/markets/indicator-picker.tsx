@@ -28,7 +28,7 @@ export function IndicatorPicker({
   };
 
   return (
-    <div className={cn("flex flex-wrap gap-1", className)}>
+    <div className={cn("terminal-nav-group flex-wrap", className)}>
       {INDICATOR_OPTIONS.map(({ id, label }) => {
         const active = value.map((v) => v.toLowerCase()).includes(id);
         return (
@@ -37,10 +37,8 @@ export function IndicatorPicker({
             type="button"
             onClick={() => toggle(id)}
             className={cn(
-              "rounded-lg border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide transition-colors",
-              active
-                ? "border-violet-500/30 bg-violet-500/10 text-violet-300"
-                : "border-white/8 text-zinc-500 hover:border-white/15 hover:text-zinc-300",
+              "terminal-tab px-2 py-0.5 text-[9px]",
+              active ? "terminal-tab-active" : "terminal-tab-idle",
             )}
           >
             {label}

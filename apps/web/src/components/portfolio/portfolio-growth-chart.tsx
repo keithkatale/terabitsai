@@ -276,17 +276,15 @@ export function PortfolioGrowthChart({
           <h3 className="text-[10px] font-extrabold uppercase tracking-wider text-zinc-400">
             Portfolio Growth
           </h3>
-          <div className="flex flex-wrap gap-1">
+          <div className="terminal-nav-group flex-wrap">
             {TIMEFRAMES.map((tf) => (
               <button
                 key={tf}
                 type="button"
                 onClick={() => setTimeframe(tf)}
                 className={cn(
-                  "rounded-md px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide transition-colors",
-                timeframe === tf
-                  ? "bg-cyan-500/15 text-cyan-300"
-                  : "text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-300",
+                  "terminal-tab px-2 py-0.5 text-[9px]",
+                  timeframe === tf ? "terminal-tab-active" : "terminal-tab-idle",
                 )}
               >
                 {tf}

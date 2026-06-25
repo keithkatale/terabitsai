@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { AssistantSiriOrb } from "./assistant-siri-orb";
 import { AgentActivity } from "./agent-activity";
 import { SubAgentWidgetRow } from "./sub-agent-widget";
+import { UserUpdateMessage } from "./user-update-message";
 import { MarkdownContent } from "./markdown-content";
 import { GenUiRenderer } from "@/components/generative-ui/genui-renderer";
 import { QuantUiRenderer } from "@/components/quant-ui/quant-ui-renderer";
@@ -25,6 +26,7 @@ export interface MessagePart {
     | "reasoning"
     | "text"
     | "tool_ref"
+    | "user_update"
     | "trade-execution"
     | "genui"
     | "quant-ui"
@@ -63,12 +65,16 @@ export interface TradeData {
 
 function activityPartsFromMessage(parts: MessagePart[]): ActivityPartRef[] {
   return parts
-    .filter((p) => p.type === "reasoning" || p.type === "tool_ref")
-    .map((p) =>
-      p.type === "tool_ref" && p.toolUseId
-        ? { type: "tool_ref" as const, toolUseId: p.toolUseId }
-        : { type: "reasoning" as const, text: p.text },
-    );
+    .filter((p) => p.type === "reasoning" || p.type === "tool_ref" || p.type === "user_update")
+    .map((p) => {
+      if (p.type === "tool_ref" && p.toolUseId) {
+        return { type: "tool_ref" as const, toolUseId: p.toolUseId };
+      }
+      if (p.type === "user_update") {
+        return { type: "user_update" as const, text: p.text };
+      }
+      return { type: "reasoning" as const, text: p.text };
+    });
 }
 
 function AgentActivityBridge({
@@ -266,6 +272,19 @@ export function ChatMessage({
   const hasActivity = reasoningText.trim().length > 0 || toolPods.length > 0 || isAssistantStreaming;
   const hasInjectedArtifact = message.parts.some((p) => p.type === "genui" || p.type === "quant-ui");
 
+  // Extract user updates for separate display
+  const userUpdates = useMemo(() => {
+    let updateIdx = 0;
+    return message.parts
+      .filter((p) => p.type === "user_update" && p.text?.trim())
+      .map((p) => ({
+        id: `update-${updateIdx++}`,
+        text: p.text ?? "",
+      }));
+  }, [message.parts]);
+
+  const hasFinalText = message.parts.some((p) => p.type === "text" && p.text?.trim());
+
   return (
     <div
       ref={rootRef}
@@ -295,6 +314,12 @@ export function ChatMessage({
         {subAgents.length > 0 ? (
           <SubAgentWidgetRow agents={subAgents} onOpenAgent={onOpenAgentDetail} />
         ) : null}
+
+        <UserUpdateMessage
+          updates={userUpdates}
+          isStreaming={!!isAssistantStreaming}
+          hasFinalText={hasFinalText}
+        />
 
         {(() => {
           let lastTextIdx = -1;

@@ -431,7 +431,7 @@ export function InvestingListingTab({
               type="button"
               disabled={busy || !executionPrice}
               onClick={submitPurchase}
-              className="terminal-btn terminal-btn-primary flex h-11 w-full items-center justify-center gap-2 rounded-2xl text-sm font-semibold disabled:opacity-40"
+              className="terminal-btn terminal-btn-primary flex h-11 w-full items-center justify-center gap-2 text-sm font-semibold disabled:opacity-40"
             >
               {busy ? (
                 <>

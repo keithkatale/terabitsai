@@ -79,7 +79,7 @@ export function InvestingSection({
               </p>
             </div>
           </div>
-          <div className="flex gap-1 rounded-xl border border-white/8 bg-black/30 p-1">
+          <div className="terminal-nav-group">
             {(
               [
                 ["listing", "Listing"],
@@ -91,10 +91,8 @@ export function InvestingSection({
                 type="button"
                 onClick={() => setView(id)}
                 className={cn(
-                  "rounded-lg px-3 py-1.5 text-[11px] font-semibold transition-colors",
-                  view === id
-                    ? "bg-cyan-500/15 text-cyan-300"
-                    : "text-zinc-500 hover:text-zinc-300",
+                  "terminal-tab px-3 py-1.5 text-[11px] normal-case tracking-normal",
+                  view === id ? "terminal-tab-active" : "terminal-tab-idle",
                 )}
               >
                 {label}

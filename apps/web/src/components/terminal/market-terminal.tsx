@@ -84,8 +84,8 @@ export function MarketTerminal({
             type="button"
             onClick={() => setActiveTab(tab.id)}
             className={cn(
-              "shrink-0 px-3 py-1.5 rounded-lg text-[10px] font-semibold uppercase tracking-wide transition-all cursor-pointer",
-              activeTab === tab.id ? "terminal-tab-active" : "terminal-tab-idle"
+              "terminal-tab shrink-0 px-3 py-1.5 text-[10px]",
+              activeTab === tab.id ? "terminal-tab-active" : "terminal-tab-idle",
             )}
           >
             {tab.label}

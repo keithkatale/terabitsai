@@ -8,14 +8,14 @@ import {
   buildActivityTimeline,
   buildLegacyActivityTimeline,
   finalizeActivitySteps,
-  getActiveActivityStep,
   type ActivityPartRef,
   type ActivityStep,
   type ReasoningActivityStep,
   type ToolActivityStep,
 } from "@/lib/chat/activity-timeline";
 import { deriveLiveTraceFromSteps, LIVE_TRACE_PLANNING, shortenLivePhrase } from "@/lib/chat/live-trace";
-import { ToolPodRow } from "@/components/ai-elements/tool-pod-row";
+import { TraceShimmerText } from "@/components/ai-elements/shimmer";
+import { ToolStepWidget } from "@/components/ai-elements/tool-step-widget";
 import { ThinkingMarkdown } from "@/components/ai-elements/thinking-markdown";
 
 function TypingDots() {
@@ -32,29 +32,31 @@ function LiveTraceLine({
   label,
   showDots,
   liveStatusDetail,
-  accentClassName,
   compact,
+  shimmer = false,
+  highlight = "#24ee89",
 }: {
   label: string;
   showDots: boolean;
   liveStatusDetail?: string;
   accentClassName?: string;
   compact?: boolean;
+  shimmer?: boolean;
+  highlight?: string;
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-1.5 py-0.5">
-      <span
-        className={cn(
-          "min-w-0 truncate font-medium text-shimmer",
-          compact ? "text-[11px]" : "text-[12.5px]",
-          accentClassName,
-        )}
-      >
-        {label}
-        {liveStatusDetail ? (
-          <span className="ml-1.5 font-normal text-zinc-400">· {liveStatusDetail}</span>
-        ) : null}
-      </span>
+    <div className="flex min-w-0 flex-1 items-center gap-1.5 py-0.5">
+      <div className="min-w-0 flex-1">
+        <TraceShimmerText
+          text={label}
+          active={shimmer}
+          highlight={highlight}
+          className={compact ? "text-[11px]" : "text-[12.5px]"}
+        />
+      </div>
+      {liveStatusDetail ? (
+        <span className="shrink-0 text-[11px] font-normal text-zinc-400">· {liveStatusDetail}</span>
+      ) : null}
       {showDots ? <TypingDots /> : null}
     </div>
   );
@@ -62,14 +64,14 @@ function LiveTraceLine({
 
 function ReasoningStepRow({
   step,
-  isActive,
+  isLive,
 }: {
   step: ReasoningActivityStep;
-  isActive: boolean;
+  isLive: boolean;
 }) {
   const preview = shortenLivePhrase(step.text) ?? "Thinking";
 
-  if (!isActive) {
+  if (!isLive) {
     return (
       <div className="py-0.5 text-[10px] text-zinc-600">
         <span className="text-zinc-500">Thought</span>
@@ -82,62 +84,48 @@ function ReasoningStepRow({
   return (
     <div className="py-0.5">
       <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-zinc-500">Thinking</p>
-      <ThinkingMarkdown markdown={step.text} />
+      <ThinkingMarkdown markdown={step.text} className="max-h-48" />
     </div>
   );
 }
 
-function ToolStepRow({ step, isActive }: { step: ToolActivityStep; isActive: boolean }) {
-  const label = step.name.replace(/_/g, " ");
-
-  if (!isActive) {
-    return (
-      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 py-0.5 text-[10px]">
-        <span className="font-mono uppercase tracking-tight text-zinc-500">{label}</span>
-        <span className={step.ok === false ? "text-red-400/80" : "text-zinc-600"}>
-          {step.ok === false ? "Failed" : "Done"}
-        </span>
-        {step.durationMs != null ? (
-          <span className="text-zinc-700">{step.durationMs}ms</span>
-        ) : null}
-      </div>
-    );
-  }
-
-  return <ToolPodRow pod={step} defaultOpen />;
-}
 
 function ActivityTimelineBody({
   steps,
   isStreaming,
-  activeStep,
 }: {
   steps: ActivityStep[];
   isStreaming: boolean;
-  activeStep: ActivityStep | null;
 }) {
-  if (!activeStep || steps.length === 0) return null;
+  if (!isStreaming || steps.length === 0) return null;
 
   return (
-    <div className="ml-0.5 mt-1 space-y-1 border-l border-white/[0.08] pl-3">
+    <div className="ml-0.5 mt-1 space-y-1.5 border-l border-white/[0.08] pl-3">
       {steps.map((step) => {
-        const isActive = step === activeStep;
+        // Skip update steps — they're displayed separately
+        if (step.type === "update") {
+          return null;
+        }
         if (step.type === "reasoning") {
           return (
             <ReasoningStepRow
               key={step.id}
               step={step}
-              isActive={isActive && step.status === "streaming"}
+              isLive={step.status === "streaming"}
             />
           );
         }
-        return (
-          <ToolStepRow
-            key={step.toolUseId}
-            step={step}
-            isActive={isActive && step.status === "running"}
-          />
-        );
+        if (step.type === "tool") {
+          return (
+            <ToolStepWidget
+              key={step.toolUseId}
+              pod={step}
+              active={step.status === "running"}
+              compact
+            />
+          );
+        }
+        return null;
       })}
     </div>
   );
@@ -147,6 +135,10 @@ function DoneTimelineSummary({ steps }: { steps: ActivityStep[] }) {
   return (
     <div className="ml-0.5 mt-1 space-y-1.5 border-l border-white/[0.08] pl-3">
       {steps.map((step) => {
+        // Skip update steps — they're displayed separately
+        if (step.type === "update") {
+          return null;
+        }
         if (step.type === "reasoning") {
           return (
             <div key={step.id} className="space-y-1">
@@ -155,7 +147,10 @@ function DoneTimelineSummary({ steps }: { steps: ActivityStep[] }) {
             </div>
           );
         }
-        return <ToolPodRow key={step.toolUseId} pod={step} />;
+        if (step.type === "tool") {
+          return <ToolStepWidget key={step.toolUseId} pod={step} compact />;
+        }
+        return null;
       })}
     </div>
   );
@@ -171,12 +166,11 @@ function resolveTimeline(
   if (activitySteps && activitySteps.length > 0) {
     return isStreaming ? annotateStreamingSteps(activitySteps) : finalizeActivitySteps(activitySteps);
   }
-  const hasOrderedParts = activityParts?.some((p) => p.type === "tool_ref");
-  if (hasOrderedParts && activityParts) {
+  if (activityParts && activityParts.length > 0) {
     return buildActivityTimeline(activityParts, toolPods, isStreaming);
   }
   if (reasoning.trim() || toolPods.length > 0) {
-    return buildLegacyActivityTimeline(reasoning, toolPods);
+    return buildLegacyActivityTimeline(reasoning, toolPods, isStreaming);
   }
   return [];
 }
@@ -192,6 +186,7 @@ export function AgentLiveTrace({
   labelOnly = false,
   activityParts,
   activitySteps,
+  highlight = "#24ee89",
 }: {
   reasoning: string;
   toolPods: ChatToolPod[];
@@ -202,24 +197,23 @@ export function AgentLiveTrace({
   labelOnly?: boolean;
   activityParts?: ActivityPartRef[];
   activitySteps?: ActivityStep[];
+  highlight?: string;
 }) {
   const steps = resolveTimeline(activityParts, activitySteps, reasoning, toolPods, true);
   const label =
     liveStatus?.trim() || deriveLiveTraceFromSteps(steps, LIVE_TRACE_PLANNING);
-  const activeStep = getActiveActivityStep(steps);
 
   return (
     <div className="w-full" role="status" aria-live="polite">
-      <LiveTraceLine
-        label={label}
-        showDots
-        liveStatusDetail={liveStatusDetail}
-        accentClassName={accentClassName}
-        compact={compact}
-      />
-      {!labelOnly && activeStep ? (
-        <ActivityTimelineBody steps={steps} isStreaming activeStep={activeStep} />
-      ) : null}
+        <LiveTraceLine
+          label={label}
+          showDots
+          shimmer
+          highlight={highlight}
+          liveStatusDetail={liveStatusDetail}
+          compact={compact}
+        />
+      {!labelOnly ? <ActivityTimelineBody steps={steps} isStreaming /> : null}
     </div>
   );
 }
@@ -247,7 +241,6 @@ export function AgentActivity({
   activitySteps?: ActivityStep[];
 }) {
   const steps = resolveTimeline(activityParts, activitySteps, reasoning, toolPods, isStreaming);
-  const activeStep = isStreaming ? getActiveActivityStep(steps) : null;
   const label =
     liveStatus?.trim() || deriveLiveTraceFromSteps(steps, LIVE_TRACE_PLANNING);
 
@@ -272,16 +265,11 @@ export function AgentActivity({
         <LiveTraceLine
           label={label}
           showDots
+          shimmer={isStreaming}
+          highlight="#24ee89"
           liveStatusDetail={liveStatusDetail}
-          accentClassName={accentClassName}
         />
-        {activeStep ? (
-          <ActivityTimelineBody
-            steps={steps}
-            isStreaming
-            activeStep={activeStep}
-          />
-        ) : null}
+        <ActivityTimelineBody steps={steps} isStreaming />
       </div>
     );
   }

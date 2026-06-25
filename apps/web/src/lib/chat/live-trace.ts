@@ -45,6 +45,11 @@ export function shortenLivePhrase(text: string): string | null {
 function phraseFromReasoningSteps(steps: ActivityStep[]): string | null {
   for (let i = steps.length - 1; i >= 0; i--) {
     const step = steps[i];
+    if (step.type === "update") {
+      const phrase = shortenLivePhrase(step.text);
+      if (phrase) return phrase;
+      if (step.text.length <= MAX_LABEL) return step.text;
+    }
     if (step.type === "reasoning") {
       const phrase = shortenLivePhrase(step.text);
       if (phrase) return phrase;
@@ -101,14 +106,17 @@ export function subAgentWidgetTrace(agent: {
   assignmentLabel?: string;
   status: string;
 }): string {
+  const assignment = agent.assignmentLabel?.trim();
+
   const fromLive = agent.liveTrace?.trim();
   if (fromLive) {
     const shortened = shortenLivePhrase(fromLive);
     if (shortened) return shortened;
-    if (fromLive.length <= MAX_LABEL) return fromLive;
+    if (fromLive.length <= MAX_LABEL && fromLive.split(/\s+/).length <= MAX_WORDS) {
+      return fromLive;
+    }
   }
 
-  const assignment = agent.assignmentLabel?.trim();
   if (assignment) return assignment;
 
   if (agent.status === "running") return LIVE_TRACE_PLANNING;

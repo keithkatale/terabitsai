@@ -9,20 +9,29 @@ export type ReasoningActivityStep = {
 
 export type ToolActivityStep = ChatToolPod & { type: "tool" };
 
-export type ActivityStep = ReasoningActivityStep | ToolActivityStep;
+export type UpdateActivityStep = {
+  type: "update";
+  id: string;
+  text: string;
+};
+
+export type ActivityStep = ReasoningActivityStep | ToolActivityStep | UpdateActivityStep;
 
 export type ActivityPartRef =
   | { type: "reasoning"; text?: string }
-  | { type: "tool_ref"; toolUseId: string };
+  | { type: "tool_ref"; toolUseId: string }
+  | { type: "user_update"; text?: string };
 
 export function buildActivityTimeline(
   parts: ActivityPartRef[],
   toolPods: ChatToolPod[] = [],
   isStreaming = false,
+  includeUpdates = false,
 ): ActivityStep[] {
   const podMap = new Map(toolPods.map((p) => [p.toolUseId, p]));
   const steps: ActivityStep[] = [];
   let reasoningIdx = 0;
+  let updateIdx = 0;
 
   for (const part of parts) {
     if (part.type === "reasoning" && part.text != null) {
@@ -32,6 +41,15 @@ export function buildActivityTimeline(
         text: part.text,
         status: "done",
       });
+    } else if (part.type === "user_update" && part.text != null) {
+      // Only include updates if explicitly requested (for legacy code)
+      if (includeUpdates) {
+        steps.push({
+          type: "update",
+          id: `update-${updateIdx++}`,
+          text: part.text,
+        });
+      }
     } else if (part.type === "tool_ref") {
       const pod = podMap.get(part.toolUseId);
       if (pod) steps.push({ type: "tool", ...pod });
@@ -61,6 +79,7 @@ export function annotateStreamingSteps(steps: ActivityStep[]): ActivityStep[] {
 export function buildLegacyActivityTimeline(
   reasoning: string,
   toolPods: ChatToolPod[] = [],
+  isStreaming = false,
 ): ActivityStep[] {
   const steps: ActivityStep[] = [];
   const r = reasoning.trim();
@@ -69,6 +88,9 @@ export function buildLegacyActivityTimeline(
   }
   for (const pod of toolPods) {
     steps.push({ type: "tool", ...pod });
+  }
+  if (isStreaming && steps.length > 0) {
+    return annotateStreamingSteps(steps);
   }
   return steps;
 }
@@ -118,6 +140,15 @@ export function applyToolStartToParts(
   if (last?.type === "tool_ref" && last.toolUseId === toolUseId) return next;
   next.push({ type: "tool_ref", toolUseId });
   return next;
+}
+
+export function applyUserUpdateToParts(
+  parts: ActivityPartRef[],
+  message: string,
+): ActivityPartRef[] {
+  const text = message.trim();
+  if (!text) return parts;
+  return [...parts, { type: "user_update", text }];
 }
 
 export function applySubagentReasoningToSteps(

@@ -59,7 +59,10 @@ export default function PricingPage() {
         </Link>
         <nav className="flex items-center gap-3 text-sm">
           <Link href="/" className="text-zinc-400 hover:text-white transition-colors">
-            Chat
+            Home
+          </Link>
+          <Link href="/try" className="text-zinc-400 hover:text-white transition-colors">
+            Try chat
           </Link>
           <Link href="/app/chat" className="text-zinc-400 hover:text-white transition-colors">
             Terminal

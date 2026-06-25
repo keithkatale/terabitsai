@@ -23,17 +23,15 @@ export function TimeframeSelector({
   className?: string;
 }) {
   return (
-    <div className={cn("flex flex-wrap gap-1", className)}>
+    <div className={cn("terminal-nav-group flex-wrap", className)}>
       {TIMEFRAMES.map(({ id, label }) => (
         <button
           key={id}
           type="button"
           onClick={() => onChange(id)}
           className={cn(
-            "rounded-lg px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide transition-colors",
-            value === id
-              ? "bg-cyan-500/20 text-cyan-300"
-              : "text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-300",
+            "terminal-tab px-2.5 py-1 text-[10px]",
+            value === id ? "terminal-tab-active" : "terminal-tab-idle",
           )}
         >
           {label}

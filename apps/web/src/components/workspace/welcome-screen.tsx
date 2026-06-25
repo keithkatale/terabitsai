@@ -55,11 +55,11 @@ export function WelcomeScreen() {
     }
 
     if (!user) {
-      window.location.href = `/login?next=${encodeURIComponent("/app")}`;
+      window.location.href = `/login?next=${encodeURIComponent("/app/chat")}`;
       return;
     }
 
-    router.push("/app");
+    router.push("/app/chat");
   };
 
   return (

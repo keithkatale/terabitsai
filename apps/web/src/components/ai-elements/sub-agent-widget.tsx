@@ -1,26 +1,67 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AgentOrb } from "@/components/ai-elements/agent-orb";
+import { TraceShimmerText } from "@/components/ai-elements/shimmer";
 import { subAgentWidgetTrace } from "@/lib/chat/live-trace";
-import type { SubAgentColorScheme, SubAgentState } from "@/lib/chat/subagent-types";
+import {
+  leadSubAgent,
+  sortAgentsForOrbStack,
+  type SubAgentColorScheme,
+  type SubAgentState,
+} from "@/lib/chat/subagent-types";
 
-const SUBAGENT_ACCENT: Record<SubAgentColorScheme, string> = {
-  cyan: "text-cyan-400",
-  blue: "text-blue-400",
-  violet: "text-violet-400",
-  amber: "text-amber-400",
-  rose: "text-rose-400",
-  emerald: "text-emerald-400",
+const SUBAGENT_HIGHLIGHT: Record<SubAgentColorScheme, string> = {
+  cyan: "#22d3ee",
+  blue: "#60a5fa",
+  violet: "#a78bfa",
+  amber: "#fbbf24",
+  rose: "#fb7185",
+  emerald: "#34d399",
 };
 
-function TypingDots() {
+const ORB_SIZE = 24;
+const ORB_OVERLAP = 9;
+
+function TypingDots({ color = "#24ee89" }: { color?: string }) {
   return (
     <span className="inline-flex shrink-0 items-end gap-[3px]" aria-hidden>
-      <span className="inline-block size-[4px] animate-bounce rounded-full bg-[#24ee89] [animation-duration:0.6s]" />
-      <span className="inline-block size-[4px] animate-bounce rounded-full bg-[#24ee89] [animation-duration:0.6s] [animation-delay:0.12s]" />
-      <span className="inline-block size-[4px] animate-bounce rounded-full bg-[#24ee89] [animation-duration:0.6s] [animation-delay:0.24s]" />
+      {[0, 0.12, 0.24].map((delay) => (
+        <span
+          key={delay}
+          className="inline-block size-[4px] animate-bounce rounded-full [animation-duration:0.6s]"
+          style={{ backgroundColor: color, animationDelay: `${delay}s` }}
+        />
+      ))}
     </span>
+  );
+}
+
+function OverlappingAgentOrbs({ agents }: { agents: SubAgentState[] }) {
+  const sorted = sortAgentsForOrbStack(agents);
+  const width = ORB_SIZE + Math.max(0, sorted.length - 1) * (ORB_SIZE - ORB_OVERLAP);
+
+  return (
+    <div className="relative shrink-0" style={{ width, height: ORB_SIZE }}>
+      {sorted.map((agent, index) => (
+        <div
+          key={agent.id}
+          className="absolute top-0 rounded-full ring-2 ring-[#050508]"
+          style={{
+            left: index * (ORB_SIZE - ORB_OVERLAP),
+            zIndex: index + 1,
+          }}
+        >
+          <AgentOrb
+            colorScheme={agent.color}
+            active={agent.status === "running"}
+            sizePx={ORB_SIZE}
+          />
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -33,7 +74,7 @@ export function SubAgentWidget({
 }) {
   const isRunning = agent.status === "running";
   const isFailed = agent.status === "failed";
-  const accent = SUBAGENT_ACCENT[agent.color] ?? "text-[#24ee89]";
+  const highlight = SUBAGENT_HIGHLIGHT[agent.color] ?? "#24ee89";
   const trace = subAgentWidgetTrace(agent);
 
   return (
@@ -43,7 +84,7 @@ export function SubAgentWidget({
       className={cn(
         "flex w-full min-w-0 items-center gap-2.5 rounded-lg border px-2.5 py-2 text-left transition-colors",
         "border-white/[0.08] bg-white/[0.03]",
-        "hover:bg-white/[0.03] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/40",
+        "hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/40",
         isRunning && "border-white/[0.12] bg-white/[0.04]",
       )}
     >
@@ -54,15 +95,15 @@ export function SubAgentWidget({
         className="shrink-0"
       />
       <div className="flex min-w-0 flex-1 items-center gap-1.5">
-        <span
-          className={cn(
-            "min-w-0 truncate text-[11px] font-medium leading-snug",
-            isRunning ? cn("text-shimmer", accent) : isFailed ? "text-red-400/90" : "text-zinc-400",
-          )}
-        >
-          {trace}
-        </span>
-        {isRunning ? <TypingDots /> : null}
+        <div className="min-w-0 flex-1">
+          <TraceShimmerText
+            text={trace}
+            active={isRunning}
+            highlight={highlight}
+            className={isFailed && !isRunning ? "text-red-400/90" : !isRunning ? "text-zinc-400" : undefined}
+          />
+        </div>
+        {isRunning ? <TypingDots color={highlight} /> : null}
       </div>
       <div className="shrink-0 text-right">
         <span
@@ -88,17 +129,78 @@ export function SubAgentWidgetRow({
   agents: SubAgentState[];
   onOpenAgent?: (agent: SubAgentState) => void;
 }) {
+  const hasRunning = agents.some((a) => a.status === "running");
+  const [expanded, setExpanded] = useState(hasRunning);
+
+  useEffect(() => {
+    if (hasRunning) setExpanded(true);
+  }, [hasRunning]);
+
+  const lead = useMemo(() => leadSubAgent(agents), [agents]);
+  const leadTrace = subAgentWidgetTrace(lead);
+  const leadHighlight = SUBAGENT_HIGHLIGHT[lead.color] ?? "#24ee89";
+  const runningCount = agents.filter((a) => a.status === "running").length;
+  const doneCount = agents.filter((a) => a.status === "done").length;
+
   if (agents.length === 0) return null;
 
+  const statusLine =
+    hasRunning
+      ? `${runningCount} running`
+      : `${doneCount}/${agents.length} done`;
+
   return (
-    <div className="mb-2 flex w-full flex-col gap-1.5">
-      {agents.map((agent) => (
-        <SubAgentWidget
-          key={agent.id}
-          agent={agent}
-          onClick={onOpenAgent ? () => onOpenAgent(agent) : undefined}
-        />
-      ))}
+    <div className="mb-2 w-full">
+      <div
+        className={cn(
+          "overflow-hidden rounded-lg border border-white/[0.08] bg-white/[0.03]",
+          hasRunning && "border-white/[0.12] bg-white/[0.04]",
+        )}
+      >
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className={cn(
+            "flex w-full min-w-0 items-center gap-2.5 px-2.5 py-2 text-left transition-colors",
+            "hover:bg-white/[0.03] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/40",
+          )}
+          aria-expanded={expanded}
+        >
+          <OverlappingAgentOrbs agents={agents} />
+          <div className="flex min-w-0 flex-1 items-center gap-1.5">
+            <div className="min-w-0 flex-1">
+              <TraceShimmerText
+                text={leadTrace}
+                active={hasRunning}
+                highlight={leadHighlight}
+              />
+            </div>
+            {hasRunning ? <TypingDots color={leadHighlight} /> : null}
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <span className="text-[10px] font-medium text-zinc-500">{statusLine}</span>
+            <ChevronDown
+              className={cn(
+                "size-3.5 shrink-0 text-zinc-500 transition-transform",
+                expanded && "rotate-180",
+              )}
+              aria-hidden
+            />
+          </div>
+        </button>
+
+        {expanded ? (
+          <div className="space-y-1 border-t border-white/[0.06] p-1.5">
+            {agents.map((agent) => (
+              <SubAgentWidget
+                key={agent.id}
+                agent={agent}
+                onClick={onOpenAgent ? () => onOpenAgent(agent) : undefined}
+              />
+            ))}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

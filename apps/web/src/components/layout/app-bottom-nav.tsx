@@ -34,19 +34,22 @@ export function AppBottomNav() {
             href={tabPath(tab)}
             aria-label={label}
             aria-current={selected ? "page" : undefined}
-            className="flex flex-1 flex-col items-center justify-center gap-1 py-1 transition-transform active:scale-95"
+            className={cn(
+              "flex flex-1 flex-col items-center justify-center gap-1 rounded-full py-2 transition-transform active:scale-95",
+              selected && "terminal-nav-item-active",
+            )}
           >
             <Icon
               className={cn(
                 "size-5 transition-colors",
-                selected ? "text-cyan-400" : "text-zinc-500",
+                selected ? "text-white" : "text-zinc-500",
               )}
               strokeWidth={selected ? 2.25 : 1.85}
             />
             <span
               className={cn(
                 "text-[10px] font-semibold leading-none",
-                selected ? "text-cyan-300" : "text-zinc-500",
+                selected ? "text-white" : "text-zinc-500",
               )}
             >
               {label}
