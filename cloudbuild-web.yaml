@@ -30,8 +30,13 @@ steps:
       - --allow-unauthenticated
       - --port
       - "8080"
+      - --cpu
+      - "2"
+      - --memory
+      - "2Gi"
+      - --cpu-boost
       - --update-env-vars
-      - CHART_RENDER_SERVICE_URL=${_CHART_RENDER_SERVICE_URL},CHART_RENDER_API_KEY=${_CHART_RENDER_API_KEY},WEALTH_MONITOR_ENABLED=false
+      - NEXT_PUBLIC_SUPABASE_URL=${_NEXT_PUBLIC_SUPABASE_URL},NEXT_PUBLIC_SUPABASE_ANON_KEY=${_NEXT_PUBLIC_SUPABASE_ANON_KEY},CHART_RENDER_SERVICE_URL=${_CHART_RENDER_SERVICE_URL},CHART_RENDER_API_KEY=${_CHART_RENDER_API_KEY},WEALTH_MONITOR_ENABLED=false
 
 images:
   - ${_IMAGE}
