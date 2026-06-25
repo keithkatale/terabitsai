@@ -3,18 +3,20 @@
 import { BrandMark } from "@/components/ui/brand-mark";
 import { ResponsiveHeroBanner } from "@/components/ui/responsive-hero-banner";
 import { useAccount } from "@/hooks/use-account";
-import { LandingPixelBackground } from "./landing-pixel-background";
+import { LandingHeroBackground } from "./landing-hero-background";
+import { LandingTrustedBy } from "./landing-trusted-by";
 
 export function LandingHero() {
   const { user } = useAccount();
-  const ctaHref = user ? "/app/markets" : "/signup?next=/app/markets";
+  const ctaHref = user ? "/chat/markets" : "/signup?next=/chat/markets";
 
   return (
     <ResponsiveHeroBanner
-      className="!min-h-0 pb-4"
-      minHeightClass="min-h-0"
+      className="pb-4"
+      minHeightClass="min-h-[88vh]"
       logo={<BrandMark size="sm" />}
-      backgroundSlot={<LandingPixelBackground />}
+      backgroundSlot={<LandingHeroBackground />}
+      backgroundScrim={false}
       navLinks={[
         { label: "Features", href: "#features", isActive: false },
         { label: "Pricing", href: "/pricing" },
@@ -31,8 +33,7 @@ export function LandingHero() {
       primaryButtonHref={ctaHref}
       secondaryButtonText="Try chat"
       secondaryButtonHref="/try"
-      partnersTitle="Trusted by traders and teams worldwide"
-      partnersBannerUrl="/landing/logo-strip.png"
+      socialProofSlot={<LandingTrustedBy />}
     />
   );
 }

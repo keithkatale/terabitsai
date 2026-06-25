@@ -1,10 +1,11 @@
 import { z } from "zod";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { generateProfileQuestionPayload } from "@/lib/onboard/generate-profile-question";
+import { buildOnboardAccountContext, toClientAccountSnapshot } from "@/lib/onboard/onboard-account-context";
 import {
   applyProfileAnswer,
   fillProfileDefaults,
-  missingProfileFields,
+  missingApplicableFields,
   onboardProfileSchema,
   PROFILE_FIELD_KEYS,
 } from "@/lib/onboard/profile-types";
@@ -38,6 +39,8 @@ export async function POST(request: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const account = await buildOnboardAccountContext(user.id);
+
   let parsed: z.infer<typeof bodySchema>;
   try {
     parsed = bodySchema.parse(await request.json());
@@ -59,11 +62,11 @@ export async function POST(request: Request) {
     answeredCount += 1;
   }
 
-  if (answeredCount >= 5 && missingProfileFields(profile).length > 0) {
-    profile = fillProfileDefaults(profile);
+  if (answeredCount >= 5 && missingApplicableFields(profile, account.plan).length > 0) {
+    profile = fillProfileDefaults(profile, account.plan);
   }
 
-  const missing = missingProfileFields(profile);
+  const missing = missingApplicableFields(profile, account.plan);
 
   if (missing.length === 0 || answeredCount >= 5) {
     const say =
@@ -83,7 +86,8 @@ export async function POST(request: Request) {
       profile,
       transcript,
       answeredCount,
-      missingFields: missingProfileFields(profile),
+      missingFields: missingApplicableFields(profile, account.plan),
+      account: toClientAccountSnapshot(account),
     });
   }
 
@@ -91,7 +95,7 @@ export async function POST(request: Request) {
     profile,
     transcript,
     answeredCount,
-    missing,
+    account,
   });
 
   transcript.push({ role: "assistant", content: payload.say });
@@ -102,5 +106,6 @@ export async function POST(request: Request) {
     transcript,
     answeredCount,
     missingFields: missing,
+    account: toClientAccountSnapshot(account),
   });
 }

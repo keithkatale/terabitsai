@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { readSupabasePublicEnv } from "@/lib/runtime-env";
+import { APP_BASE, chatDraftPath } from "@/lib/routes";
 
 const AUTH_PATHS = new Set(["/login", "/signup"]);
 const PUBLIC_PATHS = new Set(["/pricing", "/auth/callback", "/api/webhooks/dodo"]);
@@ -13,6 +14,7 @@ function isPublicPath(pathname: string): boolean {
 }
 
 function isAuthRequired(pathname: string): boolean {
+  if (pathname === APP_BASE || pathname.startsWith(`${APP_BASE}/`)) return true;
   if (pathname === "/app" || pathname.startsWith("/app/")) return true;
   if (pathname.startsWith("/api/account")) return true;
   if (pathname.startsWith("/api/ledger")) return true;
@@ -28,6 +30,9 @@ function isAuthRequired(pathname: string): boolean {
 }
 
 function isProRequired(pathname: string): boolean {
+  if (pathname === `${APP_BASE}/terminal` || pathname.startsWith(`${APP_BASE}/terminal/`)) {
+    return true;
+  }
   if (pathname === "/app/terminal" || pathname.startsWith("/app/terminal/")) return true;
   if (pathname.startsWith("/api/intel")) return true;
   return false;
@@ -60,7 +65,6 @@ export async function middleware(request: NextRequest) {
 
   const supabaseConfig = readSupabasePublicEnv();
 
-  // Fail closed: never allow protected routes without Supabase configured
   if (!supabaseConfig) {
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ error: "Auth not configured" }, { status: 503 });
@@ -104,15 +108,24 @@ export async function middleware(request: NextRequest) {
   }
 
   if (AUTH_PATHS.has(pathname)) {
-    return NextResponse.redirect(new URL("/app/chat", request.url));
+    return NextResponse.redirect(new URL(chatDraftPath(), request.url));
   }
 
   const setupExempt =
+    pathname === `${APP_BASE}/setup` ||
+    pathname.startsWith(`${APP_BASE}/setup/`) ||
     pathname === "/app/setup" ||
+    pathname.startsWith("/app/setup/") ||
     pathname.startsWith("/api/onboard") ||
     pathname.startsWith("/api/credits");
 
-  if (!setupExempt && (pathname === "/app" || pathname.startsWith("/app/"))) {
+  const isAppShellRoute =
+    pathname === APP_BASE ||
+    pathname.startsWith(`${APP_BASE}/`) ||
+    pathname === "/app" ||
+    pathname.startsWith("/app/");
+
+  if (!setupExempt && isAppShellRoute) {
     const { data: profile, error: profileError } = await supabase
       .from("user_account_profiles")
       .select("onboarding_completed")
@@ -120,11 +133,16 @@ export async function middleware(request: NextRequest) {
       .maybeSingle();
 
     if (!profileError && !profile?.onboarding_completed) {
-      return NextResponse.redirect(new URL("/app/setup", request.url));
+      return NextResponse.redirect(new URL(`${APP_BASE}/setup`, request.url));
     }
   }
 
-  if (pathname === "/app/setup" || pathname.startsWith("/app/setup/")) {
+  if (
+    pathname === `${APP_BASE}/setup` ||
+    pathname.startsWith(`${APP_BASE}/setup/`) ||
+    pathname === "/app/setup" ||
+    pathname.startsWith("/app/setup/")
+  ) {
     const { data: profile, error: profileError } = await supabase
       .from("user_account_profiles")
       .select("onboarding_completed")
@@ -132,7 +150,7 @@ export async function middleware(request: NextRequest) {
       .maybeSingle();
 
     if (!profileError && profile?.onboarding_completed) {
-      return NextResponse.redirect(new URL("/app/chat", request.url));
+      return NextResponse.redirect(new URL(chatDraftPath(), request.url));
     }
   }
 
@@ -155,7 +173,7 @@ export async function middleware(request: NextRequest) {
       if (pathname.startsWith("/api/")) {
         return NextResponse.json(
           { error: "Terminal plan required", upgrade: "/pricing" },
-          { status: 402 }
+          { status: 402 },
         );
       }
       return redirectToPricing(request);
@@ -167,6 +185,8 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
+    "/chat",
+    "/chat/:path*",
     "/app",
     "/app/:path*",
     "/login",

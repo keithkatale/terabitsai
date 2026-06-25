@@ -33,3 +33,6 @@ yarn-error.log*
 dist/
 build/
 *.tsbuildinfo
+
+# External skill repo clones (synced into skills/external/ via scripts/sync-external-skills.mjs)
+vendor/

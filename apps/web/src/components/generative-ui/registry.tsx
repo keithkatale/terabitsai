@@ -9,6 +9,8 @@ import { TransactionSummary } from "./transaction-summary";
 import { TradeConfirmationWidget } from "./trade-confirmation-widget";
 import { GoalProgressWidget } from "./goal-progress-widget";
 import { TradingViewChart } from "./tradingview-chart";
+import { GenUiErrorBoundary } from "./genui-error-boundary";
+import { QuantUiFailure } from "@/components/quant-ui/quant-ui-failure";
 
 interface GenerativeUiRegistryProps {
   name: string;
@@ -31,11 +33,40 @@ const COMPONENT_ALIASES: Record<string, string> = {
   trading_view_chart: "TradingViewChart",
 };
 
+const KNOWN_COMPONENTS = new Set([
+  "AssetCatalogGrid",
+  "AssetComparativeChart",
+  "AssetPriceChart",
+  "PortfolioBreakdown",
+  "TransactionSummary",
+  "TradeConfirmationWidget",
+  "GoalProgressWidget",
+  "TradingViewChart",
+]);
+
 export function normalizeComponentName(name: string): string {
   const trimmed = name.trim();
   const alias = COMPONENT_ALIASES[trimmed.toLowerCase()];
   if (alias) return alias;
   return trimmed;
+}
+
+function validateProps(componentName: string, props: Record<string, unknown>): string | null {
+  switch (componentName) {
+    case "AssetPriceChart":
+      if (!props.symbol) return "Missing required 'symbol' prop";
+      break;
+    case "AssetComparativeChart":
+      if (!props.symbol1 || !props.symbol2) return "Missing required 'symbol1' or 'symbol2' props";
+      break;
+    case "TradeConfirmationWidget":
+      if (!props.symbol) return "Missing required 'symbol' prop";
+      break;
+    case "GoalProgressWidget":
+      if (!props.goalId && !props.mode) return "Missing required 'goalId' or 'mode' props";
+      break;
+  }
+  return null;
 }
 
 export function GenerativeUiRegistry({ name, props = {} }: GenerativeUiRegistryProps) {
@@ -45,31 +76,65 @@ export function GenerativeUiRegistry({ name, props = {} }: GenerativeUiRegistryP
       ? Object.fromEntries(Object.entries(props).filter(([k]) => k !== "component" && k !== "name" && k !== "type"))
       : props;
 
-  switch (resolved) {
+  // Check for unknown component
+  if (!KNOWN_COMPONENTS.has(resolved)) {
+    const suggestions = [...KNOWN_COMPONENTS].filter(
+      (c) => c.toLowerCase().includes(resolved.toLowerCase().replace(/[^a-z]/g, ""))
+    );
+    
+    return (
+      <QuantUiFailure
+        title="Unknown component requested"
+        reason={`The component "${resolved}" is not available.${suggestions.length > 0 ? ` Did you mean: ${suggestions.join(", ")}?` : ""}`}
+        errorDetails={`Available components: ${[...KNOWN_COMPONENTS].join(", ")}`}
+        rawPayload={JSON.stringify({ name, props }, null, 2)}
+      />
+    );
+  }
+
+  // Validate required props
+  const propError = validateProps(resolved, cleanProps);
+  if (propError) {
+    return (
+      <QuantUiFailure
+        title="Invalid component props"
+        reason={propError}
+        errorDetails={`Component ${resolved} received invalid props`}
+        rawPayload={JSON.stringify({ name, props }, null, 2)}
+      />
+    );
+  }
+
+  // Wrap in error boundary to catch runtime errors
+  return (
+    <GenUiErrorBoundary
+      fallbackTitle={`${resolved} failed to render`}
+      rawPayload={JSON.stringify({ name, props }, null, 2)}
+    >
+      <RegistryComponent name={resolved} props={cleanProps} />
+    </GenUiErrorBoundary>
+  );
+}
+
+function RegistryComponent({ name, props }: { name: string; props: any }) {
+  switch (name) {
     case "AssetCatalogGrid":
-      return <AssetCatalogGrid {...cleanProps} />;
+      return <AssetCatalogGrid {...props} />;
     case "AssetComparativeChart":
-      return <AssetComparativeChart {...cleanProps} />;
+      return <AssetComparativeChart {...props} />;
     case "AssetPriceChart":
-      return <AssetPriceChart {...cleanProps} />;
+      return <AssetPriceChart {...props} />;
     case "PortfolioBreakdown":
-      return <PortfolioBreakdown {...cleanProps} />;
+      return <PortfolioBreakdown {...props} />;
     case "TransactionSummary":
-      return <TransactionSummary {...cleanProps} />;
-    case "TradeConfirmation":
+      return <TransactionSummary {...props} />;
     case "TradeConfirmationWidget":
-      return <TradeConfirmationWidget {...cleanProps} />;
-    case "GoalProgress":
+      return <TradeConfirmationWidget {...props} />;
     case "GoalProgressWidget":
-      return <GoalProgressWidget {...cleanProps} />;
+      return <GoalProgressWidget {...props} />;
     case "TradingViewChart":
-      return <TradingViewChart {...cleanProps} />;
+      return <TradingViewChart {...props} />;
     default:
-      return (
-        <div className="p-4 bg-rose-950/20 border border-rose-500/20 rounded-xl text-rose-400 text-xs font-mono my-2 text-left">
-          <p className="font-bold">Error: Unknown Generative UI Component</p>
-          <p className="mt-1 text-[10px] text-zinc-500">The component name &quot;{resolved}&quot; could not be matched with any prebuilt dashboard widget.</p>
-        </div>
-      );
+      return null;
   }
 }

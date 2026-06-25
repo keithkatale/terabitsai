@@ -77,7 +77,7 @@ export function buildMarketOverviewQuantUi(
 
   const symbols = assets.map((a) => a.symbol).join(", ");
 
-  return `<quant:section title="Market pulse" subtitle="Live quotes · Capital.com">
+  return `<quant:section title="Market pulse" subtitle="Live quotes · Capital.com" variant="minimal">
   <quant:grid columns="${Math.min(3, assets.length)}">
 ${cards}
   </quant:grid>

@@ -3,12 +3,13 @@
 import { cn } from "@/lib/utils";
 import type { SubAgentColorScheme } from "@/lib/chat/subagent-types";
 import PixelBlast from "./pixel-blast.jsx";
-import { AGENT_PIXEL_ACTIVE_SPEED } from "./agent-visual-constants";
+import { AGENT_PIXEL_ACTIVE_SPEED, ORCHESTRATOR_HIGHLIGHT } from "./agent-visual-constants";
 
-export type AgentPixelColorScheme = "green" | SubAgentColorScheme;
+export type AgentPixelColorScheme = "green" | "brand" | SubAgentColorScheme;
 
 const PIXEL_COLORS: Record<AgentPixelColorScheme, string> = {
   green: "#24ee89",
+  brand: ORCHESTRATOR_HIGHLIGHT,
   cyan: "#22d3ee",
   blue: "#60a5fa",
   violet: "#a78bfa",
@@ -57,7 +58,7 @@ export function AgentPixelAvatar({
   );
 }
 
-/** Orchestrator avatar — green pixel orb. */
+/** Orchestrator avatar — platform blue pixel orb. */
 export function AssistantPixelAvatar({
   active = false,
   sizePx = 28,
@@ -69,7 +70,7 @@ export function AssistantPixelAvatar({
 }) {
   return (
     <AgentPixelAvatar
-      colorScheme="green"
+      colorScheme="brand"
       active={active}
       sizePx={sizePx}
       className={className}

@@ -1,5 +1,6 @@
+import type { UserPlan } from "@/lib/subscription/access";
 import type { OnboardProfileDraft, ProfileFieldKey } from "@/lib/onboard/profile-types";
-import { missingProfileFields } from "@/lib/onboard/profile-types";
+import { missingApplicableFields } from "@/lib/onboard/profile-types";
 
 export type ProfileQuestionPayload = {
   say: string;
@@ -10,10 +11,12 @@ export type ProfileQuestionPayload = {
   multiSelect?: boolean;
 };
 
-export function buildFallbackQuestion(profile: OnboardProfileDraft): ProfileQuestionPayload {
-  const missing = missingProfileFields(profile);
-  const field = missing[0] ?? null;
-
+export function buildFallbackQuestion(
+  profile: OnboardProfileDraft,
+  plan: UserPlan = "free",
+): ProfileQuestionPayload {
+  const missing = missingApplicableFields(profile, plan);
+  const field = missing[0];
   if (!field) {
     return {
       say: "You're all set — Terabits AI now understands how you trade and invest.",
@@ -22,6 +25,17 @@ export function buildFallbackQuestion(profile: OnboardProfileDraft): ProfileQues
       values: {},
       done: true,
     };
+  }
+  return buildFallbackQuestionForField(field, plan);
+}
+
+/** Last-resort option templates when the LLM fails — never used for question wording when AI succeeds. */
+export function buildFallbackQuestionForField(
+  field: ProfileFieldKey,
+  plan: UserPlan = "free",
+): ProfileQuestionPayload {
+  if (field === "amountAvailable" && plan !== "premium") {
+    throw new Error("amountAvailable is premium-only");
   }
 
   switch (field) {
@@ -45,28 +59,61 @@ export function buildFallbackQuestion(profile: OnboardProfileDraft): ProfileQues
         },
         done: false,
       };
-    case "goal":
+    case "goal": {
+      const isPremium = plan === "premium";
+      const isPro = plan === "pro";
       return {
-        say: "What do you want Terabits to help you accomplish first?",
+        say: isPremium
+          ? "What do you want Terabits to help you accomplish first?"
+          : isPro
+            ? "What kind of market intelligence are you looking for?"
+            : "What do you want to get out of Terabits AI?",
         field: "goal",
-        options: [
-          { id: "signals", label: "Get AI signals and market intelligence" },
-          { id: "grow", label: "Grow a demo or live account steadily" },
-          { id: "automate", label: "Automate trades and portfolio management" },
-          { id: "learn", label: "Learn strategies while risking small amounts" },
-          { id: "research", label: "Deep research on assets before I commit capital" },
-          { id: "income", label: "Generate consistent side income from trading" },
-        ],
-        values: {
-          signals: "Get AI signals and actionable market intelligence",
-          grow: "Grow account balance steadily with disciplined trades",
-          automate: "Automate portfolio management and trade execution",
-          learn: "Learn trading strategies with minimal risk",
-          research: "Research assets deeply before committing capital",
-          income: "Generate consistent side income from trading",
-        },
+        options: isPremium
+          ? [
+              { id: "grow", label: "Grow a live or demo account steadily" },
+              { id: "automate", label: "Automate trades and portfolio management" },
+              { id: "income", label: "Generate consistent side income from trading" },
+              { id: "research", label: "Deep research before committing capital" },
+              { id: "learn", label: "Learn strategies while risking small amounts" },
+            ]
+          : isPro
+            ? [
+                { id: "signals", label: "AI signals and trade ideas" },
+                { id: "research", label: "Deep asset research and catalyst intel" },
+                { id: "scanner", label: "Multi-asset scanner and chart analysis" },
+                { id: "learn", label: "Learn advanced strategies from AI" },
+              ]
+            : [
+                { id: "learn", label: "Learn how markets work" },
+                { id: "research", label: "Research assets before I trade" },
+                { id: "signals", label: "Understand AI-generated market analysis" },
+                { id: "education", label: "Build trading knowledge over time" },
+              ],
+        values: isPremium
+          ? {
+              grow: "Grow account balance steadily with disciplined trades",
+              automate: "Automate portfolio management and trade execution",
+              income: "Generate consistent side income from trading",
+              research: "Research assets deeply before committing capital",
+              learn: "Learn trading strategies with minimal risk",
+            }
+          : isPro
+            ? {
+                signals: "Get AI signals and actionable market intelligence",
+                research: "Deep research on assets and catalysts",
+                scanner: "Scan markets and analyze charts with AI",
+                learn: "Learn advanced trading strategies",
+              }
+            : {
+                learn: "Learn how markets and trading work",
+                research: "Research assets with AI guidance",
+                signals: "Understand AI market analysis and insights",
+                education: "Build trading knowledge over time",
+              },
         done: false,
       };
+    }
     case "tradingExperience":
       return {
         say: "How would you describe your trading experience?",

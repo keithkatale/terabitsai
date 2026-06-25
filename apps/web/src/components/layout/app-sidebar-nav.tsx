@@ -18,6 +18,7 @@ import {
 import { cn } from "@/lib/utils";
 import { BrandLogoIcon, BrandMark } from "@/components/ui/brand-mark";
 import { tabPath, useAppTab, type AppTab } from "@/contexts/app-tab-context";
+import { APP_BASE, chatDraftPath } from "@/lib/routes";
 
 function NavItem({
   href,
@@ -182,11 +183,11 @@ export function AppSidebarNav({
               active={onHome}
             />
             <NavItem
-              href="/app/chat"
+              href={chatDraftPath()}
               icon={<ArrowUpRight className="size-4" strokeWidth={2} />}
               label="Open app"
               expanded={expanded}
-              active={pathname.startsWith("/app")}
+              active={pathname.startsWith(APP_BASE) || pathname.startsWith("/app")}
             />
           </>
         )}
@@ -208,13 +209,13 @@ export function AppSidebarNav({
         ) : (
           <>
             <NavItem
-              href="/login?next=/app"
+              href={`/login?next=${APP_BASE}/markets`}
               icon={<LogIn className="size-4" strokeWidth={2} />}
               label="Sign in"
               expanded={expanded}
             />
             <NavItem
-              href="/signup?next=/app"
+              href={`/signup?next=${APP_BASE}/markets`}
               icon={<UserPlus className="size-4" strokeWidth={2} />}
               label="Get started"
               expanded={expanded}

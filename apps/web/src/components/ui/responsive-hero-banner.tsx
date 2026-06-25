@@ -40,6 +40,9 @@ export interface ResponsiveHeroBannerProps {
   partnersTitle?: string;
   partners?: Partner[];
   partnersBannerUrl?: string;
+  socialProofSlot?: ReactNode;
+  /** Dark scrim over backgroundSlot — disable for WebGL heroes like LightRays */
+  backgroundScrim?: boolean;
 }
 
 export function ResponsiveHeroBanner({
@@ -65,6 +68,8 @@ export function ResponsiveHeroBanner({
   partnersTitle = "",
   partners = [],
   partnersBannerUrl,
+  socialProofSlot,
+  backgroundScrim = true,
 }: ResponsiveHeroBannerProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -77,7 +82,7 @@ export function ResponsiveHeroBanner({
       )}
     >
       {backgroundSlot ? (
-        <div className="pointer-events-none absolute inset-0">{backgroundSlot}</div>
+        <div className="pointer-events-none absolute inset-0 z-0">{backgroundSlot}</div>
       ) : backgroundImageUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -87,7 +92,9 @@ export function ResponsiveHeroBanner({
         />
       ) : null}
 
-      <div className="pointer-events-none absolute inset-0 bg-[#070707]/40" />
+      {backgroundScrim ? (
+        <div className="pointer-events-none absolute inset-0 z-[1] bg-[#070707]/40" />
+      ) : null}
       <div className="pointer-events-none absolute inset-0 ring-1 ring-white/5 ring-inset" />
 
       <header className="relative z-10">
@@ -108,7 +115,7 @@ export function ResponsiveHeroBanner({
                     key={link.href + link.label}
                     href={link.href}
                     className={cn(
-                      "terminal-nav-item px-3 py-2 text-sm font-medium",
+                      "terminal-nav-item shrink-0 whitespace-nowrap px-3.5 py-2 text-sm font-medium",
                       link.isActive ? "terminal-nav-item-active" : "",
                     )}
                   >
@@ -117,7 +124,7 @@ export function ResponsiveHeroBanner({
                 ))}
                 <Link
                   href={ctaButtonHref}
-                  className="terminal-btn terminal-btn-primary ml-1 px-3.5 py-2 text-sm"
+                  className="terminal-btn terminal-btn-primary ml-1 shrink-0 whitespace-nowrap px-6 py-2 text-sm"
                 >
                   {ctaButtonText}
                   <ArrowUpRight className="size-4" />
@@ -150,7 +157,7 @@ export function ResponsiveHeroBanner({
               ))}
               <Link
                 href={ctaButtonHref}
-                className="terminal-btn terminal-btn-primary mt-1 w-full px-4 py-2.5 text-sm"
+                className="terminal-btn terminal-btn-primary mt-1 w-full whitespace-nowrap px-6 py-2.5 text-sm"
                 onClick={() => setMobileMenuOpen(false)}
               >
                 {ctaButtonText}
@@ -222,7 +229,9 @@ export function ResponsiveHeroBanner({
             </div>
           ) : null}
 
-          {(partnersBannerUrl || partners.length > 0) && partnersTitle ? (
+          {socialProofSlot ? (
+            <div className="mx-auto mt-16 max-w-5xl sm:mt-20">{socialProofSlot}</div>
+          ) : (partnersBannerUrl || partners.length > 0) && partnersTitle ? (
             <div className="mx-auto mt-16 max-w-5xl sm:mt-20">
               <p className="animate-fade-slide-in-1 text-center text-sm text-white/70">
                 {partnersTitle}

@@ -13,6 +13,7 @@ import {
   type GenUiTrend,
   normalizeGenUiPayload,
 } from "./genui-types";
+import { GenUiErrorBoundary } from "./genui-error-boundary";
 
 /* ──────────────────────────────────────────────────────────────────────────
  * Branded accent palette
@@ -596,9 +597,13 @@ export function GenUiRenderer({
     );
   }
 
+  const rawPayload = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
+
   return (
-    <div className="my-2 w-full text-left">
-      <NodeList nodes={nodes} animate={animate} onWidgetAction={handleAction} />
-    </div>
+    <GenUiErrorBoundary fallbackTitle="Dashboard failed to render" rawPayload={rawPayload}>
+      <div className="my-2 w-full text-left">
+        <NodeList nodes={nodes} animate={animate} onWidgetAction={handleAction} />
+      </div>
+    </GenUiErrorBoundary>
   );
 }

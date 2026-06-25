@@ -92,41 +92,77 @@ function extractCodeString(children: React.ReactNode): string {
   return String(children).replace(/\n$/, "");
 }
 
-function GenUiParseError() {
+function GenUiParseError({ rawPayload, errorDetails }: { rawPayload?: string; errorDetails?: string }) {
   return (
     <QuantUiFailure
       title="Could not display this dashboard"
-      reason="The assistant returned an invalid layout. Try asking again or request a simpler view."
+      reason="The assistant returned an invalid layout. You can try again with a simpler view."
+      errorDetails={errorDetails}
+      rawPayload={rawPayload}
     />
   );
 }
 
-function renderStructured(codeString: string, strict: boolean): React.ReactNode | null {
-  const result = parseGenUiPayload(codeString);
-  if (!result) return null;
+type StructuredRenderResult = 
+  | { success: true; element: React.ReactNode }
+  | { success: false; error: string; rawPayload: string };
+
+function renderStructured(codeString: string, strict: boolean): StructuredRenderResult {
+  const trimmed = codeString.trim();
+  
+  if (!trimmed) {
+    return { success: false, error: "Empty payload", rawPayload: codeString };
+  }
+
+  const result = parseGenUiPayload(trimmed);
+  
+  if (!result) {
+    return { 
+      success: false, 
+      error: "JSON parsing failed - the payload is not valid JSON or doesn't contain recognized genui nodes", 
+      rawPayload: trimmed 
+    };
+  }
 
   const { payload, salvaged } = result;
-  if (strict && !looksLikeGenui(payload)) return null;
+  
+  if (strict && !looksLikeGenui(payload)) {
+    return { 
+      success: false, 
+      error: "Payload doesn't match expected genui structure", 
+      rawPayload: trimmed 
+    };
+  }
 
   const nodes = normalizeGenUiPayload(payload);
   if (nodes && nodes.length > 0) {
-    return (
-      <>
-        {salvaged ? (
-          <p className="mb-1 text-[10px] text-zinc-500">Partial layout recovered from model output.</p>
-        ) : null}
-        <GenUiRenderer payload={payload} />
-      </>
-    );
+    return {
+      success: true,
+      element: (
+        <>
+          {salvaged ? (
+            <p className="mb-1 text-[10px] text-zinc-500">Partial layout recovered from model output.</p>
+          ) : null}
+          <GenUiRenderer payload={payload} />
+        </>
+      ),
+    };
   }
 
   const obj = payload as Record<string, unknown>;
   const compName = (obj.component || obj.name) as string | undefined;
   if (compName) {
-    return <GenerativeUiRegistry name={compName} props={(obj.props as Record<string, unknown>) || obj} />;
+    return {
+      success: true,
+      element: <GenerativeUiRegistry name={compName} props={(obj.props as Record<string, unknown>) || obj} />,
+    };
   }
 
-  return null;
+  return { 
+    success: false, 
+    error: "Payload parsed but contained no renderable nodes. Expected types: stat, metricCard, chart, keyValue, barlist, table, etc.", 
+    rawPayload: trimmed 
+  };
 }
 
 const DEFERRED_LANGS = new Set(["html", "svg", "xml", "genui", "quant"]);
@@ -136,8 +172,11 @@ function renderArtifactSegment(segment: ArtifactSegment, key: string): React.Rea
     case "quant-ui":
       return <QuantUiRenderer key={key} markup={segment.markup} />;
     case "genui": {
-      const structured = renderStructured(segment.body, false);
-      return structured ?? <GenUiParseError key={key} />;
+      const result = renderStructured(segment.body, false);
+      if (result.success) {
+        return <React.Fragment key={key}>{result.element}</React.Fragment>;
+      }
+      return <GenUiParseError key={key} rawPayload={result.rawPayload} errorDetails={result.error} />;
     }
     case "html":
       return (
@@ -192,8 +231,9 @@ function renderArtifactCodeBlock(lang: string, codeString: string): React.ReactN
   const normalized = lang.trim().toLowerCase();
   if (normalized === "quant") return <QuantUiRenderer markup={codeString} />;
   if (normalized === "genui") {
-    const structured = renderStructured(codeString, false);
-    return structured ?? <GenUiParseError />;
+    const result = renderStructured(codeString, false);
+    if (result.success) return result.element;
+    return <GenUiParseError rawPayload={result.rawPayload} errorDetails={result.error} />;
   }
   if (normalized === "html" || normalized === "svg" || (normalized === "xml" && codeString.includes("<svg"))) {
     return (
@@ -205,8 +245,9 @@ function renderArtifactCodeBlock(lang: string, codeString: string): React.ReactN
     );
   }
   if (normalized === "json") {
-    const structured = renderStructured(codeString, true);
-    if (structured) return structured;
+    const result = renderStructured(codeString, true);
+    if (result.success) return result.element;
+    // For JSON, don't show error - just fall through to code block
   }
   return null;
 }

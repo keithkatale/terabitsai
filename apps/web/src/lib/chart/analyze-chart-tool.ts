@@ -1,4 +1,5 @@
 import { Type } from "@google/genai";
+import { buildChartAnalysisGenui } from "@/lib/genui/chart-analysis-genui";
 import { analyzeChartVision } from "./analyze-chart-vision";
 import { persistChartInsight } from "./chart-insights-persistence";
 import { renderTradingViewChart } from "./render-tradingview";
@@ -129,11 +130,16 @@ export async function executeAnalyzeChart(args: {
     snapshot_url: snapshotUrl(hash),
     analysis,
     insight_id: insightId,
-    genui: buildTradingViewChartGenui(spec, hash, {
-      summary: analysis.summary,
-      bias: analysis.bias,
-      confidence: analysis.confidence,
-    }),
+    genui: {
+      view: [
+        ...buildTradingViewChartGenui(spec, hash, {
+          summary: analysis.summary,
+          bias: analysis.bias,
+          confidence: analysis.confidence,
+        }).view,
+        ...buildChartAnalysisGenui(spec.symbol, spec.interval, analysis).view,
+      ],
+    },
   };
 }
 

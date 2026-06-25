@@ -12,6 +12,20 @@ import {
   webScrapeDeclaration,
   httpRequestDeclaration,
 } from "@/lib/chat/tools/web-tools";
+import {
+  tradingViewNewsDeclaration,
+  tradingViewOptionsChainDeclaration,
+  tradingViewQuoteDeclaration,
+  tradingViewScreenerDeclaration,
+  tradingViewSearchDeclaration,
+} from "@/lib/chat/tools/tradingview-tools";
+import {
+  hyperliquidBookDeclaration,
+  hyperliquidCandlesDeclaration,
+  hyperliquidFundingDeclaration,
+  hyperliquidMarketsDeclaration,
+} from "@/lib/chat/tools/hyperliquid-tools";
+import { executeWorkflowDeclaration } from "@/lib/skills/workflow-declaration";
 
 export const getAllAssetsDeclaration = {
   name: "get_all_assets",
@@ -362,6 +376,16 @@ export const SUBAGENT_READ_ONLY_TOOL_NAMES = new Set([
   "inform_user",
   "web_scrape",
   "http_request",
+  "tradingview_quote",
+  "tradingview_screener",
+  "tradingview_news",
+  "tradingview_search",
+  "tradingview_options_chain",
+  "hyperliquid_markets",
+  "hyperliquid_candles",
+  "hyperliquid_book",
+  "hyperliquid_funding",
+  "execute_skill",
 ]);
 
 export const subagentReadOnlyDeclarations = [
@@ -380,6 +404,16 @@ export const subagentReadOnlyDeclarations = [
   informUserDeclaration,
   webScrapeDeclaration,
   httpRequestDeclaration,
+  tradingViewQuoteDeclaration,
+  tradingViewScreenerDeclaration,
+  tradingViewNewsDeclaration,
+  tradingViewSearchDeclaration,
+  tradingViewOptionsChainDeclaration,
+  hyperliquidMarketsDeclaration,
+  hyperliquidCandlesDeclaration,
+  hyperliquidBookDeclaration,
+  hyperliquidFundingDeclaration,
+  executeSkillDeclaration,
 ];
 
 export const orchestratorToolDeclarations = [
@@ -405,4 +439,14 @@ export const orchestratorToolDeclarations = [
   queryTradingKnowledgeDeclaration,
   webScrapeDeclaration,
   httpRequestDeclaration,
+  tradingViewQuoteDeclaration,
+  tradingViewScreenerDeclaration,
+  tradingViewNewsDeclaration,
+  tradingViewSearchDeclaration,
+  tradingViewOptionsChainDeclaration,
+  hyperliquidMarketsDeclaration,
+  hyperliquidCandlesDeclaration,
+  hyperliquidBookDeclaration,
+  hyperliquidFundingDeclaration,
+  executeWorkflowDeclaration,
 ];

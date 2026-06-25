@@ -112,7 +112,6 @@ export function ChartProvider({ children }: { children: ReactNode }) {
   const setSymbol = useCallback((next: string, name?: string) => {
     setSymbolState(next.toUpperCase());
     setDisplayName(name ?? next.toUpperCase());
-    setAiPanelOpen(true);
   }, []);
 
   const setInterval = useCallback((next: TvInterval) => {

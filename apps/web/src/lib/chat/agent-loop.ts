@@ -11,6 +11,8 @@ export type AgentLoopEvent =
   | { type: "reasoning"; text: string }
   | { type: "user_update"; message: string }
   | { type: "status"; label: string; detail?: string }
+  | { type: "genui"; payload: unknown; source?: string }
+  | { type: "quant_ui"; markup: string; source?: string }
   | { type: "tool_start"; toolUseId: string; name: string; args?: Record<string, unknown> }
   | {
       type: "tool_end";
@@ -286,8 +288,11 @@ export async function runAgentLoop(params: {
 
       const toolQuantUi = ok ? extractToolQuantUi(toolResult) : null;
       const toolGenui = ok ? extractToolGenui(toolResult) : null;
-      if (toolQuantUi) pendingQuantUi = toolQuantUi;
-      else if (toolGenui) pendingGenui = toolGenui;
+      if (toolQuantUi) {
+        onEvent({ type: "quant_ui", markup: toolQuantUi, source: name });
+      } else if (toolGenui) {
+        onEvent({ type: "genui", payload: toolGenui, source: name });
+      }
 
       // For failed GenUI/chart tools, provide detailed error feedback to help the model retry
       let responseForModel: unknown = toolResult;

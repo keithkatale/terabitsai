@@ -15,7 +15,26 @@ import { scheduleAgentTask, type ScheduleTaskArgs } from "@/lib/chat/tools/sched
 import { executeQueryTradingKnowledge } from "@/lib/chat/tools/knowledge-tool";
 import { executeWebScrape, executeHttpRequest } from "@/lib/chat/tools/web-tools";
 import { executeAnalyzeChart } from "@/lib/chart/analyze-chart-tool";
+import {
+  resolveAnalyzeChartDefaults,
+  inferHyperliquidCoinFromSymbol,
+  type MarketsChartSessionContext,
+} from "@/lib/chat/markets-chart-context";
 import { handleExecuteSkill, normalizeSkillToolArgs } from "@/lib/skills/tool-declaration";
+import { handleExecuteWorkflow } from "@/lib/skills/workflow-declaration";
+import {
+  executeTradingViewNews,
+  executeTradingViewOptionsChain,
+  executeTradingViewQuote,
+  executeTradingViewScreener,
+  executeTradingViewSearch,
+} from "@/lib/chat/tools/tradingview-tools";
+import {
+  executeHyperliquidBook,
+  executeHyperliquidCandles,
+  executeHyperliquidFunding,
+  executeHyperliquidMarkets,
+} from "@/lib/chat/tools/hyperliquid-tools";
 import { searchMarketIntel, getLatestCatalystBrief, getMacroRegime } from "@quant/market-intel";
 import type { ChatStreamEvent } from "@/lib/chat/stream-types";
 import type { TradingMode } from "@/lib/chat/conversation-persistence";
@@ -25,6 +44,7 @@ export type ToolRunContext = {
   tradingMode: TradingMode;
   conversationId?: string;
   sessionContext: Awaited<ReturnType<typeof getSessionContext>> | null;
+  marketsChartContext?: MarketsChartSessionContext | null;
   sendEvent?: (event: ChatStreamEvent) => void;
   /** When set, inform_user routes to subagent_update stream events. */
   subagentId?: string;
@@ -98,10 +118,11 @@ export async function runToolByName(
   }
 
   if (name === "analyze_chart") {
+    const defaults = resolveAnalyzeChartDefaults(args, ctx.marketsChartContext ?? null);
     return executeAnalyzeChart({
-      symbol: String(args?.symbol ?? ""),
-      interval: args?.interval as string | undefined,
-      indicators: Array.isArray(args?.indicators) ? (args.indicators as string[]) : undefined,
+      symbol: defaults.symbol,
+      interval: defaults.interval,
+      indicators: defaults.indicators,
       range: args?.range as string | undefined,
       style: args?.style as string | undefined,
       question: args?.question as string | undefined,
@@ -235,6 +256,96 @@ export async function runToolByName(
       execution_time_ms: skillResult.execution_time_ms,
       cached: skillResult.cached || false,
     };
+  }
+
+  if (name === "execute_workflow") {
+    const workflow_id = String(args?.workflow_id ?? "");
+    const nested = args?.inputs;
+    const inputs =
+      nested && typeof nested === "object" && !Array.isArray(nested)
+        ? (nested as Record<string, unknown>)
+        : {};
+
+    const balanceGoal = ctx.sessionContext?.goals?.find((g) => g.goal_type === "balance_target");
+
+    let accountBal: number | undefined;
+    try {
+      const accState = await fetchAccountState(ctx.userId, ctx.tradingMode);
+      accountBal = accState?.balance?.total_balance;
+    } catch {
+      accountBal = undefined;
+    }
+
+    if (!workflow_id) {
+      return { success: false, error: true, message: "workflow_id is required" };
+    }
+
+    const wfResult = await handleExecuteWorkflow({
+      workflow_id,
+      inputs,
+      userId: ctx.userId,
+      goalId: balanceGoal?.id,
+      mode: ctx.tradingMode,
+      accountBalance: accountBal,
+    });
+
+    if ("tool_error" in wfResult && wfResult.tool_error) {
+      return { ...wfResult, error: true, message: wfResult.message };
+    }
+
+    return wfResult;
+  }
+
+  if (name === "tradingview_quote") {
+    return executeTradingViewQuote(args);
+  }
+
+  if (name === "tradingview_screener") {
+    return executeTradingViewScreener(args);
+  }
+
+  if (name === "tradingview_news") {
+    return executeTradingViewNews(args);
+  }
+
+  if (name === "tradingview_search") {
+    return executeTradingViewSearch(args);
+  }
+
+  if (name === "tradingview_options_chain") {
+    return executeTradingViewOptionsChain(args);
+  }
+
+  if (name === "hyperliquid_markets") {
+    const coin =
+      args.coin != null
+        ? String(args.coin)
+        : ctx.marketsChartContext?.chartSymbol
+          ? inferHyperliquidCoinFromSymbol(ctx.marketsChartContext.chartSymbol)
+          : undefined;
+    return executeHyperliquidMarkets({ ...args, coin });
+  }
+
+  if (name === "hyperliquid_candles") {
+    const coin =
+      String(args.coin ?? "") ||
+      (ctx.marketsChartContext?.chartSymbol
+        ? inferHyperliquidCoinFromSymbol(ctx.marketsChartContext.chartSymbol)
+        : "");
+    return executeHyperliquidCandles({ ...args, coin });
+  }
+
+  if (name === "hyperliquid_book") {
+    const coin =
+      String(args.coin ?? "") ||
+      (ctx.marketsChartContext?.chartSymbol
+        ? inferHyperliquidCoinFromSymbol(ctx.marketsChartContext.chartSymbol)
+        : "");
+    return executeHyperliquidBook({ ...args, coin });
+  }
+
+  if (name === "hyperliquid_funding") {
+    return executeHyperliquidFunding(args);
   }
 
   if (name === "schedule_task") {

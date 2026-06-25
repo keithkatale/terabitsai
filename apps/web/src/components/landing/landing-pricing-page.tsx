@@ -6,13 +6,12 @@ import { BrandMark } from "@/components/ui/brand-mark";
 import { ResponsiveHeroBanner } from "@/components/ui/responsive-hero-banner";
 import { useAccount } from "@/hooks/use-account";
 import { plans } from "@/lib/billingsdk-config";
-import { LandingBlueGlow } from "./landing-blue-glow";
-import { LandingPixelBackground } from "./landing-pixel-background";
+import { LandingHeroBackground } from "./landing-hero-background";
+import { LandingCtaSection } from "./landing-cta-section";
 import { LandingPricingCards } from "./landing-pricing-cards";
 import {
   FaqItem,
   LandingCtaButton,
-  LandingGradientText,
   SectionSubtitle,
 } from "./landing-ui";
 import "./landing-styles.css";
@@ -48,7 +47,7 @@ export function LandingPricingPage() {
   const [loadingPlanId, setLoadingPlanId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const ctaHref = user ? "/app" : "/signup?next=/app";
+  const ctaHref = user ? "/chat/markets" : "/signup?next=/chat/markets";
 
   useEffect(() => {
     if (!user) return;
@@ -88,13 +87,14 @@ export function LandingPricingPage() {
 
   return (
     <div
-      className={`landing-page min-h-screen pb-[88px] font-[family-name:var(--font-inter)] ${manrope.variable} ${inter.variable} ${poppins.variable}`}
+      className={`landing-page min-h-screen font-[family-name:var(--font-inter)] ${manrope.variable} ${inter.variable} ${poppins.variable}`}
     >
       <ResponsiveHeroBanner
-        className="!min-h-0 pb-2"
-        minHeightClass="min-h-0"
+        className="pb-2"
+        minHeightClass="min-h-[88vh]"
         logo={<BrandMark size="sm" />}
-        backgroundSlot={<LandingPixelBackground />}
+        backgroundSlot={<LandingHeroBackground />}
+        backgroundScrim={false}
         navLinks={[
           { label: "Features", href: "/#features" },
           { label: "Pricing", href: "/pricing", isActive: true },
@@ -179,33 +179,9 @@ export function LandingPricingPage() {
             ))}
           </div>
         </section>
-
-        <section className="relative flex w-full flex-col items-center gap-8 overflow-hidden pb-16 pt-6 text-center">
-          <LandingBlueGlow variant="footer" />
-          <div className="landing-footer-glow pointer-events-none absolute inset-x-0 bottom-0 top-0" />
-          <h2 className="landing-section-title relative z-10 max-w-[680px] text-[clamp(1.75rem,3.5vw,3rem)]">
-            Ready to trade
-            <br />
-            smarter with AI?
-          </h2>
-          <div className="relative z-10 flex flex-col items-center gap-2.5">
-            <LandingCtaButton href={ctaHref}>Try for free</LandingCtaButton>
-            <p className="font-[family-name:var(--font-manrope)] text-sm font-semibold tracking-[-0.28px] text-white/25">
-              No card required.
-            </p>
-          </div>
-        </section>
       </main>
 
-      <div className="landing-sticky-footer fixed inset-x-0 bottom-0 z-50 flex h-[88px] items-center justify-center gap-8 px-6">
-        <div className="landing-footer-glow pointer-events-none absolute inset-x-0 top-0 h-5" />
-        <LandingGradientText className="hidden text-[clamp(1rem,2vw,1.5rem)] font-semibold tracking-[-0.03em] sm:block">
-          Start free — upgrade when you&apos;re ready
-        </LandingGradientText>
-        <LandingCtaButton href={ctaHref} size="md">
-          Try for free
-        </LandingCtaButton>
-      </div>
+      <LandingCtaSection ctaHref={ctaHref} />
     </div>
   );
 }

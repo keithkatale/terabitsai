@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { TRACE_SHIMMER_DURATION_S } from "@/components/ai-elements/agent-visual-constants";
+import { TRACE_SHIMMER_DURATION_S, ORCHESTRATOR_HIGHLIGHT } from "@/components/ai-elements/agent-visual-constants";
 
 type ShimmerProps = {
   children: string;
@@ -17,14 +17,14 @@ export function Shimmer({
   as: Tag = "span",
   className,
   duration = TRACE_SHIMMER_DURATION_S,
-  highlight = "#24ee89",
+  highlight = ORCHESTRATOR_HIGHLIGHT,
 }: ShimmerProps) {
   if (!children.trim()) return null;
 
   return (
     <Tag
       className={cn(
-        "block min-w-0 max-w-full truncate bg-clip-text font-medium text-transparent",
+        "inline-block max-w-full truncate bg-clip-text font-medium text-transparent",
         className,
       )}
       style={{
@@ -40,21 +40,24 @@ export function Shimmer({
   );
 }
 
-/** Live trace line with optional shimmer — shared by orchestrator, tools, sub-agents. */
+/** Live trace line — shimmer for orchestrator, plain text for tools/sub-agents. */
 export function TraceShimmerText({
   text,
   active,
-  highlight = "#24ee89",
+  highlight = ORCHESTRATOR_HIGHLIGHT,
   className,
+  loadingStyle = "shimmer",
 }: {
   text: string;
   active: boolean;
   highlight?: string;
   className?: string;
+  /** `static` = no text animation while running (tools / sub-agents). */
+  loadingStyle?: "shimmer" | "static";
 }) {
   if (!text.trim()) return null;
 
-  if (active) {
+  if (active && loadingStyle === "shimmer") {
     return (
       <Shimmer className={cn("text-[11px] leading-snug", className)} highlight={highlight}>
         {text}
@@ -62,10 +65,24 @@ export function TraceShimmerText({
     );
   }
 
+  if (active) {
+    return (
+      <span
+        className={cn(
+          "inline-block max-w-full truncate text-[11px] font-medium leading-snug",
+          className,
+        )}
+        style={{ color: highlight }}
+      >
+        {text}
+      </span>
+    );
+  }
+
   return (
     <span
       className={cn(
-        "block min-w-0 truncate text-[11px] font-medium leading-snug text-zinc-400",
+        "inline-block max-w-full truncate text-[11px] font-medium leading-snug text-zinc-400",
         className,
       )}
     >

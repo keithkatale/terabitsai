@@ -1,5 +1,6 @@
 "use client";
 
+import { chatDraftPath } from "@/lib/routes";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { type TaggedAsset } from "@/components/ui/input-bar";
@@ -55,11 +56,11 @@ export function WelcomeScreen() {
     }
 
     if (!user) {
-      window.location.href = `/login?next=${encodeURIComponent("/app/chat")}`;
+      window.location.href = `/login?next=${encodeURIComponent(chatDraftPath())}`;
       return;
     }
 
-    router.push("/app/chat");
+    router.push(chatDraftPath());
   };
 
   return (

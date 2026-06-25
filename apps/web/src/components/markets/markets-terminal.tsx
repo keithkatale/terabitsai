@@ -3,7 +3,7 @@
 import { ChartProvider, useChartContext } from "@/contexts/chart-context";
 import { AssetBrowser } from "./asset-browser";
 import { ChartPanel } from "./chart-panel";
-import { AiAnalysisPanel } from "./ai-analysis-panel";
+import { MarketsChatPanel } from "./markets-chat-panel";
 
 function MarketsTerminalInner() {
   const { aiPanelOpen, setAiPanelOpen, browserCollapsed, setBrowserCollapsed } =
@@ -16,7 +16,7 @@ function MarketsTerminalInner() {
         onToggleCollapsed={() => setBrowserCollapsed(!browserCollapsed)}
       />
       <ChartPanel />
-      <AiAnalysisPanel open={aiPanelOpen} onToggle={() => setAiPanelOpen(!aiPanelOpen)} />
+      <MarketsChatPanel open={aiPanelOpen} onToggle={() => setAiPanelOpen(!aiPanelOpen)} />
     </div>
   );
 }

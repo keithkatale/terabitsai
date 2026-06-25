@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { chatDraftPath } from "@/lib/routes";
 import InputBar, { type TaggedAsset } from "@/components/ui/input-bar";
 import type { AiToolId } from "@/lib/chat/ai-tools";
 import { BrandMark } from "@/components/ui/brand-mark";
@@ -20,7 +21,7 @@ const LANDING_COPY = {
           Open Wallet
         </Link>
         {" · "}
-        <Link href="/app/chat" className="font-medium text-cyan-400 hover:underline">
+        <Link href={chatDraftPath()} className="font-medium text-cyan-400 hover:underline">
           Open Chat
         </Link>
       </>
@@ -75,7 +76,7 @@ export function ChatLandingHero({
   };
 
   return (
-    <div className="relative flex min-h-full w-full flex-col items-center justify-center px-4 py-8 pb-10 text-center">
+    <div className="relative flex min-h-full w-full flex-col items-center justify-center overflow-x-hidden px-4 py-8 pb-10 text-center">
       {showBrandMark ? <BrandMark size="lg" className="mb-5" /> : null}
       {showUpgradeLink && copy.upgrade ? (
         <p className="mb-3 text-xs text-zinc-400">{copy.upgrade}</p>

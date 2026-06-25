@@ -2,7 +2,9 @@
 
 import { cn } from "@/lib/utils";
 import type { ChatToolPod } from "@/lib/chat/stream-types";
+import { ORCHESTRATOR_HIGHLIGHT, ORCHESTRATOR_STATUS_CLASS } from "@/components/ai-elements/agent-visual-constants";
 import { TraceShimmerText } from "@/components/ai-elements/shimmer";
+import { ActivitySpinner } from "@/components/ai-elements/activity-spinner";
 
 const TOOL_LABELS: Record<string, string> = {
   analyze_chart: "Chart analysis",
@@ -88,32 +90,28 @@ export function ToolStepWidget({
         failed && !active && "border-red-500/20",
       )}
     >
-      <span
-        className={cn(
-          "size-1.5 shrink-0 rounded-full",
-          pod.status === "running" ? "animate-pulse bg-[#24ee89]" : failed ? "bg-red-400" : "bg-emerald-400/80",
-        )}
-        aria-hidden
-      />
-      <div className="min-w-0 flex-1">
+      <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
         <TraceShimmerText
           text={title}
           active={active}
-          highlight="#24ee89"
-          className="text-[10px] leading-snug text-zinc-300"
+          loadingStyle="static"
+          highlight={ORCHESTRATOR_HIGHLIGHT}
+          className="min-w-0 text-[10px] leading-snug text-zinc-300"
         />
-        {context ? (
-          <p className="truncate text-[9px] text-zinc-500">{context}</p>
-        ) : null}
-        {failed && pod.error ? (
-          <p className="mt-0.5 line-clamp-2 text-[9px] text-red-400/90">{pod.error}</p>
-        ) : null}
+        {active ? <ActivitySpinner color={ORCHESTRATOR_HIGHLIGHT} sizeClassName="size-2.5" /> : null}
       </div>
+      {context ? (
+        <p className="hidden shrink-0 truncate text-[9px] text-zinc-500 sm:block">{context}</p>
+      ) : null}
       <div className="shrink-0 text-right">
         <span
           className={cn(
             "text-[9px] font-medium",
-            pod.status === "running" ? "text-[#24ee89]" : failed ? "text-red-400" : "text-emerald-400/90",
+            pod.status === "running"
+              ? ORCHESTRATOR_STATUS_CLASS
+              : failed
+                ? "text-red-400"
+                : "text-emerald-400/90",
           )}
         >
           {status}
@@ -122,6 +120,9 @@ export function ToolStepWidget({
           <p className="text-[8px] text-zinc-600">{pod.durationMs}ms</p>
         ) : null}
       </div>
+      {failed && pod.error ? (
+        <p className="basis-full line-clamp-2 text-[9px] text-red-400/90">{pod.error}</p>
+      ) : null}
     </div>
   );
 }

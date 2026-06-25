@@ -5,6 +5,9 @@
 
 import { Type } from "@google/genai";
 import { getSkillExecutor, type SkillExecutionContext } from "@/lib/skills/executor";
+import { buildSkillCatalogForPrompt } from "@/lib/skills/tool-library";
+
+const SKILL_CATALOG = buildSkillCatalogForPrompt(50);
 
 /**
  * Tool declaration for execute_skill
@@ -14,22 +17,15 @@ export const executeSkillDeclaration = {
   name: "execute_skill",
   description: `Execute a trading analysis skill to enhance decision-making.
 
-Available skills:
-- market-regime-detector: Classify market as uptrend/downtrend/ranging (symbols, timeframes)
-- position-sizer: Calculate risk-based position size (symbol, entry_price, stop_loss, account_balance, max_risk_pct)
-- portfolio-heat-calculator: Sum total risk across all open positions ()
-- tradingview-chart-analyst: Visual TA via TradingView + AI vision (symbols, interval, indicators)
-- multi-timeframe-analyzer: Analyze trend alignment across timeframes (symbol, timeframes)
-- support-resistance-identifier: Find key price levels (symbol, timeframe, lookback)
-- trend-strength-scorer: Score trend quality 0-100 (symbol, timeframe)
-- pattern-lookup: Query chart patterns from knowledge base (pattern_type)
-- strategy-recommender: Get regime-specific strategies (regime, confidence)
+Mapped skills (native + external libraries):
+${SKILL_CATALOG}
 
 Skills provide specialized analysis beyond base knowledge. Use them for:
 - Market context (regime, volatility, trends)
 - Risk management (sizing, portfolio heat)
 - Technical analysis (patterns, levels, strength)
-- Strategy selection (based on regime)`,
+- Strategy selection (based on regime)
+- Guidance-only skills return a workflow — follow it with suggested companion tools`,
   
   parameters: {
     type: Type.OBJECT,
@@ -94,13 +90,29 @@ export async function handleExecuteSkill(params: {
     };
   }
 
-  return {
+  const payload: Record<string, unknown> = {
     success: true,
     skill_id: params.skill_id,
     data: result.data,
     execution_time_ms: result.execution_time_ms,
     cached: result.cached || false,
   };
+
+  const data = result.data as { mode?: string; workflow?: string; skill_id?: string } | undefined;
+  if (data?.mode === "guidance" && data.workflow) {
+    payload.genui = {
+      view: [
+        {
+          type: "callout",
+          variant: "info",
+          title: `Skill workflow · ${params.skill_id}`,
+          text: String(data.workflow).slice(0, 400) + (String(data.workflow).length > 400 ? "…" : ""),
+        },
+      ],
+    };
+  }
+
+  return payload;
 }
 
 /**

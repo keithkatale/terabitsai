@@ -1,16 +1,16 @@
 "use client";
 
 import {
-  Brain,
   ChevronRight,
   Loader2,
   Minus,
   RefreshCw,
+  Sparkles,
   TrendingDown,
   TrendingUp,
 } from "lucide-react";
-import { useChartAnalysis } from "@/hooks/use-chart-analysis";
-import { useChartContext } from "@/contexts/chart-context";
+import { GenUiRenderer } from "@/components/generative-ui/genui-renderer";
+import type { AnalysisStreamState } from "@/hooks/use-chart-analysis";
 import { cn } from "@/lib/utils";
 
 function BiasBadge({ bias, confidence }: { bias?: string; confidence?: number }) {
@@ -53,18 +53,26 @@ function BiasBadge({ bias, confidence }: { bias?: string; confidence?: number })
 export function AiAnalysisPanel({
   open,
   onToggle,
+  symbol,
+  displayName,
+  status,
+  analysis,
+  reasoningText,
+  error,
+  snapshotUrl,
+  genui,
+  onRefresh,
 }: {
   open: boolean;
   onToggle: () => void;
+  symbol: string;
+  displayName: string;
+} & Pick<
+  AnalysisStreamState,
+  "status" | "analysis" | "reasoningText" | "error" | "snapshotUrl" | "genui"
+> & {
+  onRefresh: () => void;
 }) {
-  const { symbol, displayName, interval, indicators } = useChartContext();
-  const { status, analysis, reasoningText, error, refresh } = useChartAnalysis({
-    symbol,
-    interval,
-    indicators,
-    enabled: open,
-  });
-
   if (!open) {
     return (
       <div className="flex h-full w-10 shrink-0 flex-col items-center border-l border-white/6 bg-black/30 py-3">
@@ -72,33 +80,36 @@ export function AiAnalysisPanel({
           type="button"
           onClick={onToggle}
           className="rounded-lg p-2 text-cyan-400 hover:bg-cyan-500/10"
-          title="Open AI analysis"
+          title="Open chart analysis"
         >
-          <Brain className="size-4" />
+          <Sparkles className="size-4" />
         </button>
       </div>
     );
   }
 
   const loading = status === "loading" || status === "streaming";
+  const idle = status === "idle";
 
   return (
-    <aside className="flex h-full w-[min(340px,36vw)] shrink-0 flex-col border-l border-white/6 bg-black/30">
+    <aside className="flex h-full w-[min(360px,38vw)] shrink-0 flex-col border-l border-white/6 bg-black/30">
       <div className="flex items-center justify-between gap-2 border-b border-white/6 px-3 py-2.5">
         <div className="flex items-center gap-2">
-          <Brain className="size-4 text-cyan-400" />
+          <Sparkles className="size-4 text-cyan-400" />
           <div>
-            <p className="text-xs font-bold text-white">AI Analysis</p>
-            <p className="text-[10px] text-zinc-500">{symbol}</p>
+            <p className="text-xs font-bold text-white">Chart Analysis</p>
+            <p className="text-[10px] text-zinc-500">
+              {displayName} · {symbol}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-1">
           <button
             type="button"
-            onClick={() => void refresh()}
+            onClick={onRefresh}
             disabled={loading}
             className="rounded-lg p-1.5 text-zinc-500 hover:text-cyan-400 disabled:opacity-40"
-            title="Refresh analysis"
+            title="Re-run analysis"
           >
             <RefreshCw className={cn("size-3.5", loading && "animate-spin")} />
           </button>
@@ -114,17 +125,44 @@ export function AiAnalysisPanel({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+        {idle ? (
+          <div className="flex flex-col items-center justify-center gap-3 py-8 text-center">
+            <Sparkles className="size-8 text-cyan-500/40" />
+            <p className="text-xs text-zinc-500">
+              Click <span className="text-cyan-400">Analyze chart</span> in the toolbar to run
+              AI technical analysis on the current chart.
+            </p>
+          </div>
+        ) : null}
+
         {loading && !analysis?.summary ? (
-          <div className="flex items-center gap-2 text-xs text-zinc-400">
+          <div className="mb-3 flex items-center gap-2 text-xs text-zinc-400">
             <Loader2 className="size-4 animate-spin text-cyan-400" />
             Analyzing {displayName}…
           </div>
         ) : null}
 
         {error ? (
-          <p className="rounded-xl border border-rose-500/20 bg-rose-950/20 px-3 py-2 text-xs text-rose-300">
+          <p className="mb-3 rounded-xl border border-rose-500/20 bg-rose-950/20 px-3 py-2 text-xs text-rose-300">
             {error}
           </p>
+        ) : null}
+
+        {genui ? (
+          <div className="mb-4">
+            <GenUiRenderer payload={genui} />
+          </div>
+        ) : null}
+
+        {snapshotUrl ? (
+          <div className="mb-4 overflow-hidden rounded-xl border border-white/8">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={snapshotUrl}
+              alt={`${symbol} chart snapshot`}
+              className="w-full object-cover"
+            />
+          </div>
         ) : null}
 
         {analysis?.bias ? (

@@ -1,6 +1,7 @@
 import { fetchAlphaVantageNewsSentiment, fetchAlphaVantageOverview } from "@/lib/data-sources/alpha-vantage";
 import { fetchFearGreedIndex } from "@/lib/data-sources/fear-greed";
 import { fetchMacroSnapshot } from "@/lib/data-sources/fred";
+import { buildMacroDataGenui } from "@/lib/genui/macro-genui";
 
 export async function fetchMacroData(indicators?: string[]) {
   const requested = (indicators ?? ["fear_greed", "macro"]).map((i) => i.toLowerCase());
@@ -18,7 +19,8 @@ export async function fetchMacroData(indicators?: string[]) {
     result.macro = await fetchMacroSnapshot();
   }
 
-  return result;
+  const genui = buildMacroDataGenui(result);
+  return genui ? { ...result, genui } : result;
 }
 
 export async function fetchFundamentals(symbol: string) {

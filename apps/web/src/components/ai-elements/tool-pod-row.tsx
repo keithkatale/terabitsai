@@ -2,6 +2,8 @@
 
 import { ChevronDown } from "lucide-react";
 import type { ChatToolPod } from "@/lib/chat/stream-types";
+import { ORCHESTRATOR_HIGHLIGHT, ORCHESTRATOR_STATUS_CLASS } from "@/components/ai-elements/agent-visual-constants";
+import { ActivitySpinner } from "@/components/ai-elements/activity-spinner";
 
 function formatToolPreview(value: unknown, maxChars: number): string {
   try {
@@ -30,7 +32,7 @@ export function ToolPodRow({ pod, defaultOpen = false }: { pod: ChatToolPod; def
         <span
           className={
             pod.status === "running"
-              ? "text-[#24ee89]"
+              ? ORCHESTRATOR_STATUS_CLASS
               : pod.ok === false
                 ? "text-red-400"
                 : "text-emerald-400/90"
@@ -38,7 +40,7 @@ export function ToolPodRow({ pod, defaultOpen = false }: { pod: ChatToolPod; def
         >
           {pod.status === "running" ? (
             <span className="inline-flex items-center gap-1">
-              <span className="inline-block size-1 animate-pulse rounded-full bg-[#24ee89]" aria-hidden />
+              <ActivitySpinner color={ORCHESTRATOR_HIGHLIGHT} sizeClassName="size-2.5" />
               {statusLabel}
             </span>
           ) : (

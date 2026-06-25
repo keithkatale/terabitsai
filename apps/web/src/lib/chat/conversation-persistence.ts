@@ -56,6 +56,21 @@ function toPersistedMessageId(id: string): string {
   return UUID_RE.test(id) ? id : randomUUID();
 }
 
+export async function updateConversationTitle(
+  conversationId: string,
+  userId: string,
+  title: string,
+) {
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase
+    .from("conversations")
+    .update({ title: title.slice(0, 120), updated_at: new Date().toISOString() })
+    .eq("id", conversationId)
+    .eq("user_id", userId);
+
+  if (error) throw new Error(error.message);
+}
+
 export async function createConversation(
   userId: string,
   mode: TradingMode,
@@ -246,15 +261,32 @@ export async function appendConversationMessages(
 
   let sequence = (lastRow?.sequence ?? 0) + 1;
 
-  const rows = messages.map((msg) => ({
-    id: toPersistedMessageId(msg.id),
-    conversation_id: conversationId,
-    role: msg.role,
-    parts: msg.parts,
-    tool_pods: msg.toolPods ?? null,
-    sub_agents: msg.subAgents ?? null,
-    sequence: sequence++,
-  }));
+  const candidateIds = messages.map((msg) => toPersistedMessageId(msg.id));
+  const { data: existingRows } = candidateIds.length
+    ? await supabase
+        .from("chat_messages")
+        .select("id")
+        .eq("conversation_id", conversationId)
+        .in("id", candidateIds)
+    : { data: [] as { id: string }[] };
+
+  const existingIds = new Set((existingRows ?? []).map((row) => String(row.id)));
+
+  const rows = messages
+    .filter((msg) => !existingIds.has(toPersistedMessageId(msg.id)))
+    .map((msg) => ({
+      id: toPersistedMessageId(msg.id),
+      conversation_id: conversationId,
+      role: msg.role,
+      parts: msg.parts,
+      tool_pods: msg.toolPods ?? null,
+      sub_agents: msg.subAgents ?? null,
+      sequence: sequence++,
+    }));
+
+  if (rows.length === 0) {
+    return { title: null };
+  }
 
   const { error } = await supabase.from("chat_messages").insert(rows);
   if (error) throw new Error(error.message);

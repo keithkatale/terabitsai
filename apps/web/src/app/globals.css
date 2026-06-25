@@ -287,6 +287,7 @@ body {
 
 .terminal-nav-group {
   display: inline-flex;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 0.25rem;
   border-radius: 9999px;
@@ -294,6 +295,17 @@ body {
   background: rgba(255, 255, 255, 0.05);
   padding: 0.25rem;
   backdrop-filter: blur(12px);
+}
+
+.terminal-nav-group .terminal-nav-item {
+  width: auto;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.terminal-nav-group .terminal-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .terminal-nav-item {
@@ -1371,8 +1383,8 @@ body {
     to right,
     rgba(255, 255, 255, 0.4) 0%,
     rgba(255, 255, 255, 0.5) 15%,
-    #24ee89 40%,
-    #24ee89 60%,
+    #5988ff 40%,
+    #5988ff 60%,
     rgba(255, 255, 255, 0.5) 85%,
     rgba(255, 255, 255, 0.4) 100%
   );
@@ -1435,6 +1447,16 @@ body {
 
 .landing-hero-cta:hover {
   filter: brightness(1.1);
+}
+
+/* Chat live-trace typing dots */
+@keyframes chat-typing-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
+.chat-typing-dot {
+  animation: chat-typing-bounce 0.48s ease-in-out infinite;
 }
 
 /* ── Generative UI: staggered entrance for composed widgets ────────────── */

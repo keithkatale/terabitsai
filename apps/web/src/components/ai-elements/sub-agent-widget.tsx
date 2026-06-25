@@ -5,6 +5,7 @@ import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AgentOrb } from "@/components/ai-elements/agent-orb";
 import { TraceShimmerText } from "@/components/ai-elements/shimmer";
+import { ActivitySpinner } from "@/components/ai-elements/activity-spinner";
 import { subAgentWidgetTrace } from "@/lib/chat/live-trace";
 import {
   leadSubAgent,
@@ -24,20 +25,6 @@ const SUBAGENT_HIGHLIGHT: Record<SubAgentColorScheme, string> = {
 
 const ORB_SIZE = 24;
 const ORB_OVERLAP = 9;
-
-function TypingDots({ color = "#24ee89" }: { color?: string }) {
-  return (
-    <span className="inline-flex shrink-0 items-end gap-[3px]" aria-hidden>
-      {[0, 0.12, 0.24].map((delay) => (
-        <span
-          key={delay}
-          className="inline-block size-[4px] animate-bounce rounded-full [animation-duration:0.6s]"
-          style={{ backgroundColor: color, animationDelay: `${delay}s` }}
-        />
-      ))}
-    </span>
-  );
-}
 
 function OverlappingAgentOrbs({ agents }: { agents: SubAgentState[] }) {
   const sorted = sortAgentsForOrbStack(agents);
@@ -74,7 +61,7 @@ export function SubAgentWidget({
 }) {
   const isRunning = agent.status === "running";
   const isFailed = agent.status === "failed";
-  const highlight = SUBAGENT_HIGHLIGHT[agent.color] ?? "#24ee89";
+  const highlight = SUBAGENT_HIGHLIGHT[agent.color] ?? SUBAGENT_HIGHLIGHT.cyan;
   const trace = subAgentWidgetTrace(agent);
 
   return (
@@ -94,23 +81,26 @@ export function SubAgentWidget({
         sizePx={22}
         className="shrink-0"
       />
-      <div className="flex min-w-0 flex-1 items-center gap-1.5">
-        <div className="min-w-0 flex-1">
-          <TraceShimmerText
-            text={trace}
-            active={isRunning}
-            highlight={highlight}
-            className={isFailed && !isRunning ? "text-red-400/90" : !isRunning ? "text-zinc-400" : undefined}
-          />
-        </div>
-        {isRunning ? <TypingDots color={highlight} /> : null}
+      <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
+        <TraceShimmerText
+          text={trace}
+          active={isRunning}
+          loadingStyle="static"
+          highlight={highlight}
+          className={cn(
+            "min-w-0",
+            isFailed && !isRunning ? "text-red-400/90" : !isRunning ? "text-zinc-400" : undefined,
+          )}
+        />
+        {isRunning ? <ActivitySpinner color={highlight} sizeClassName="size-2.5" /> : null}
       </div>
       <div className="shrink-0 text-right">
         <span
           className={cn(
             "text-[10px] font-medium",
-            isRunning ? "text-[#24ee89]" : isFailed ? "text-red-400" : "text-emerald-400/90",
+            !isRunning && (isFailed ? "text-red-400" : "text-emerald-400/90"),
           )}
+          style={isRunning ? { color: highlight } : undefined}
         >
           {isRunning ? "Running" : isFailed ? "Failed" : "Done"}
         </span>
@@ -130,15 +120,17 @@ export function SubAgentWidgetRow({
   onOpenAgent?: (agent: SubAgentState) => void;
 }) {
   const hasRunning = agents.some((a) => a.status === "running");
-  const [expanded, setExpanded] = useState(hasRunning);
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
-    if (hasRunning) setExpanded(true);
+    if (!hasRunning) {
+      setExpanded(false);
+    }
   }, [hasRunning]);
 
   const lead = useMemo(() => leadSubAgent(agents), [agents]);
   const leadTrace = subAgentWidgetTrace(lead);
-  const leadHighlight = SUBAGENT_HIGHLIGHT[lead.color] ?? "#24ee89";
+  const leadHighlight = SUBAGENT_HIGHLIGHT[lead.color] ?? SUBAGENT_HIGHLIGHT.cyan;
   const runningCount = agents.filter((a) => a.status === "running").length;
   const doneCount = agents.filter((a) => a.status === "done").length;
 
@@ -167,15 +159,15 @@ export function SubAgentWidgetRow({
           aria-expanded={expanded}
         >
           <OverlappingAgentOrbs agents={agents} />
-          <div className="flex min-w-0 flex-1 items-center gap-1.5">
-            <div className="min-w-0 flex-1">
-              <TraceShimmerText
-                text={leadTrace}
-                active={hasRunning}
-                highlight={leadHighlight}
-              />
-            </div>
-            {hasRunning ? <TypingDots color={leadHighlight} /> : null}
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
+            <TraceShimmerText
+              text={leadTrace}
+              active={hasRunning}
+              loadingStyle="static"
+              highlight={leadHighlight}
+              className="min-w-0"
+            />
+            {hasRunning ? <ActivitySpinner color={leadHighlight} sizeClassName="size-2.5" /> : null}
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
             <span className="text-[10px] font-medium text-zinc-500">{statusLine}</span>

@@ -9,6 +9,8 @@ import { join } from "path";
 import YAML from "yaml";
 import type { TradingMode } from "@/lib/chat/conversation-persistence";
 import { resolveSkillsPath } from "@/lib/skills/resolve-skills-path";
+import { buildSkillGuidancePrompt, loadSkillDocument } from "@/lib/skills/skill-library";
+import { getSkillToolMapping } from "@/lib/skills/tool-library";
 
 const BUILTIN_SKILL_IDS = new Set([
   "market-regime-detector",
@@ -82,7 +84,10 @@ export class SkillExecutor {
     if (metadata.status === "production" || metadata.status === "beta") {
       return true;
     }
-    return BUILTIN_SKILL_IDS.has(metadata.id);
+    if (BUILTIN_SKILL_IDS.has(metadata.id)) {
+      return true;
+    }
+    return getSkillToolMapping(metadata.id) != null;
   }
 
   /**
@@ -129,8 +134,8 @@ export class SkillExecutor {
         return { ...cached, cached: true };
       }
 
-      // Get skill metadata
-      const metadata = this.skillsRegistry.get(skillId);
+      // Get skill metadata (native registry or external SKILL.md)
+      const metadata = await this.resolveSkillMetadata(skillId);
       if (!metadata) {
         return {
           success: false,
@@ -182,6 +187,31 @@ export class SkillExecutor {
         skill_id: skillId,
       };
     }
+  }
+
+  /**
+   * Resolve skill from native registry or external skill library.
+   */
+  private async resolveSkillMetadata(skillId: string): Promise<SkillMetadata | null> {
+    const fromRegistry = this.skillsRegistry.get(skillId);
+    if (fromRegistry) return fromRegistry;
+
+    const doc = await loadSkillDocument(skillId);
+    if (!doc) return null;
+
+    const mapping = getSkillToolMapping(skillId);
+    return {
+      id: doc.id,
+      name: doc.name,
+      category: doc.category,
+      status: mapping?.mode === "native" ? "production" : "beta",
+      autonomous: false,
+      priority: 50,
+      description: doc.description,
+      integrations: {
+        data_required: mapping?.companionTools ?? [],
+      },
+    };
   }
 
   /**
@@ -555,12 +585,50 @@ export class SkillExecutor {
    */
   private async executeCustomScript(
     metadata: SkillMetadata,
-    inputs: any,
+    inputs: Record<string, unknown>,
     context: SkillExecutionContext
-  ): Promise<any> {
-    // Placeholder for dynamic script execution
-    // Future: Load and execute TypeScript/JavaScript from scripts/ folder
-    throw new Error(`Custom script execution not yet implemented for ${metadata.id}`);
+  ): Promise<unknown> {
+    const mapping = getSkillToolMapping(metadata.id);
+
+    if (mapping?.mode === "tool" && mapping.tool === "analyze_chart") {
+      const symbols = Array.isArray(inputs.symbols)
+        ? (inputs.symbols as string[])
+        : inputs.symbol
+          ? [String(inputs.symbol)]
+          : undefined;
+      return this.executeTradingViewChartAnalyst(
+        {
+          symbols,
+          interval: inputs.interval as string | undefined,
+          indicators: inputs.indicators as string[] | undefined,
+        },
+        context,
+      );
+    }
+
+    if (mapping?.mode === "tool" && mapping.tool === "get_macro_data") {
+      const { fetchMacroData } = await import("@/lib/chat/tools/macro-tools");
+      return fetchMacroData();
+    }
+
+    if (mapping?.mode === "tool" && mapping.tool === "get_fundamentals") {
+      const { fetchFundamentals } = await import("@/lib/chat/tools/macro-tools");
+      return fetchFundamentals(String(inputs.symbol ?? ""));
+    }
+
+    const guidance = await buildSkillGuidancePrompt(metadata.id);
+    if (guidance) {
+      return {
+        mode: "guidance",
+        skill_id: metadata.id,
+        workflow: guidance,
+        suggested_tools: mapping?.companionTools ?? [],
+        inputs,
+        note: "Follow this skill workflow using the suggested tools. Do not invent data.",
+      };
+    }
+
+    throw new Error(`No implementation for skill ${metadata.id}`);
   }
 
   // ============================================================================

@@ -10,9 +10,13 @@ export type AnalysisStreamState = {
   reasoningText: string;
   error: string | null;
   snapshotUrl: string | null;
+  genui: unknown | null;
 };
 
-const analysisCache = new Map<string, { analysis: ChartAnalysis; snapshotUrl?: string }>();
+const analysisCache = new Map<
+  string,
+  { analysis: ChartAnalysis; snapshotUrl?: string; genui?: unknown }
+>();
 
 function cacheKey(symbol: string, interval: string, indicators: string[]) {
   return `${symbol}:${interval}:${[...indicators].sort().join(",")}`;
@@ -22,24 +26,26 @@ export function useChartAnalysis(params: {
   symbol: string;
   interval: TvInterval;
   indicators: string[];
-  enabled?: boolean;
+  /** When true, auto-run on symbol/interval change. Default false — use refresh() for one-click analyze. */
+  autoRun?: boolean;
 }) {
-  const { symbol, interval, indicators, enabled = true } = params;
+  const { symbol, interval, indicators, autoRun = false } = params;
   const [state, setState] = useState<AnalysisStreamState>({
     status: "idle",
     analysis: null,
     reasoningText: "",
     error: null,
     snapshotUrl: null,
+    genui: null,
   });
   const abortRef = useRef<AbortController | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const runAnalysis = useCallback(async () => {
-    if (!symbol || !enabled) return;
+  const runAnalysis = useCallback(async (opts?: { bypassCache?: boolean }) => {
+    if (!symbol) return;
 
     const key = cacheKey(symbol, interval, indicators);
-    const cached = analysisCache.get(key);
+    const cached = !opts?.bypassCache ? analysisCache.get(key) : undefined;
     if (cached) {
       setState({
         status: "done",
@@ -47,6 +53,7 @@ export function useChartAnalysis(params: {
         reasoningText: cached.analysis.reasoning ?? "",
         error: null,
         snapshotUrl: cached.snapshotUrl ?? null,
+        genui: cached.genui ?? null,
       });
       return;
     }
@@ -61,6 +68,7 @@ export function useChartAnalysis(params: {
       reasoningText: "",
       error: null,
       snapshotUrl: null,
+      genui: null,
     });
 
     try {
@@ -86,6 +94,7 @@ export function useChartAnalysis(params: {
         analysisCache.set(key, {
           analysis: json.analysis,
           snapshotUrl: json.snapshot_url,
+          genui: (json as { genui?: unknown }).genui,
         });
         setState({
           status: "done",
@@ -93,6 +102,7 @@ export function useChartAnalysis(params: {
           reasoningText: json.analysis.reasoning ?? "",
           error: null,
           snapshotUrl: json.snapshot_url ?? null,
+          genui: (json as { genui?: unknown }).genui ?? null,
         });
         return;
       }
@@ -107,6 +117,7 @@ export function useChartAnalysis(params: {
       let reasoningText = "";
       let finalAnalysis: ChartAnalysis | null = null;
       let snapshotUrl: string | null = null;
+      let genuiPayload: unknown | null = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -125,6 +136,7 @@ export function useChartAnalysis(params: {
               text?: string;
               analysis?: ChartAnalysis;
               snapshot_url?: string;
+              payload?: unknown;
               error?: string;
             };
             if (event.type === "reasoning" && event.text) {
@@ -134,6 +146,9 @@ export function useChartAnalysis(params: {
                 status: "streaming",
                 reasoningText,
               }));
+            } else if (event.type === "genui" && event.payload) {
+              genuiPayload = event.payload;
+              setState((s) => ({ ...s, genui: event.payload ?? null }));
             } else if (event.type === "analysis" && event.analysis) {
               finalAnalysis = event.analysis;
               snapshotUrl = event.snapshot_url ?? snapshotUrl;
@@ -157,13 +172,18 @@ export function useChartAnalysis(params: {
       }
 
       if (finalAnalysis) {
-        analysisCache.set(key, { analysis: finalAnalysis, snapshotUrl: snapshotUrl ?? undefined });
+        analysisCache.set(key, {
+          analysis: finalAnalysis,
+          snapshotUrl: snapshotUrl ?? undefined,
+          genui: genuiPayload ?? undefined,
+        });
         setState({
           status: "done",
           analysis: finalAnalysis,
           reasoningText: finalAnalysis.reasoning ?? reasoningText,
           error: null,
           snapshotUrl,
+          genui: genuiPayload,
         });
       } else {
         setState((s) => ({
@@ -180,12 +200,26 @@ export function useChartAnalysis(params: {
         reasoningText: "",
         error: err instanceof Error ? err.message : "Analysis failed",
         snapshotUrl: null,
+        genui: null,
       });
     }
-  }, [symbol, interval, indicators, enabled]);
+  }, [symbol, interval, indicators]);
 
   useEffect(() => {
-    if (!enabled || !symbol) return;
+    if (autoRun) return;
+    setState({
+      status: "idle",
+      analysis: null,
+      reasoningText: "",
+      error: null,
+      snapshotUrl: null,
+      genui: null,
+    });
+    abortRef.current?.abort();
+  }, [symbol, interval, indicators.join(","), autoRun]);
+
+  useEffect(() => {
+    if (!autoRun || !symbol) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       void runAnalysis();
@@ -194,7 +228,11 @@ export function useChartAnalysis(params: {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       abortRef.current?.abort();
     };
-  }, [symbol, interval, indicators.join(","), enabled, runAnalysis]);
+  }, [symbol, interval, indicators.join(","), autoRun, runAnalysis]);
 
-  return { ...state, refresh: runAnalysis };
+  return {
+    ...state,
+    refresh: () => runAnalysis({ bypassCache: true }),
+    runAnalysis,
+  };
 }

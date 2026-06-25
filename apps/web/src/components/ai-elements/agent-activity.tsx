@@ -14,19 +14,11 @@ import {
   type ToolActivityStep,
 } from "@/lib/chat/activity-timeline";
 import { deriveLiveTraceFromSteps, LIVE_TRACE_PLANNING, shortenLivePhrase } from "@/lib/chat/live-trace";
+import { ORCHESTRATOR_HIGHLIGHT, ORCHESTRATOR_STATUS_CLASS } from "@/components/ai-elements/agent-visual-constants";
 import { TraceShimmerText } from "@/components/ai-elements/shimmer";
+import { ActivitySpinner } from "@/components/ai-elements/activity-spinner";
 import { ToolStepWidget } from "@/components/ai-elements/tool-step-widget";
 import { ThinkingMarkdown } from "@/components/ai-elements/thinking-markdown";
-
-function TypingDots() {
-  return (
-    <span className="inline-flex shrink-0 items-end gap-[3px]" aria-hidden>
-      <span className="inline-block size-[5px] animate-bounce rounded-full bg-[#24ee89] [animation-duration:0.6s]" />
-      <span className="inline-block size-[5px] animate-bounce rounded-full bg-[#24ee89] [animation-duration:0.6s] [animation-delay:0.12s]" />
-      <span className="inline-block size-[5px] animate-bounce rounded-full bg-[#24ee89] [animation-duration:0.6s] [animation-delay:0.24s]" />
-    </span>
-  );
-}
 
 function LiveTraceLine({
   label,
@@ -34,7 +26,8 @@ function LiveTraceLine({
   liveStatusDetail,
   compact,
   shimmer = false,
-  highlight = "#24ee89",
+  highlight = ORCHESTRATOR_HIGHLIGHT,
+  dotColor = ORCHESTRATOR_HIGHLIGHT,
 }: {
   label: string;
   showDots: boolean;
@@ -43,21 +36,20 @@ function LiveTraceLine({
   compact?: boolean;
   shimmer?: boolean;
   highlight?: string;
+  dotColor?: string;
 }) {
   return (
-    <div className="flex min-w-0 flex-1 items-center gap-1.5 py-0.5">
-      <div className="min-w-0 flex-1">
-        <TraceShimmerText
-          text={label}
-          active={shimmer}
-          highlight={highlight}
-          className={compact ? "text-[11px]" : "text-[12.5px]"}
-        />
-      </div>
+    <div className="flex min-w-0 flex-wrap items-center gap-1.5 py-0.5">
+      <TraceShimmerText
+        text={label}
+        active={shimmer}
+        highlight={highlight}
+        className={cn(compact ? "text-[11px]" : "text-[12.5px]", "min-w-0")}
+      />
       {liveStatusDetail ? (
         <span className="shrink-0 text-[11px] font-normal text-zinc-400">· {liveStatusDetail}</span>
       ) : null}
-      {showDots ? <TypingDots /> : null}
+      {showDots ? <ActivitySpinner color={dotColor} /> : null}
     </div>
   );
 }
@@ -181,12 +173,12 @@ export function AgentLiveTrace({
   toolPods,
   liveStatus,
   liveStatusDetail,
-  accentClassName = "text-[#24ee89]",
+  accentClassName = ORCHESTRATOR_STATUS_CLASS,
   compact = false,
   labelOnly = false,
   activityParts,
   activitySteps,
-  highlight = "#24ee89",
+  highlight = ORCHESTRATOR_HIGHLIGHT,
 }: {
   reasoning: string;
   toolPods: ChatToolPod[];
@@ -210,6 +202,7 @@ export function AgentLiveTrace({
           showDots
           shimmer
           highlight={highlight}
+          dotColor={highlight}
           liveStatusDetail={liveStatusDetail}
           compact={compact}
         />
@@ -225,7 +218,7 @@ export function AgentActivity({
   isStreaming,
   liveStatus,
   liveStatusDetail,
-  accentClassName = "text-[#24ee89]",
+  accentClassName = ORCHESTRATOR_STATUS_CLASS,
   collapsed = false,
   activityParts,
   activitySteps,
@@ -253,6 +246,7 @@ export function AgentActivity({
           liveStatus={label}
           liveStatusDetail={liveStatusDetail}
           accentClassName={accentClassName}
+          highlight={ORCHESTRATOR_HIGHLIGHT}
           labelOnly
           activityParts={activityParts}
           activitySteps={activitySteps}
@@ -266,7 +260,7 @@ export function AgentActivity({
           label={label}
           showDots
           shimmer={isStreaming}
-          highlight="#24ee89"
+          highlight={ORCHESTRATOR_HIGHLIGHT}
           liveStatusDetail={liveStatusDetail}
         />
         <ActivityTimelineBody steps={steps} isStreaming />

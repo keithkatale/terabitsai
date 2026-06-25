@@ -4,7 +4,7 @@ import Image from "next/image";
 import { Manrope, Inter, Poppins } from "next/font/google";
 import { useAccount } from "@/hooks/use-account";
 import { LandingHero } from "./landing-hero";
-import { LandingPixelSection } from "./landing-pixel-section";
+import { LandingCtaSection } from "./landing-cta-section";
 import {
   ComparisonBars,
   FaqItem,
@@ -46,7 +46,7 @@ const FAQ_ITEMS = [
 
 export function LandingPage() {
   const { user } = useAccount();
-  const ctaHref = user ? "/app/markets" : "/signup?next=/app/markets";
+  const ctaHref = user ? "/chat/markets" : "/signup?next=/chat/markets";
 
   return (
     <div
@@ -192,21 +192,7 @@ export function LandingPage() {
         </section>
       </main>
 
-      <LandingPixelSection className="py-20 md:py-28">
-        <div className="mx-auto flex max-w-3xl flex-col items-center gap-8 px-6 text-center">
-          <h2 className="font-serif text-4xl font-normal leading-tight tracking-tight text-white sm:text-5xl md:text-6xl">
-            Upgrade your
-            <br className="hidden sm:block" />
-            market research with AI
-          </h2>
-          <div className="flex flex-col items-center gap-2.5">
-            <LandingCtaButton href={ctaHref}>Try for free</LandingCtaButton>
-            <p className="font-[family-name:var(--font-manrope)] text-sm font-semibold tracking-[-0.28px] text-white/50">
-              No card required.
-            </p>
-          </div>
-        </div>
-      </LandingPixelSection>
+      <LandingCtaSection ctaHref={ctaHref} />
 
       {/* Sticky footer banner */}
       <div className="landing-sticky-footer fixed inset-x-0 bottom-0 z-50 flex h-[88px] items-center justify-center gap-8 px-6">

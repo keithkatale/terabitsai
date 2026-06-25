@@ -1,7 +1,8 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { saveCompletedProfile } from "@/lib/account/user-profile";
 import { ensureTrialCredits } from "@/lib/subscription/credits";
-import { onboardProfileSchema } from "@/lib/onboard/profile-types";
+import { getUserPlan } from "@/lib/subscription/access";
+import { fillProfileDefaults, onboardProfileSchema } from "@/lib/onboard/profile-types";
 
 export async function POST(request: Request) {
   const supabase = await createSupabaseServerClient();
@@ -18,7 +19,9 @@ export async function POST(request: Request) {
     return Response.json({ error: "Invalid profile" }, { status: 400 });
   }
 
-  const profile = await saveCompletedProfile(user.id, parsed.data);
+  const plan = await getUserPlan(user.id);
+  const filled = fillProfileDefaults(parsed.data, plan);
+  const profile = await saveCompletedProfile(user.id, filled);
   const credits = await ensureTrialCredits(user.id);
 
   return Response.json({

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { chatDraftPath } from "@/lib/routes";
 import { Lock, Sparkles } from "lucide-react";
 import { plans } from "@/lib/billingsdk-config";
 import { LandingPixelBackground } from "@/components/landing/landing-pixel-background";
@@ -59,7 +60,7 @@ export function PremiumUpgradeGate({
             Upgrade to Managed
           </Link>
           <Link
-            href="/app/chat"
+            href={chatDraftPath()}
             className="rounded-xl border border-white/10 px-6 py-3 text-sm font-semibold text-zinc-300 transition-colors hover:bg-white/[0.05]"
           >
             Back to Chat

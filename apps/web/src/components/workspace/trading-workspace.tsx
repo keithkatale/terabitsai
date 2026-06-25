@@ -92,14 +92,17 @@ import {
 } from "@/components/workspace/chat-landing-hero";
 import { HomeSection } from "@/components/workspace/app-sections/home-section";
 import { MarketsTerminal } from "@/components/markets/markets-terminal";
+import { WalletActionsBar } from "@/components/workspace/wallet-actions-bar";
 import {
   ConversationPicker,
   type ConversationPickerItem,
 } from "@/components/workspace/conversation-picker";
 import { notifyPortfolioUpdated } from "@/lib/portfolio/portfolio-events";
 import { readHomeTabCache, writeHomeTabCache } from "@/lib/portfolio/home-tab-cache";
+import { APP_BASE, CHAT_DRAFT_SEGMENT } from "@/lib/routes";
 import { readCachedTradingMode } from "@/lib/account/user-app-preferences-client";
 import { usePortfolioSnapshotPoll } from "@/hooks/use-portfolio-snapshot-poll";
+import { synthesizeConversationTitleFromFirstUserText } from "@/lib/chat/conversation-title";
 
 // Self-contained custom Figma SVG icon component
 const Figma = ({ className }: { className?: string }) => (
@@ -330,6 +333,7 @@ export function TradingWorkspace() {
     isTabActive,
     routeConversationId,
     navigateToConversation,
+    navigateToNewChat,
   } = useAppTab();
   const mode = activeTabRaw ?? "chat";
   const [value, setValue] = useState("");
@@ -605,63 +609,103 @@ export function TradingWorkspace() {
     chatMetadataLoadedRef.current = false;
   }, [tradingMode]);
 
+  const bootstrapFirstConversationTurn = useCallback(
+    async (convId: string, userMsg: ChatMessage, rawUserText: string) => {
+      // Show smart optimistic title immediately (never raw user text)
+      const optimisticTitle = synthesizeConversationTitleFromFirstUserText(rawUserText);
+      setConversations((prev) =>
+        sortConversations(
+          prev.map((c) => (c.id === convId ? { ...c, title: optimisticTitle } : c)),
+        ),
+      );
+
+      try {
+        // Generate AI title first (this is fast and important for UX)
+        const titleRes = await fetch(`/api/chat/conversations/${convId}/generate-title`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ firstUserText: rawUserText }),
+        });
+
+        if (titleRes.ok) {
+          const titleJson = (await titleRes.json()) as {
+            title?: string | null;
+            updated_at?: string | null;
+            generated?: boolean;
+          };
+          if (titleJson.title?.trim()) {
+            const finalTitle = titleJson.title.trim();
+            console.log(
+              `[chat] Title ${titleJson.generated ? "generated" : "fallback"}: "${finalTitle}"`,
+            );
+            setConversations((prev) =>
+              sortConversations(
+                prev.map((c) =>
+                  c.id === convId
+                    ? {
+                        ...c,
+                        title: finalTitle,
+                        updated_at: titleJson.updated_at ?? c.updated_at,
+                      }
+                    : c,
+                ),
+              ),
+            );
+          }
+        } else {
+          console.warn(`[chat] Title generation failed: ${titleRes.status}`);
+        }
+
+        // Persist user message (can happen in parallel or after title)
+        const persistRes = await fetch(`/api/chat/conversations/${convId}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            messages: [
+              {
+                id: userMsg.id,
+                role: userMsg.role,
+                parts: userMsg.parts,
+              },
+            ],
+          }),
+        });
+
+        if (!persistRes.ok) {
+          console.warn(`[chat] Message persistence failed: ${persistRes.status}`);
+        }
+      } catch (err) {
+        console.error("[chat] Failed to bootstrap conversation title:", err);
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
     if (mode !== "chat" || !user) return;
 
-    if (!routeConversationId) {
-      if (creatingChatRef.current) return;
-      creatingChatRef.current = true;
-      loadedRouteIdRef.current = null;
-
-      void (async () => {
-        try {
-          const createRes = await fetch("/api/chat/conversations", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({ mode: tradingMode }),
-          });
-          if (!createRes.ok) return;
-          const createdJson = (await createRes.json()) as {
-            conversation?: {
-              id: string;
-              title?: string | null;
-              created_at: string;
-              updated_at: string;
-            };
-          };
-          const row = createdJson.conversation;
-          if (!row?.id) return;
-
-          const item = toPickerItem({ ...row, is_active: true });
-          setConversations((prev) =>
-            sortConversations([item, ...prev.map((c) => ({ ...c, is_active: false }))]),
-          );
-          setConversationId(row.id);
-          conversationIdRef.current = row.id;
-          loadedRouteIdRef.current = row.id;
-          resetCommandChatUi();
-          navigateToConversation(row.id, { replace: true });
-        } catch (e) {
-          console.warn("Failed to create chat session", e);
-        } finally {
-          creatingChatRef.current = false;
-        }
-      })();
+    if (!routeConversationId || routeConversationId === CHAT_DRAFT_SEGMENT) {
+      // Don't reset if we're in the middle of sending a message (loading state)
+      // This prevents race conditions when creating a new conversation
+      if (loadedRouteIdRef.current === CHAT_DRAFT_SEGMENT) return;
+      if (loading && messages.length > 0) return; // Actively streaming - don't reset
+      loadedRouteIdRef.current = CHAT_DRAFT_SEGMENT;
+      setConversationId(null);
+      conversationIdRef.current = null;
+      resetCommandChatUi();
       return;
     }
 
+    // Don't reload if we already have this conversation loaded
     if (loadedRouteIdRef.current === routeConversationId) return;
+    
+    // Don't reload if we're actively streaming (we just created this conversation)
+    if (loading && conversationIdRef.current === routeConversationId) return;
+    
     void loadConversationById(routeConversationId);
-  }, [
-    mode,
-    user,
-    tradingMode,
-    routeConversationId,
-    navigateToConversation,
-    loadConversationById,
-    resetCommandChatUi,
-  ]);
+  }, [mode, user, routeConversationId, loadConversationById, resetCommandChatUi, loading, messages.length]);
 
   useEffect(() => {
     if (mode !== "chat" || !user || !isTabActive("chat")) return;
@@ -1347,15 +1391,15 @@ export function TradingWorkspace() {
     conversationIdRef.current = null;
     loadedRouteIdRef.current = null;
     creatingChatRef.current = false;
-    setActiveTab("chat");
-  }, [loading, switchingConversation, resetCommandChatUi, setActiveTab]);
+    navigateToNewChat();
+  }, [loading, switchingConversation, resetCommandChatUi, navigateToNewChat]);
 
   const selectConversation = useCallback(
     (id: string) => {
-      if (loading || switchingConversation || id === routeConversationId) return;
+      if (loading || switchingConversation || id === conversationId) return;
       navigateToConversation(id);
     },
-    [loading, switchingConversation, routeConversationId, navigateToConversation],
+    [loading, switchingConversation, conversationId, navigateToConversation],
   );
 
   const deleteConversationById = useCallback(
@@ -1411,7 +1455,7 @@ export function TradingWorkspace() {
     if (loading) return;
 
     if (!user) {
-      window.location.href = `/login?next=${encodeURIComponent("/app")}`;
+      window.location.href = `/login?next=${encodeURIComponent(`${APP_BASE}/markets`)}`;
       return;
     }
 
@@ -1422,7 +1466,9 @@ export function TradingWorkspace() {
         : "");
     const pinnedAssets = pinnedForSend.map(toPinnedAssetRef);
 
-    // Add user message
+    const isFirstTurn = messages.length === 0;
+
+    // Add user message FIRST (optimistic update - like ChatGPT/Claude)
     const userMsgId = crypto.randomUUID();
     const newUserMessage: ChatMessage = {
       id: userMsgId,
@@ -1438,12 +1484,68 @@ export function TradingWorkspace() {
       parts: [],
     };
 
+    // Set messages BEFORE any navigation to ensure UI shows the chat immediately
     setMessages((prev) => [...prev, newUserMessage, newAssistantMessage]);
     setValue("");
     setFollowUpQuestion(null);
     followUpRequestId.current += 1;
     pendingChatScrollRef.current = true;
     setLoading(true);
+
+    // Now create conversation if needed
+    let convId = conversationIdRef.current;
+    if (!convId) {
+      try {
+        const createRes = await fetch("/api/chat/conversations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ mode: tradingMode }),
+        });
+        if (!createRes.ok) {
+          const errBody = await createRes.json().catch(() => ({}));
+          throw new Error(
+            typeof errBody.error === "string" ? errBody.error : "Failed to create conversation",
+          );
+        }
+        const createdJson = (await createRes.json()) as {
+          conversation?: {
+            id: string;
+            title?: string | null;
+            created_at: string;
+            updated_at: string;
+          };
+        };
+        const row = createdJson.conversation;
+        if (!row?.id) throw new Error("Failed to create conversation");
+
+        convId = row.id;
+        conversationIdRef.current = convId;
+        setConversationId(convId);
+        loadedRouteIdRef.current = convId;
+
+        const item = toPickerItem({ ...row, is_active: true });
+        setConversations((prev) =>
+          sortConversations([item, ...prev.map((c) => ({ ...c, is_active: false }))]),
+        );
+
+        // Navigate AFTER messages are in state (deferred to next tick)
+        // This prevents the route change from triggering a re-render that shows the landing hero
+        setTimeout(() => {
+          navigateToConversation(convId!, { replace: true });
+        }, 0);
+      } catch (err) {
+        console.error("Failed to create conversation:", err);
+        // Remove the optimistic messages on error
+        setMessages((prev) => prev.filter((m) => m.id !== userMsgId && m.id !== assistantMsgId));
+        setLoading(false);
+        return;
+      }
+    }
+
+    if (isFirstTurn) {
+      void bootstrapFirstConversationTurn(convId, newUserMessage, apiMessage);
+    }
 
     try {
       const history = buildHistoryFromMessages(messages);
@@ -1455,7 +1557,7 @@ export function TradingWorkspace() {
           pinnedAssets,
           aiTools: selectedAiTools,
           history,
-          conversationId: conversationIdRef.current,
+          conversationId: convId,
           tradingMode,
           sessionContext: sessionContextRef.current,
         }),
@@ -1688,20 +1790,21 @@ export function TradingWorkspace() {
                     title?: string | null;
                     updated_at?: string | null;
                   };
-                  if (!persistJson.title && !persistJson.updated_at) return;
-                  setConversations((prev) =>
-                    sortConversations(
-                      prev.map((c) =>
-                        c.id === convId
-                          ? {
-                              ...c,
-                              title: persistJson.title?.trim() || c.title,
-                              updated_at: persistJson.updated_at ?? c.updated_at,
-                            }
-                          : c,
+                  if (persistJson.title || persistJson.updated_at) {
+                    setConversations((prev) =>
+                      sortConversations(
+                        prev.map((c) =>
+                          c.id === convId
+                            ? {
+                                ...c,
+                                title: persistJson.title?.trim() || c.title,
+                                updated_at: persistJson.updated_at ?? c.updated_at,
+                              }
+                            : c,
+                        ),
                       ),
-                    ),
-                  );
+                    );
+                  }
                 })
                 .catch((err) => console.warn("Failed to persist chat messages", err));
             }
@@ -1791,10 +1894,12 @@ Provide:
   return (
     <div className="relative h-full min-h-0 w-full">
       <TabPanel tab="home" activeTab={mode}>
-        {userPlan !== "premium" ? (
-          <PremiumUpgradeGate currentPlan={userPlan} />
-        ) : (
-        <HomeSection
+        <div className="flex h-full min-h-0 flex-col overflow-hidden">
+          <WalletActionsBar />
+          {userPlan !== "premium" ? (
+            <PremiumUpgradeGate currentPlan={userPlan} />
+          ) : (
+            <HomeSection
           balance={balance}
           summary={summary}
           userEmail={user?.email}
@@ -1807,8 +1912,9 @@ Provide:
           onDeposit={openDeposit}
           onWithdraw={openWithdraw}
             onManagePosition={setActivePositionId}
-        />
-        )}
+            />
+          )}
+        </div>
       </TabPanel>
 
       <TabPanel tab="markets" activeTab={mode}>
@@ -1850,12 +1956,13 @@ Provide:
               onSelectedAiToolsChange={setSelectedAiTools}
             />
           ) : (
-            <div className="relative flex min-h-0 flex-1 flex-col px-4 py-4">
+            <div className="relative flex min-h-0 flex-1 flex-col px-2 py-4 sm:px-4">
               <Conversation className="min-h-0 flex-1 pb-24">
                 <ConversationContent
                   ref={chatScrollRef}
                   className="space-y-6 bg-transparent"
                 >
+                  <div className="mx-auto w-full max-w-3xl space-y-6 px-4 sm:px-6 lg:px-8">
                   {messages.map((message, messageIndex) => {
                     const isLastMessage = messageIndex === messages.length - 1;
                     const isActiveUserTurn =
@@ -1895,11 +2002,12 @@ Provide:
                       className="pb-2 pt-1"
                     />
                   ) : null}
+                  </div>
                 </ConversationContent>
                 <ConversationScrollButton className="border-white/8 bg-[var(--terminal-surface)] text-zinc-300 hover:text-white" />
               </Conversation>
               <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-[var(--background)] via-[var(--background)]/95 to-transparent pb-3 pt-6">
-                <div className="relative">
+                <div className="relative mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
                 <InputBar
                   value={value}
                   onChange={setValue}

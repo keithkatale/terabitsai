@@ -1,12 +1,14 @@
 import type { AuthError, Session, User } from "@supabase/supabase-js";
 
+import { chatDraftPath } from "@/lib/routes";
+
 /** Default destination after sign-in / sign-up. Honors a safe relative `next` query param. */
 export function getPostAuthPath(search: string): string {
   const next = new URLSearchParams(search).get("next");
   if (next && next.startsWith("/") && !next.startsWith("//")) {
     return next;
   }
-  return "/app/chat";
+  return chatDraftPath();
 }
 
 /** Supabase returns an empty identities array when the email is already registered. */

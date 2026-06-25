@@ -80,6 +80,9 @@ export async function POST(req: NextRequest) {
           analysis,
           snapshot_url: result.snapshot_url,
         });
+        if (result.genui) {
+          send({ type: "genui", payload: result.genui });
+        }
         send({
           type: "done",
           analysis,

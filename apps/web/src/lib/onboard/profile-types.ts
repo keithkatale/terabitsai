@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { UserPlan } from "@/lib/subscription/access";
 
 export const PROFILE_FIELD_KEYS = [
   "userPersona",
@@ -11,6 +12,36 @@ export const PROFILE_FIELD_KEYS = [
 ] as const;
 
 export type ProfileFieldKey = (typeof PROFILE_FIELD_KEYS)[number];
+
+/** Only asked during onboarding for Managed (premium) users. */
+export const PREMIUM_ONLY_PROFILE_FIELDS: ProfileFieldKey[] = ["amountAvailable"];
+
+export function getApplicableProfileFields(plan: UserPlan): ProfileFieldKey[] {
+  if (plan === "premium") return [...PROFILE_FIELD_KEYS];
+  return PROFILE_FIELD_KEYS.filter((f) => !PREMIUM_ONLY_PROFILE_FIELDS.includes(f));
+}
+
+function isFieldMissing(p: OnboardProfileDraft, key: ProfileFieldKey): boolean {
+  if (key === "marketsOfInterest") {
+    return !p.marketsOfInterest?.length;
+  }
+  const v = p[key as keyof OnboardProfileDraft];
+  if (v === undefined || v === null) return true;
+  if (typeof v === "string") return v.trim().length === 0;
+  if (typeof v === "number") return !Number.isFinite(v);
+  return false;
+}
+
+export function missingApplicableFields(
+  p: OnboardProfileDraft,
+  plan: UserPlan,
+): ProfileFieldKey[] {
+  return getApplicableProfileFields(plan).filter((key) => isFieldMissing(p, key));
+}
+
+export function missingProfileFields(p: OnboardProfileDraft): ProfileFieldKey[] {
+  return PROFILE_FIELD_KEYS.filter((key) => isFieldMissing(p, key));
+}
 
 export type UserPersona =
   | "forex_trader"
@@ -42,19 +73,6 @@ export const onboardProfileSchema = z.object({
   horizonDays: z.number().int().positive().optional(),
   incomeBand: z.string().optional(),
 });
-
-export function missingProfileFields(p: OnboardProfileDraft): ProfileFieldKey[] {
-  return PROFILE_FIELD_KEYS.filter((key) => {
-    if (key === "marketsOfInterest") {
-      return !p.marketsOfInterest?.length;
-    }
-    const v = p[key as keyof OnboardProfileDraft];
-    if (v === undefined || v === null) return true;
-    if (typeof v === "string") return v.trim().length === 0;
-    if (typeof v === "number") return !Number.isFinite(v);
-    return false;
-  });
-}
 
 export function coerceProfileValue(key: ProfileFieldKey, raw: string | number): unknown {
   if (key === "marketsOfInterest") {
@@ -88,13 +106,27 @@ export function applyProfileAnswer(
   return { ...profile, [field]: coerced as never };
 }
 
-export function fillProfileDefaults(p: OnboardProfileDraft): OnboardProfileDraft {
+export function fillProfileDefaults(
+  p: OnboardProfileDraft,
+  plan: UserPlan = "free",
+): OnboardProfileDraft {
   const out = { ...p };
   if (!out.userPersona?.trim()) out.userPersona = "beginner";
-  if (!out.goal?.trim()) out.goal = "Learn markets and grow capital with AI guidance";
+  if (!out.goal?.trim()) {
+    out.goal =
+      plan === "premium"
+        ? "Grow capital with managed portfolio and AI guidance"
+        : plan === "pro"
+          ? "Get AI signals and actionable market intelligence"
+          : "Learn markets and get AI-powered analysis";
+  }
   if (!out.tradingExperience?.trim()) out.tradingExperience = "Beginner";
   if (!out.marketsOfInterest?.length) out.marketsOfInterest = ["stocks", "crypto"];
-  if (out.amountAvailable == null || !Number.isFinite(out.amountAvailable)) out.amountAvailable = 0;
+  if (plan === "premium") {
+    if (out.amountAvailable == null || !Number.isFinite(out.amountAvailable)) {
+      out.amountAvailable = 0;
+    }
+  }
   if (!out.riskPreference) out.riskPreference = "medium";
   if (out.horizonDays == null || !Number.isFinite(out.horizonDays)) out.horizonDays = 90;
   return out;

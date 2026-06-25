@@ -2,13 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { chatDraftPath } from "@/lib/routes";
 import { Loader2 } from "lucide-react";
 import { AssistantSiriOrb } from "@/components/ai-elements/agent-orb";
 import { cn } from "@/lib/utils";
 import type { OnboardProfileDraft, ProfileFieldKey } from "@/lib/onboard/profile-types";
 import type { ProfileQuestionPayload } from "@/lib/onboard/profile-question-fallback";
-import { LandingPixelBackground } from "@/components/landing/landing-pixel-background";
-import { LandingBlueGlow } from "@/components/landing/landing-blue-glow";
 
 type TranscriptLine = { role: "user" | "assistant"; content: string };
 
@@ -39,11 +38,83 @@ function TypewriterText({
   }, [text, speed, onComplete]);
 
   return (
-    <span onClick={() => { setDisplayed(text); onComplete?.(); }} className="cursor-pointer">
+    <span
+      onClick={() => {
+        setDisplayed(text);
+        onComplete?.();
+      }}
+      className="cursor-pointer"
+    >
       {displayed}
     </span>
   );
 }
+
+function SetupOptionButton({
+  label,
+  selected,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  selected: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "w-full rounded-lg border px-5 py-3.5 text-left text-sm transition-all duration-200",
+        selected
+          ? "border-white/25 bg-white/[0.08] text-white"
+          : "border-white/10 bg-white/[0.02] text-zinc-200 hover:border-white/20 hover:bg-white/[0.04]",
+        disabled && "cursor-not-allowed opacity-50",
+      )}
+    >
+      {label}
+    </button>
+  );
+}
+
+function SetupPrimaryButton({
+  children,
+  disabled,
+  onClick,
+  className,
+}: {
+  children: React.ReactNode;
+  disabled?: boolean;
+  onClick: () => void;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "terminal-btn terminal-btn-primary px-6 py-3 text-sm",
+        className,
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+type AccountSnapshot = {
+  plan: string;
+  planLabel: string;
+  tradingMode: string;
+  isOnFreeTrial: boolean;
+  trialCreditsRemaining: number;
+  trialCreditsTotal: number;
+  isNewAccount: boolean;
+  daysSinceSignup: number;
+};
 
 export function SetupQuestionnaire() {
   const router = useRouter();
@@ -51,16 +122,32 @@ export function SetupQuestionnaire() {
   const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
   const [answeredCount, setAnsweredCount] = useState(0);
   const [payload, setPayload] = useState<ProfileQuestionPayload | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [contextLoading, setContextLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [showWelcome, setShowWelcome] = useState(true);
   const [welcomeDone, setWelcomeDone] = useState(false);
   const [questionDone, setQuestionDone] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [account, setAccount] = useState<AccountSnapshot | null>(null);
+  const [welcomeText, setWelcomeText] = useState(
+    "Welcome to Terabits. I'll ask a few quick questions so your AI advisor understands how you trade and invest.",
+  );
 
-  const welcomeText =
-    "Welcome to Terabits. I'll ask a few quick questions so your AI advisor understands how you trade and invest.";
+  const loadingLabel =
+    answeredCount === 0 ? "Preparing the first question…" : "Preparing next question…";
+
+  useEffect(() => {
+    fetch("/api/onboard/context", { credentials: "include" })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.account) setAccount(data.account);
+        if (data.welcomeMessage) setWelcomeText(data.welcomeMessage);
+      })
+      .catch(() => {})
+      .finally(() => setContextLoading(false));
+  }, []);
 
   const fetchNext = useCallback(
     async (answer?: {
@@ -89,6 +176,7 @@ export function SetupQuestionnaire() {
       setTranscript(data.transcript);
       setAnsweredCount(data.answeredCount);
       setPayload(data.payload);
+      if (data.account) setAccount(data.account);
       setLoading(false);
     },
     [profile, transcript, answeredCount],
@@ -100,7 +188,7 @@ export function SetupQuestionnaire() {
     }
   }, [showWelcome, welcomeDone, payload, fetchNext]);
 
-  const handleOption = async (optionId: string) => {
+  const handleSelectOption = (optionId: string) => {
     if (!payload?.field || loading || submitting) return;
 
     if (payload.multiSelect) {
@@ -110,25 +198,32 @@ export function SetupQuestionnaire() {
       return;
     }
 
+    setSelected([optionId]);
+  };
+
+  const handleNext = async () => {
+    if (!payload?.field || selected.length === 0 || loading || submitting) return;
+
+    if (payload.multiSelect) {
+      const labels = selected
+        .map((id) => payload.options.find((o) => o.id === id)?.label ?? id)
+        .join(", ");
+      const markets = selected.flatMap((id) => {
+        const v = payload.values[id];
+        return Array.isArray(v) ? v : [String(v)];
+      });
+      await fetchNext({
+        field: payload.field,
+        label: labels,
+        value: [...new Set(markets)],
+      });
+      return;
+    }
+
+    const optionId = selected[0];
     const label = payload.options.find((o) => o.id === optionId)?.label ?? optionId;
     const value = payload.values[optionId] ?? optionId;
     await fetchNext({ field: payload.field, label, value });
-  };
-
-  const handleMultiSubmit = async () => {
-    if (!payload?.field || selected.length === 0) return;
-    const labels = selected
-      .map((id) => payload.options.find((o) => o.id === id)?.label ?? id)
-      .join(", ");
-    const markets = selected.flatMap((id) => {
-      const v = payload.values[id];
-      return Array.isArray(v) ? v : [String(v)];
-    });
-    await fetchNext({
-      field: payload.field,
-      label: labels,
-      value: [...new Set(markets)],
-    });
   };
 
   const handleComplete = async () => {
@@ -142,26 +237,36 @@ export function SetupQuestionnaire() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to save profile");
-      router.replace("/app/chat");
+      router.replace(chatDraftPath());
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to complete setup");
       setSubmitting(false);
     }
   };
 
+  const hasSelection = selected.length > 0;
+
   return (
     <div className="relative flex min-h-full flex-col overflow-hidden bg-[#050508]">
-      <LandingPixelBackground />
-      <LandingBlueGlow />
-
       <div className="relative z-10 mx-auto flex w-full max-w-lg flex-1 flex-col px-4 py-8">
         <div className="mb-6 flex items-center gap-3">
-          <AssistantSiriOrb active={loading || submitting} sizePx={32} />
-          <div>
+          <AssistantSiriOrb active={loading || submitting || contextLoading} sizePx={32} />
+          <div className="min-w-0 flex-1">
             <h1 className="text-lg font-bold text-white">Account setup</h1>
             <p className="text-xs text-zinc-500">
-              {showWelcome ? "Getting started" : `Step ${Math.min(answeredCount + 1, 5)} of ~5`}
+              {showWelcome
+                ? "Getting started"
+                : `Step ${Math.min(answeredCount + 1, 5)} of ~5`}
             </p>
+            {account ? (
+              <p className="mt-1 truncate text-[10px] text-zinc-600">
+                {account.planLabel}
+                {account.isOnFreeTrial
+                  ? ` · ${account.trialCreditsRemaining.toLocaleString()} trial credits`
+                  : ""}
+                {account.isNewAccount ? " · New account" : ""}
+              </p>
+            ) : null}
           </div>
         </div>
 
@@ -173,37 +278,52 @@ export function SetupQuestionnaire() {
 
         {showWelcome ? (
           <div className="flex flex-1 flex-col justify-center">
-            <p className="mb-8 text-xl leading-relaxed text-zinc-200">
-              <TypewriterText
-                text={welcomeText}
-                onComplete={() => setWelcomeDone(true)}
-              />
-            </p>
-            {welcomeDone ? (
-              <button
-                type="button"
+            {contextLoading ? (
+              <div className="mb-8 flex items-center gap-2 text-zinc-500">
+                <Loader2 className="size-4 animate-spin" />
+                <span className="text-sm">Personalizing your setup…</span>
+              </div>
+            ) : (
+              <p className="mb-8 text-xl leading-relaxed text-zinc-200">
+                <TypewriterText text={welcomeText} onComplete={() => setWelcomeDone(true)} />
+              </p>
+            )}
+            {welcomeDone && !contextLoading ? (
+              <SetupPrimaryButton
                 onClick={() => setShowWelcome(false)}
-                className="self-start rounded-xl bg-cyan-500 px-6 py-3 text-sm font-semibold text-black transition-colors hover:bg-cyan-400"
+                className="self-start"
               >
-                Let's go
-              </button>
+                Let&apos;s go
+              </SetupPrimaryButton>
             ) : null}
           </div>
         ) : payload?.done ? (
           <div className="flex flex-1 flex-col justify-center gap-6">
             <p className="text-lg leading-relaxed text-zinc-200">{payload.say}</p>
             <p className="text-sm text-zinc-500">
-              Your free trial includes <span className="font-semibold text-cyan-400">3,000 Terabits credits</span> for AI chat and analysis.
+              {account?.isOnFreeTrial ? (
+                <>
+                  Your free trial includes{" "}
+                  <span className="font-semibold text-zinc-200">
+                    {account.trialCreditsRemaining.toLocaleString()} Terabits credits
+                  </span>{" "}
+                  for AI chat and analysis.
+                </>
+              ) : (
+                <>
+                  Your <span className="font-semibold text-zinc-200">{account?.planLabel ?? "plan"}</span>{" "}
+                  profile is ready.
+                </>
+              )}
             </p>
-            <button
-              type="button"
+            <SetupPrimaryButton
               disabled={submitting}
               onClick={() => void handleComplete()}
-              className="flex items-center justify-center gap-2 rounded-xl bg-cyan-500 px-6 py-3 text-sm font-semibold text-black transition-colors hover:bg-cyan-400 disabled:opacity-50"
+              className="inline-flex w-full items-center justify-center gap-2"
             >
               {submitting ? <Loader2 className="size-4 animate-spin" /> : null}
               Enter Terabits
-            </button>
+            </SetupPrimaryButton>
           </div>
         ) : (
           <div className="flex flex-1 flex-col gap-6">
@@ -218,37 +338,30 @@ export function SetupQuestionnaire() {
             ) : loading ? (
               <div className="flex items-center gap-2 text-zinc-500">
                 <Loader2 className="size-4 animate-spin" />
-                <span className="text-sm">Preparing next question…</span>
+                <span className="text-sm">{loadingLabel}</span>
               </div>
             ) : null}
 
             {questionDone && payload && !payload.done ? (
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-2.5">
                 {payload.options.map((opt) => (
-                  <button
+                  <SetupOptionButton
                     key={opt.id}
-                    type="button"
+                    label={opt.label}
+                    selected={selected.includes(opt.id)}
                     disabled={loading}
-                    onClick={() => void handleOption(opt.id)}
-                    className={cn(
-                      "rounded-xl border px-4 py-3 text-left text-sm transition-colors",
-                      payload.multiSelect && selected.includes(opt.id)
-                        ? "border-cyan-500/50 bg-cyan-950/40 text-white"
-                        : "border-white/10 bg-white/[0.03] text-zinc-200 hover:border-cyan-500/30 hover:bg-white/[0.06]",
-                    )}
-                  >
-                    {opt.label}
-                  </button>
+                    onClick={() => handleSelectOption(opt.id)}
+                  />
                 ))}
-                {payload.multiSelect ? (
-                  <button
-                    type="button"
-                    disabled={selected.length === 0 || loading}
-                    onClick={() => void handleMultiSubmit()}
-                    className="mt-2 rounded-xl bg-cyan-500 px-4 py-3 text-sm font-semibold text-black disabled:opacity-40"
+
+                {hasSelection ? (
+                  <SetupPrimaryButton
+                    disabled={loading}
+                    onClick={() => void handleNext()}
+                    className="mt-2 w-full"
                   >
-                    Continue
-                  </button>
+                    Next
+                  </SetupPrimaryButton>
                 ) : null}
               </div>
             ) : null}

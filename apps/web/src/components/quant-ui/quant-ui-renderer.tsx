@@ -7,6 +7,7 @@ import { ExternalLink, FileText, TrendingDown, TrendingUp } from "lucide-react";
 import { parseQuantMarkup } from "@/lib/quant-ui/parser";
 import type { QuantUiAccent, QuantUiNode } from "@/lib/quant-ui/types";
 import { GenerativeUiRegistry, normalizeComponentName } from "@/components/generative-ui/registry";
+import { GenUiErrorBoundary } from "@/components/generative-ui/genui-error-boundary";
 import { useChatWidgetAction } from "@/contexts/chat-widget-context";
 import type { WidgetAction } from "@/lib/chat/widget-actions";
 import { validateQuantMarkup } from "@/lib/chat/artifact-segments";
@@ -50,14 +51,26 @@ function QuantNodeView({
   const a = node.attrs;
 
   switch (node.tag) {
-    case "section":
+    case "section": {
+      const minimal = a.variant === "minimal";
       return (
-        <section className="quant-panel w-full p-4">
-          {a.title ? <h3 className="text-sm font-semibold text-white">{a.title}</h3> : null}
-          {a.subtitle ? <p className="mb-3 mt-0.5 text-[11px] text-zinc-500">{a.subtitle}</p> : <div className="mb-2" />}
+        <section className={cn("w-full", minimal ? "py-0.5" : "quant-panel p-4")}>
+          {a.title ? (
+            <h3 className={cn("font-semibold text-white", minimal ? "text-xs text-zinc-400" : "text-sm")}>
+              {a.title}
+            </h3>
+          ) : null}
+          {a.subtitle ? (
+            <p className={cn("mt-0.5", minimal ? "mb-2 text-[10px] text-zinc-600" : "mb-3 text-[11px] text-zinc-500")}>
+              {a.subtitle}
+            </p>
+          ) : (
+            <div className={minimal ? "mb-1.5" : "mb-2"} />
+          )}
           <QuantNodeList nodes={node.children} onAction={onAction} />
         </section>
       );
+    }
 
     case "grid": {
       const cols = Math.max(1, Math.min(4, Number(a.columns) || 2));
@@ -70,7 +83,7 @@ function QuantNodeView({
               ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
               : "grid-cols-2 lg:grid-cols-4";
       return (
-        <div className={cn("grid gap-3", colClass)}>
+        <div className={cn("grid gap-2", colClass)}>
           {node.children.map((child, i) => (
             <QuantNodeView key={i} node={child} onAction={onAction} />
           ))}
@@ -343,18 +356,22 @@ export function QuantUiRenderer({
     return (
       <QuantUiFailure
         reason={validation.ok ? "No components were produced from this markup." : validation.reason}
+        rawPayload={markup}
+        errorDetails="QuantUI markup parsing produced no renderable nodes"
       />
     );
   }
 
   return (
-    <div className="quant-ui my-2 w-full space-y-3 text-left">
-      {nodes.map((node, i) => (
-        <div key={i} className="quant-ui-enter animate-fade-in" style={{ animationDelay: `${Math.min(i * 60, 400)}ms` }}>
-          <QuantNodeView node={node} onAction={handleAction} />
-        </div>
-      ))}
-    </div>
+    <GenUiErrorBoundary fallbackTitle="Dashboard failed to render" rawPayload={markup}>
+      <div className="quant-ui my-2 w-full space-y-3 text-left">
+        {nodes.map((node, i) => (
+          <div key={i} className="quant-ui-enter animate-fade-in" style={{ animationDelay: `${Math.min(i * 60, 400)}ms` }}>
+            <QuantNodeView node={node} onAction={handleAction} />
+          </div>
+        ))}
+      </div>
+    </GenUiErrorBoundary>
   );
 }
 
