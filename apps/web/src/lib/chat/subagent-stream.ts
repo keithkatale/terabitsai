@@ -135,7 +135,12 @@ export function applySubagentStreamEvent(
 
   if (event.type === "subagent_end") {
     agent.status = event.status;
-    if (event.report?.trim()) agent.report = event.report;
+    const streamedLen = (agent.report ?? "").trim().length;
+    const finalReport = event.report?.trim() ?? "";
+    // Never replace a longer streamed report with a shorter final payload from the server.
+    if (finalReport.length > streamedLen) {
+      agent.report = finalReport;
+    }
     agent.error = event.error;
     agent.durationMs = event.durationMs;
     if (agent.activitySteps) {

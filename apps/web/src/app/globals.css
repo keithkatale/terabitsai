@@ -80,11 +80,17 @@
   box-sizing: border-box;
 }
 
+html {
+  overflow-x: clip;
+  max-width: 100%;
+}
+
 body {
   background-color: var(--background);
   color: var(--text-primary);
   font-family: var(--font-sans);
-  overflow-x: hidden;
+  overflow-x: clip;
+  max-width: 100%;
   min-height: 100vh;
   background-image:
     radial-gradient(at 15% 10%, rgba(46, 201, 255, 0.04) 0px, transparent 48%),

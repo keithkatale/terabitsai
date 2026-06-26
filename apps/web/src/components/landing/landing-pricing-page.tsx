@@ -87,7 +87,7 @@ export function LandingPricingPage() {
 
   return (
     <div
-      className={`landing-page min-h-screen pb-[calc(var(--landing-sticky-footer-height)+env(safe-area-inset-bottom,0px))] font-[family-name:var(--font-inter)] sm:pb-0 ${manrope.variable} ${inter.variable} ${poppins.variable}`}
+      className={`landing-page min-h-screen w-full max-w-full overflow-x-clip pb-[calc(var(--landing-sticky-footer-height)+env(safe-area-inset-bottom,0px))] font-[family-name:var(--font-inter)] sm:pb-0 ${manrope.variable} ${inter.variable} ${poppins.variable}`}
     >
       <ResponsiveHeroBanner
         className="pb-2"
@@ -113,7 +113,7 @@ export function LandingPricingPage() {
         secondaryButtonHref="/#features"
       />
 
-      <main className="mx-auto flex max-w-[980px] flex-col items-center gap-[var(--landing-section-gap)] px-4 pt-12 sm:px-6 sm:pt-16 md:pt-20">
+      <main className="mx-auto flex w-full max-w-[980px] flex-col items-center gap-[var(--landing-section-gap)] overflow-x-clip px-4 pt-12 sm:px-6 sm:pt-16 md:pt-20">
         <section className="flex w-full flex-col items-center gap-4 text-center">
           <h2 className="landing-section-title text-[clamp(1.75rem,3.5vw,2.75rem)]">
             Transparent pricing
@@ -146,14 +146,14 @@ export function LandingPricingPage() {
             <h2 className="landing-section-title max-w-[560px] text-[clamp(1.5rem,3vw,2.25rem)]">
               Not sure which plan to pick?
             </h2>
-            <p className="max-w-[420px] text-base text-white/75">
+            <p className="max-w-[420px] text-base text-white/85 max-lg:text-white/90">
               Start on the free Chat plan — no card required. You can upgrade to Terminal or
               Managed anytime from your account.
             </p>
           </div>
           <div className="relative flex flex-col items-center gap-2.5">
             <LandingCtaButton href={ctaHref}>Try for free</LandingCtaButton>
-            <p className="font-[family-name:var(--font-manrope)] text-sm font-semibold tracking-[-0.28px] text-white/35">
+            <p className="font-[family-name:var(--font-manrope)] text-sm font-semibold tracking-[-0.28px] text-white/50 max-lg:text-white/60">
               No card required.
             </p>
           </div>
@@ -168,7 +168,7 @@ export function LandingPricingPage() {
             </h2>
             <div className="flex flex-col items-start gap-2.5">
               <LandingCtaButton href={ctaHref}>Get started</LandingCtaButton>
-              <p className="font-[family-name:var(--font-manrope)] text-sm font-semibold tracking-[-0.28px] text-white/35">
+              <p className="font-[family-name:var(--font-manrope)] text-sm font-semibold tracking-[-0.28px] text-white/50 max-lg:text-white/60">
                 Free forever on Chat.
               </p>
             </div>

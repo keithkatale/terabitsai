@@ -24,8 +24,8 @@ export function LandingHero() {
       ]}
       ctaButtonText="Get started"
       ctaButtonHref={ctaHref}
-      badgeLabel="AI-first"
-      badgeText="Markets terminal with streaming chart vision"
+      badgeLabel=""
+      badgeText="AI-first market analysis"
       title="Stay ahead of the"
       titleLine2="Trading Markets"
       description="AI-powered chart vision, conversational research, and autonomous portfolio monitoring — expert quality, no expertise required."

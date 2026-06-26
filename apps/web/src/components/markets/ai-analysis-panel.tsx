@@ -75,7 +75,7 @@ export function AiAnalysisPanel({
 }) {
   if (!open) {
     return (
-      <div className="flex h-full w-10 shrink-0 flex-col items-center border-l border-white/6 bg-black/30 py-3">
+      <div className="hidden h-full w-10 shrink-0 flex-col items-center border-l border-white/6 bg-black/30 py-3 lg:flex">
         <button
           type="button"
           onClick={onToggle}
@@ -92,7 +92,14 @@ export function AiAnalysisPanel({
   const idle = status === "idle";
 
   return (
-    <aside className="flex h-full w-[min(360px,38vw)] shrink-0 flex-col border-l border-white/6 bg-black/30">
+    <>
+      <button
+        type="button"
+        aria-label="Close chart analysis"
+        className="fixed inset-0 z-40 bg-black/60 lg:hidden"
+        onClick={onToggle}
+      />
+      <aside className="fixed inset-0 z-50 flex flex-col border-white/6 bg-zinc-950 lg:relative lg:inset-auto lg:z-auto lg:h-full lg:w-[min(360px,38vw)] lg:shrink-0 lg:border-l lg:bg-black/30">
       <div className="flex items-center justify-between gap-2 border-b border-white/6 px-3 py-2.5">
         <div className="flex items-center gap-2">
           <Sparkles className="size-4 text-cyan-400" />
@@ -266,5 +273,6 @@ export function AiAnalysisPanel({
         ) : null}
       </div>
     </aside>
+    </>
   );
 }

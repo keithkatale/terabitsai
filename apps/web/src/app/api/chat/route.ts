@@ -155,16 +155,23 @@ export async function POST(req: Request) {
 
             const allowedTools = filterToolsForPlan(orchestratorToolDeclarations, userPlan);
 
-            await runAgentLoop({
+            const loopResult = await runAgentLoop({
               contents,
               systemInstruction,
               functionDeclarations: allowedTools,
               toolCtx,
-              maxLoops: 6,
+              maxLoops: 12,
               onEvent: (event) => {
                 sendEvent(event as ChatStreamEvent);
               },
             });
+
+            if (!loopResult.reportText.length) {
+              sendEvent({
+                type: "text",
+                text: "I couldn't produce a final response. Please try again or rephrase your question.",
+              });
+            }
           } catch (err: unknown) {
             const errMsg = err instanceof Error ? err.message : String(err);
             console.warn(

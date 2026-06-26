@@ -36,8 +36,8 @@ export function LandingTrustedBy({ className }: { className?: string }) {
           </div>
         ))}
       </div>
-      <p className="text-center text-sm text-white/70">
-        Trusted by <span className="font-semibold text-white/85">15,601</span> traders worldwide
+      <p className="text-center text-sm text-white/85 max-lg:text-white/90">
+        Trusted by <span className="font-semibold text-white max-lg:text-white">15,601</span> traders worldwide
       </p>
     </div>
   );

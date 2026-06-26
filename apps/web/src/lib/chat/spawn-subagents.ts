@@ -93,6 +93,7 @@ async function runSingleSubagent(
   const started = Date.now();
   const prompt = sub.prompt.trim();
   const assignmentLabel = sub.assignmentLabel.trim() || assignmentLabelFromPrompt(prompt);
+  let streamedReportLen = 0;
 
   sendEvent({
     type: "subagent_start",
@@ -138,6 +139,7 @@ ${prompt}`;
         if (event.type === "reasoning") {
           sendEvent({ type: "subagent_reasoning", id, text: event.text });
         } else if (event.type === "text") {
+          streamedReportLen += event.text.length;
           sendEvent({ type: "subagent_text", id, text: event.text });
         } else if (event.type === "tool_start") {
           sendEvent({
@@ -163,11 +165,14 @@ ${prompt}`;
     });
 
     const durationMs = Date.now() - started;
+    const reportForClient =
+      (reportText ?? "").length >= streamedReportLen ? reportText : undefined;
+
     sendEvent({
       type: "subagent_end",
       id,
       status: "done",
-      report: reportText || undefined,
+      report: reportForClient || undefined,
       durationMs,
     });
 

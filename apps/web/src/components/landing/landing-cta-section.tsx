@@ -31,7 +31,7 @@ export function LandingCtaSection({
           </h2>
           <div className="flex flex-col items-center gap-2.5">
             <LandingCtaButton href={ctaHref}>Try for free</LandingCtaButton>
-            <p className="font-[family-name:var(--font-manrope)] text-sm font-semibold tracking-[-0.28px] text-white/35">
+            <p className="font-[family-name:var(--font-manrope)] text-sm font-semibold tracking-[-0.28px] text-white/50 max-lg:text-white/60">
               No card required.
             </p>
           </div>

@@ -31,7 +31,7 @@ function MarketsTerminalInner() {
   const showAiOnMobile = mobilePanel === "ai";
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-[var(--terminal-surface)]">
+    <div className="flex h-full min-h-0 w-full max-w-full flex-col overflow-x-clip overflow-y-hidden bg-[var(--terminal-surface)]">
       <div
         className="flex shrink-0 border-b border-white/8 bg-black/30 lg:hidden"
         role="tablist"
@@ -65,7 +65,7 @@ function MarketsTerminalInner() {
         })}
       </div>
 
-      <div className="flex min-h-0 flex-1 overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
         <div
           className={cn(
             "h-full min-h-0 shrink-0",

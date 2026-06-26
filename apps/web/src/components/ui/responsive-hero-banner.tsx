@@ -172,15 +172,19 @@ export function ResponsiveHeroBanner({
         <div className="mx-auto max-w-7xl px-4 pb-12 pt-12 sm:px-6 sm:pb-16 sm:pt-16 md:pt-20 lg:pt-24">
           <div className="mx-auto max-w-3xl text-center">
             {badgeText ? (
-              <div className="animate-fade-slide-in-1 mb-5 inline-flex max-w-full flex-wrap items-center justify-center gap-2 rounded-full border border-white/15 bg-white/5 px-2.5 py-2 backdrop-blur-md sm:mb-6 sm:gap-3">
-                <span className="inline-flex items-center rounded-full border border-[#316bff]/35 bg-[#316bff]/20 px-2 py-0.5 text-xs font-semibold text-cyan-200">
-                  {badgeLabel}
+              <div className="animate-fade-slide-in-1 mb-5 inline-flex max-w-full flex-wrap items-center justify-center gap-2 rounded-full border border-white/25 bg-white/10 px-3 py-2 backdrop-blur-md sm:mb-6 sm:gap-3 sm:border-white/15 sm:bg-white/5 sm:px-3.5">
+                {badgeLabel ? (
+                  <span className="inline-flex items-center rounded-full border border-[#316bff]/35 bg-[#316bff]/20 px-2 py-0.5 text-xs font-semibold text-cyan-200">
+                    {badgeLabel}
+                  </span>
+                ) : null}
+                <span className="text-sm font-semibold text-white sm:font-medium sm:text-white/90">
+                  {badgeText}
                 </span>
-                <span className="text-sm font-medium text-white/90">{badgeText}</span>
               </div>
             ) : null}
 
-            <h1 className="animate-fade-slide-in-2 font-serif text-[clamp(2rem,8vw,4.5rem)] font-normal leading-[1.08] tracking-tight text-white sm:text-5xl md:text-6xl lg:text-7xl">
+            <h1 className="animate-fade-slide-in-2 font-serif text-[clamp(2.75rem,11vw,4.5rem)] font-normal leading-[1.06] tracking-tight text-white sm:text-5xl md:text-6xl lg:text-7xl">
               {title}
               {titleLine2 ? (
                 <>
@@ -191,7 +195,7 @@ export function ResponsiveHeroBanner({
             </h1>
 
             {description ? (
-              <p className="animate-fade-slide-in-3 mx-auto mt-6 max-w-2xl text-base text-white/80 sm:text-lg">
+              <p className="animate-fade-slide-in-3 mx-auto mt-6 max-w-2xl text-base text-white/92 sm:text-lg sm:text-white/80">
                 {description}
               </p>
             ) : null}
@@ -206,7 +210,7 @@ export function ResponsiveHeroBanner({
               </Link>
               <Link
                 href={secondaryButtonHref}
-                className="inline-flex items-center gap-2 rounded-full px-5 py-3 text-sm font-medium text-white/90 transition hover:text-white"
+                className="inline-flex items-center gap-2 rounded-full px-5 py-3 text-sm font-medium text-white transition hover:text-white sm:text-white/90"
               >
                 {secondaryButtonText}
                 <Play className="size-4 fill-current" />

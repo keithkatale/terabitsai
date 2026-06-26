@@ -11,6 +11,8 @@ import {
 } from "@/lib/auth/post-auth";
 import { PageBackground } from "@/components/ui/page-background";
 import { BrandMark } from "@/components/ui/brand-mark";
+import { AuthMethodDivider } from "@/components/auth/auth-method-divider";
+import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
 
 export default function SignupPage() {
   const [email, setEmail] = useState("");
@@ -19,8 +21,10 @@ export default function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [checkEmail, setCheckEmail] = useState(false);
   const [loginHref, setLoginHref] = useState("/login");
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
+    setSearch(window.location.search);
     const next = new URLSearchParams(window.location.search).get("next");
     setLoginHref(next ? `/login?next=${encodeURIComponent(next)}` : "/login");
   }, []);
@@ -118,6 +122,9 @@ export default function SignupPage() {
           <p className="text-sm text-zinc-400 mb-6">
             Get a demo wallet and start paper trading with AI-powered analysis.
           </p>
+
+          <GoogleSignInButton mode="signup" search={search} />
+          <AuthMethodDivider />
 
           <form onSubmit={onSubmit} className="space-y-4">
             <div>

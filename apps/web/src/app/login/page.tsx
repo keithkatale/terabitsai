@@ -7,6 +7,8 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { getPostAuthPath } from "@/lib/auth/post-auth";
 import { PageBackground } from "@/components/ui/page-background";
 import { BrandMark } from "@/components/ui/brand-mark";
+import { AuthMethodDivider } from "@/components/auth/auth-method-divider";
+import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -14,9 +16,11 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [signupHref, setSignupHref] = useState("/signup");
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    setSearch(window.location.search);
     const err = params.get("error");
     if (err === "auth_callback_failed") {
       setError("Sign-in could not be completed. Please try again.");
@@ -62,6 +66,9 @@ export default function LoginPage() {
           <p className="text-sm text-zinc-400 mb-6">
             Sign in to access Terabits AI. New users start on the free chat plan.
           </p>
+
+          <GoogleSignInButton mode="signin" search={search} />
+          <AuthMethodDivider />
 
           <form onSubmit={onSubmit} className="space-y-4">
             <div>

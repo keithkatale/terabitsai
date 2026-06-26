@@ -47,7 +47,7 @@ export function ChartPanel() {
   }, [runAnalysis, symbol, interval]);
 
   return (
-    <div className="flex min-w-0 flex-1 overflow-hidden bg-zinc-950">
+    <div className="flex min-w-0 w-full max-w-full flex-1 overflow-hidden bg-zinc-950">
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <ChartToolbar
           displayName={displayName}

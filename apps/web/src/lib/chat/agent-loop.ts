@@ -6,6 +6,9 @@ import {
 import { extractToolGenui, extractToolQuantUi } from "@/lib/chat/stream-types";
 import { isToolResultOk, runToolByName, type RunToolOptions, type ToolRunContext } from "@/lib/chat/run-tool-by-name";
 
+/** Minimum visible report length after tool calls before accepting completion. */
+const MIN_SUBSTANTIVE_REPORT = 600;
+
 export type AgentLoopEvent =
   | { type: "text"; text: string }
   | { type: "reasoning"; text: string }
@@ -175,6 +178,7 @@ export async function runAgentLoop(params: {
   let reportText = "";
   let hadToolCalls = false;
   let consecutiveEmptyTurns = 0;
+  let loopBreakReason = "max_loops";
 
   while (loopCount < maxLoops) {
     loopCount++;
@@ -198,37 +202,66 @@ export async function runAgentLoop(params: {
         onEvent({ type: "text", text: bufferedVisibleText });
         reportText += bufferedVisibleText;
         consecutiveEmptyTurns = 0;
-        
-        // Check if response seems complete (has reasonable length and ending)
+
         const trimmed = reportText.trim();
-        const seemsComplete = trimmed.length > 200 || 
-          trimmed.endsWith(".") || 
-          trimmed.endsWith("!") || 
-          trimmed.endsWith(":") ||
-          trimmed.endsWith("```");
-        
-        if (seemsComplete) {
-          break;
-        }
-        
-        // Response seems truncated — ask for continuation
-        if (hadToolCalls && trimmed.length < 500) {
+
+        // After tools, short answers ending in "." were incorrectly treated as complete.
+        if (hadToolCalls && trimmed.length < MIN_SUBSTANTIVE_REPORT) {
           contents.push({
             role: "model",
             parts: [{ text: bufferedVisibleText }],
           });
           contents.push({
             role: "user",
-            parts: [{ text: "Continue and complete your analysis. Provide the full detailed response." }],
+            parts: [
+              {
+                text:
+                  trimmed.length < 80
+                    ? "Write your complete, detailed analysis and recommendations now. Include all findings from your tool calls."
+                    : "Continue and complete your analysis. Provide the full detailed response with all data points, levels, and recommendations.",
+              },
+            ],
           });
+          loopBreakReason = "continue_after_tools";
           continue;
         }
+
+        const seemsComplete =
+          trimmed.length >= MIN_SUBSTANTIVE_REPORT ||
+          (trimmed.length > 200 &&
+            !hadToolCalls &&
+            (trimmed.endsWith(".") ||
+              trimmed.endsWith("!") ||
+              trimmed.endsWith(":") ||
+              trimmed.endsWith("```")));
+
+        if (seemsComplete) {
+          loopBreakReason = "seems_complete";
+          break;
+        }
+
+        if (trimmed.length < 120) {
+          contents.push({
+            role: "model",
+            parts: [{ text: bufferedVisibleText }],
+          });
+          contents.push({
+            role: "user",
+            parts: [{ text: "Please provide a more complete answer." }],
+          });
+          loopBreakReason = "continue_short_text";
+          continue;
+        }
+
+        loopBreakReason = "default_break_with_text";
+        break;
       } else {
         consecutiveEmptyTurns++;
       }
 
       // Only break if we have final text OR hit too many empty turns
       if (reportText.trim() || consecutiveEmptyTurns >= 2) {
+        loopBreakReason = reportText.trim() ? "has_report_text" : "consecutive_empty_turns";
         break;
       }
 
@@ -320,31 +353,50 @@ export async function runAgentLoop(params: {
     });
   }
 
-  // Force final response if we ran tools but got no text
-  if (!reportText.trim() && hadToolCalls) {
+  // Force final response if tools ran but output is missing or still too short
+  const reportLen = reportText.trim().length;
+  const needsRecovery = hadToolCalls && reportLen < MIN_SUBSTANTIVE_REPORT;
+
+  if (needsRecovery) {
     onEvent({ type: "status", label: "Finalizing response" });
-    
+
+    if (reportLen > 0) {
+      contents.push({
+        role: "user",
+        parts: [
+          {
+            text: "Your previous response was incomplete. Write the FULL comprehensive analysis now with all sections, data points, and recommendations.",
+          },
+        ],
+      });
+    }
+
     // Try up to 2 recovery attempts
     let recovered = "";
-    for (let attempt = 0; attempt < 2 && !recovered; attempt++) {
+    for (let attempt = 0; attempt < 2 && recovered.length < MIN_SUBSTANTIVE_REPORT; attempt++) {
       if (attempt > 0) {
         onEvent({ type: "status", label: "Retry synthesis", detail: `Attempt ${attempt + 1}` });
       }
-      
+
       recovered = await runRecoveryTextPass({
         contents,
         systemInstruction,
         onEvent,
       });
     }
-    
-    if (recovered) {
+
+    if (recovered.length >= MIN_SUBSTANTIVE_REPORT || recovered.length > reportLen) {
       reportText = recovered;
-    } else {
-      // Last resort: acknowledge completion
-      reportText = "Analysis complete. Tools executed successfully. Please rephrase your question for more detailed results.";
+    } else if (!reportText.trim()) {
+      reportText =
+        "Analysis complete. Tools executed successfully. Please rephrase your question for more detailed results.";
       onEvent({ type: "text", text: reportText });
     }
+  } else if (!reportText.trim() && loopBreakReason === "consecutive_empty_turns") {
+    const fallback =
+      "I couldn't generate a response for that request. Please try rephrasing or asking again.";
+    reportText = fallback;
+    onEvent({ type: "text", text: fallback });
   }
 
   return { reportText: reportText.trim(), pendingGenui, pendingQuantUi };
