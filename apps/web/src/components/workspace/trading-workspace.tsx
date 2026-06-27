@@ -32,6 +32,7 @@ import {
   CopyIcon,
   RefreshCcwIcon,
   SparklesIcon,
+  Sparkles,
   TrendingUp,
   TrendingDown,
   Search,
@@ -368,6 +369,7 @@ export function TradingWorkspace() {
   const pendingChatScrollRef = useRef(false);
   const [responseSpacerHeight, setResponseSpacerHeight] = useState(0);
   const [userPlan, setUserPlan] = useState<"free" | "pro" | "premium">("free");
+  const [isHomeChatSidebarOpen, setIsHomeChatSidebarOpen] = useState(false);
 
   useEffect(() => {
     fetch("/api/subscription/status", { credentials: "include" })
@@ -1872,6 +1874,14 @@ Provide:
     [setActiveTab],
   );
 
+  const onSignalTrigger = useCallback(
+    (prompt: string) => {
+      setIsHomeChatSidebarOpen(true);
+      void handleSend(prompt);
+    },
+    [handleSend]
+  );
+
   useEffect(() => {
     if (mode !== "chat" || pendingBootstrapped.current) return;
     const raw = sessionStorage.getItem("chat:pending");
@@ -1895,11 +1905,154 @@ Provide:
   return (
     <div className="relative h-full min-h-0 w-full">
       <TabPanel tab="home" activeTab={mode}>
-        <div className="flex h-full min-h-0 flex-col overflow-hidden">
-          <HomeSection
-            sidebarQuotes={sidebarQuotes}
-            goToChatWithPrompt={goToChatWithPrompt}
-          />
+        <div className="flex h-full min-h-0 flex-row overflow-hidden relative">
+          <div className="flex flex-1 min-w-0 flex-col overflow-hidden pb-20">
+            <HomeSection
+              sidebarQuotes={sidebarQuotes}
+              goToChatWithPrompt={goToChatWithPrompt}
+              onSignalTrigger={onSignalTrigger}
+              isHomeChatSidebarOpen={isHomeChatSidebarOpen}
+            />
+          </div>
+          
+          {/* Floating prompt box - only visible if right sidebar is closed */}
+          {!isHomeChatSidebarOpen && (
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-full max-w-xl px-4 z-40 pointer-events-auto transition-all duration-300 animate-in fade-in slide-in-from-bottom-4">
+              <div className="bg-zinc-950/80 rounded-full shadow-[0_12px_45px_rgba(0,0,0,0.9),_0_0_25px_rgba(6,182,212,0.15)] p-1.5 backdrop-blur-2xl flex items-center gap-2">
+                <button
+                  type="button"
+                  className="size-8 shrink-0 rounded-full flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/[0.06] transition-all"
+                >
+                  <PlusIcon className="size-4" />
+                </button>
+                <input
+                  type="text"
+                  value={value}
+                  onChange={(e) => setValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      if (value.trim()) {
+                        onSignalTrigger(value);
+                      }
+                    }
+                  }}
+                  placeholder="Ask any prompt question randomly..."
+                  disabled={loading}
+                  className="flex-1 bg-transparent border-0 outline-none text-zinc-200 placeholder:text-zinc-500 text-xs py-1 px-1 focus:ring-0 focus-visible:outline-none min-w-0"
+                />
+                <button
+                  type="button"
+                  disabled={loading || !value.trim()}
+                  onClick={() => {
+                    if (value.trim()) {
+                      onSignalTrigger(value);
+                    }
+                  }}
+                  className="size-8 shrink-0 rounded-full bg-cyan-500 hover:bg-cyan-400 text-zinc-950 flex items-center justify-center transition-all disabled:opacity-40 disabled:hover:bg-cyan-500 disabled:cursor-not-allowed"
+                >
+                  <ArrowUpIcon className="size-4" strokeWidth={2.5} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Sliding Right-Side AI Sidebar */}
+          {isHomeChatSidebarOpen && (
+            <ResizablePane
+              minWidth={360}
+              maxWidth={800}
+              defaultWidth={450}
+              side="right"
+              className="hidden shrink-0 border-l border-white/[0.08] bg-[var(--terminal-surface)] md:flex flex-col h-full min-h-0 relative z-40 shadow-2xl animate-in slide-in-from-right duration-300"
+            >
+              <div className="flex items-center justify-between p-4 border-b border-white/[0.08] bg-black/20">
+                <div className="flex items-center gap-2">
+                  <div className="size-2 bg-cyan-400 rounded-full animate-pulse shrink-0" />
+                  <span className="text-[10px] font-black text-white uppercase tracking-wider">CMC AI Copilot Panel</span>
+                </div>
+                <button
+                  onClick={() => setIsHomeChatSidebarOpen(false)}
+                  className="size-7 hover:bg-white/[0.06] rounded-md flex items-center justify-center text-zinc-400 hover:text-white transition-colors"
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
+
+              <div className="flex-1 min-h-0 relative flex flex-col overflow-hidden bg-black/10">
+                {messages.length === 0 ? (
+                  <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-4">
+                    <Sparkles className="size-10 text-cyan-400 animate-pulse" />
+                    <div>
+                      <h4 className="text-xs font-bold text-white uppercase tracking-wider">No Active AI Context</h4>
+                      <p className="text-[11px] text-zinc-500 max-w-[240px] mx-auto mt-1 leading-normal">
+                        Tap any upper signal card or use the floating prompt bar to initialize deep AI analysis.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="relative flex min-h-0 flex-1 flex-col px-2 py-4 sm:px-4">
+                    <Conversation className="min-h-0 flex-1 pb-24">
+                      <ConversationContent
+                        ref={chatScrollRef}
+                        className="space-y-4 bg-transparent"
+                      >
+                        <div className="space-y-4 px-2">
+                          {messages.map((message, messageIndex) => {
+                            const isLastMessage = messageIndex === messages.length - 1;
+                            const isActiveUserTurn =
+                              loading &&
+                              message.role === "user" &&
+                              messageIndex === messages.length - 2;
+                            return (
+                              <ChatMessageBubble
+                                key={message.id}
+                                message={message}
+                                isAssistantStreaming={loading && isLastMessage}
+                                livePrices={sidebarQuotes}
+                                onClosePosition={closePosition}
+                                onOpenAgentDetail={(agent) => setOpenAgentId(agent.id)}
+                                rootRef={
+                                  isActiveUserTurn
+                                    ? (el) => {
+                                        lastUserMessageRef.current = el;
+                                      }
+                                    : undefined
+                                }
+                              />
+                            );
+                          })}
+                        </div>
+                      </ConversationContent>
+                    </Conversation>
+                  </div>
+                )}
+                
+                {/* Sidebar bottom Sticky Input Bar */}
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-[var(--terminal-surface)] via-[var(--terminal-surface)]/95 to-transparent pb-3 pt-6 px-4 border-t border-white/[0.04]">
+                  <InputBar
+                    value={value}
+                    onChange={setValue}
+                    onSend={({ content }) => {
+                      const tags = [...taggedAssets];
+                      setTaggedAssets([]);
+                      handleSend(content, tags);
+                    }}
+                    disabled={loading}
+                    status={loading ? "streaming" : "ready"}
+                    placeholder="Ask co-pilot in sidebar..."
+                    variant="landing"
+                    taggedAssets={taggedAssets}
+                    onRemoveTaggedAsset={removeTaggedAsset}
+                    onToggleTaggedAsset={toggleTaggedAsset}
+                    maxTaggedAssets={MAX_TAGGED_ASSETS}
+                    selectedAiTools={selectedAiTools}
+                    onSelectedAiToolsChange={setSelectedAiTools}
+                  />
+                </div>
+              </div>
+            </ResizablePane>
+          )}
         </div>
       </TabPanel>
 

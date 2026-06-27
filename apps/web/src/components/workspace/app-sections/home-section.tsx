@@ -21,6 +21,17 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ASSET_CATALOG, type CatalogAsset } from "@/lib/catalog/asset-catalog";
+import { AssetLogoIcon } from "@/components/ui/asset-logo";
+import {
+  INITIAL_SIGNALS,
+  MARKET_NEWS_POOL,
+  INVEST_OPPORTUNITIES_POOL,
+  TRADING_STRATEGIES,
+  type LiveSignal,
+  type MarketNewsItem,
+  type InvestOpportunity
+} from "@/lib/market/market-intel-data";
+
 
 // Direct styling for self-contained scrolling catalyst marquee & needle rotations
 const MARQUEE_STYLE = `
@@ -155,15 +166,37 @@ export interface EnrichedAsset extends CatalogAsset {
 interface HomeSectionProps {
   sidebarQuotes: Record<string, { spot?: number; change24hPct?: number }>;
   goToChatWithPrompt?: (prompt: string) => void;
+  onSignalTrigger?: (prompt: string) => void;
+  isHomeChatSidebarOpen?: boolean;
 }
 
-export function HomeSection({ sidebarQuotes, goToChatWithPrompt }: HomeSectionProps) {
+export function HomeSection({
+  sidebarQuotes,
+  goToChatWithPrompt,
+  onSignalTrigger,
+  isHomeChatSidebarOpen,
+}: HomeSectionProps) {
   const [activeCategory, setActiveCategory] = useState<string>("All Assets");
   const [timeframe, setTimeframe] = useState<"1h" | "4h" | "24h">("24h");
   const [rowLimit, setRowLimit] = useState<number>(15);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedAsset, setSelectedAsset] = useState<EnrichedAsset | null>(null);
   const [copilotInput, setCopilotInput] = useState("");
+
+  // Real-time ticking and flashing state hooks
+  const [liveQuotesState, setLiveQuotesState] = useState<Record<string, { spot: number; change24hPct?: number; bid?: number; ask?: number }>>({});
+  const [tickDirections, setTickDirections] = useState<Record<string, "up" | "down">>({});
+
+  // Cycle indices for AI indicators
+  const [signalIndex, setSignalIndex] = useState(0);
+  const [smcIndex, setSmcIndex] = useState(1);
+  const [newsIndex, setNewsIndex] = useState(0);
+  const [oppIndex, setOpportunityIndex] = useState(0);
+
+  // Keep a ref to active symbols for steady ticking interval
+  const paginatedAssetsRef = useRef<Array<{ symbol: string; assetClass?: string }>>([]);
+
+
 
   // Market metrics states (simulated but state-locked for realism)
   const marketCap = 2415892040510;
@@ -176,6 +209,84 @@ export function HomeSection({ sidebarQuotes, goToChatWithPrompt }: HomeSectionPr
 
   const sparklineCap = [2.35, 2.36, 2.34, 2.38, 2.37, 2.39, 2.41, 2.40, 2.42];
   const sparklineCmc20 = [1380, 1395, 1390, 1410, 1422, 1405, 1430, 1445, 1450];
+
+  // Real-time fetching of actual live quotes from Capital.com API
+  useEffect(() => {
+    const fetchLiveQuotes = async () => {
+      const activeAssets = paginatedAssetsRef.current;
+      if (activeAssets.length === 0) return;
+
+      try {
+        const results = await Promise.allSettled(
+          activeAssets.map(async (asset) => {
+            const sym = asset.symbol;
+            const assetClass = asset.assetClass || "stock";
+            const res = await fetch(`/api/market/quote?symbol=${encodeURIComponent(sym)}&assetClass=${assetClass}`);
+            if (!res.ok) return null;
+            return await res.json();
+          })
+        );
+
+        setLiveQuotesState((prev) => {
+          const next = { ...prev };
+          const nextDirections: Record<string, "up" | "down"> = {};
+
+          results.forEach((r) => {
+            if (r.status === "fulfilled" && r.value) {
+              const data = r.value;
+              const sym = data.symbol;
+              const newSpot = data.spot;
+              const prevSpot = prev[sym]?.spot ?? sidebarQuotes[sym]?.spot;
+
+              if (prevSpot && newSpot !== prevSpot) {
+                nextDirections[sym] = newSpot > prevSpot ? "up" : "down";
+              }
+
+              next[sym] = {
+                spot: newSpot,
+                change24hPct: data.change24hPct,
+                bid: data.bid,
+                ask: data.ask,
+              };
+            }
+          });
+
+          if (Object.keys(nextDirections).length > 0) {
+            setTickDirections(nextDirections);
+            const timeout = setTimeout(() => {
+              setTickDirections({});
+            }, 1200);
+          }
+
+          return next;
+        });
+      } catch (err) {
+        console.error("Failed to fetch live quotes on interval:", err);
+      }
+    };
+
+    // Initial run
+    void fetchLiveQuotes();
+
+    const interval = setInterval(() => {
+      void fetchLiveQuotes();
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [sidebarQuotes]);
+
+  // Sync AI card rotation indices on a 10s interval
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setSignalIndex((prev) => (prev + 1) % INITIAL_SIGNALS.length);
+      setSmcIndex((prev) => (prev + 1) % INITIAL_SIGNALS.length);
+      setNewsIndex((prev) => (prev + 1) % MARKET_NEWS_POOL.length);
+      setOpportunityIndex((prev) => (prev + 1) % INVEST_OPPORTUNITIES_POOL.length);
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, []);
+
 
   // Ingest full catalogs from asset-catalog.ts
   const fullAssetsList = useMemo(() => {
@@ -194,8 +305,9 @@ export function HomeSection({ sidebarQuotes, goToChatWithPrompt }: HomeSectionPr
         const sSeed = Math.abs(hash);
 
         // Fetch live spot quote or fall back to simulated spot
-        const liveSpot = sidebarQuotes[asset.symbol]?.spot;
-        const liveChange24h = sidebarQuotes[asset.symbol]?.change24hPct;
+        const quoteSource = liveQuotesState[asset.symbol] ?? sidebarQuotes[asset.symbol];
+        const liveSpot = quoteSource?.spot;
+        const liveChange24h = quoteSource?.change24hPct;
 
         let basePrice = 100.0;
         if (asset.asset_class === "crypto") {
@@ -212,7 +324,7 @@ export function HomeSection({ sidebarQuotes, goToChatWithPrompt }: HomeSectionPr
         }
 
         const spotPrice = liveSpot ?? basePrice;
-        const change24h = liveChange24h ?? (((sSeed % 120) - 55) / 10);
+        const change24h = liveChange24h ?? ((sSeed % 120) - 55) / 10;
         const change1h = ((sSeed % 40) - 18) / 10;
 
         // Realistic market cap scaling
@@ -264,7 +376,8 @@ export function HomeSection({ sidebarQuotes, goToChatWithPrompt }: HomeSectionPr
       ...item,
       rank: idx + 1,
     }));
-  }, [sidebarQuotes]);
+  }, [sidebarQuotes, liveQuotesState]);
+
 
   // Filtered Assets list
   const filteredAssets = useMemo(() => {
@@ -299,6 +412,14 @@ export function HomeSection({ sidebarQuotes, goToChatWithPrompt }: HomeSectionPr
   const paginatedAssets = useMemo(() => {
     return filteredAssets.slice(0, rowLimit);
   }, [filteredAssets, rowLimit]);
+
+  // Sync paginated symbols to the ref whenever they change
+  useEffect(() => {
+    paginatedAssetsRef.current = paginatedAssets.map((a) => ({
+      symbol: a.symbol,
+      assetClass: a.asset_class,
+    }));
+  }, [paginatedAssets]);
 
   // Scrolling catalysts marquee feed
   const catalysts = [
@@ -382,162 +503,240 @@ export function HomeSection({ sidebarQuotes, goToChatWithPrompt }: HomeSectionPr
         {/* ======================================================== */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3.5">
           
-          {/* Card A: Global Market Cap */}
-          <div className="quant-card p-3.5 flex flex-col justify-between space-y-3">
+          {/* Card 1: AI Scanner Status */}
+          <div
+            onClick={() => onSignalTrigger?.("Explain the active background crawlers and RAG scanning process you are running. What targets are currently being scanned, and how is the SMC matrix alignment being optimized?")}
+            className="quant-card p-3.5 flex flex-col justify-between space-y-3.5 relative overflow-hidden group cursor-pointer active:scale-[0.98] hover:border-cyan-500/30 hover:shadow-[0_0_25px_rgba(6,182,212,0.1)] transition-all duration-300"
+          >
+            {/* Ambient glow in background */}
+            <div className="absolute top-0 right-0 w-24 h-24 bg-cyan-500/5 rounded-full blur-xl pointer-events-none group-hover:bg-cyan-500/10 transition-all duration-500" />
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">Global Market Cap</span>
-              <span className="inline-flex items-center gap-0.5 text-xs font-bold text-[var(--accent-green)]">
-                <TrendingUp className="size-3" /> +{marketCapChange24h}%
+              <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1">
+                <Activity className="size-3 text-cyan-400" />
+                AI Scan Console
+              </span>
+              <span className="inline-flex items-center gap-1 text-[9px] font-black text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded uppercase">
+                <span className="size-1.5 bg-emerald-400 rounded-full animate-ping shrink-0" />
+                ACTIVE
               </span>
             </div>
             <div>
-              <p className="text-2xl font-bold leading-none text-white tabular-nums">
-                {formatLargeNum(marketCap)}
-              </p>
-              <p className="text-[10px] text-zinc-500 mt-1">Aggregated crypto, stock, commodities cap</p>
+              <div className="flex gap-0.5 h-6 items-end justify-center py-0.5 mb-1.5">
+                {Array.from({ length: 14 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="w-1 bg-cyan-400/40 rounded-full transition-all duration-300"
+                    style={{
+                      height: `${20 + Math.abs(Math.sin((signalIndex * 1.5) + i)) * 80}%`,
+                    }}
+                  />
+                ))}
+              </div>
+              <div className="grid grid-cols-2 gap-2 border-t border-white/[0.04] pt-2 text-[10px]">
+                <div>
+                  <span className="text-zinc-500 block">Workers Active</span>
+                  <span className="text-white font-black">8 Agents</span>
+                </div>
+                <div>
+                  <span className="text-zinc-500 block">Scan Speed</span>
+                  <span className="text-cyan-400 font-black">150ms/p</span>
+                </div>
+              </div>
             </div>
-            <div className="pt-2 border-t border-white/[0.03] flex items-center justify-center h-10">
-              <MiniSparkline data={sparklineCap} trend="up" />
-            </div>
+            <p className="text-[9px] text-zinc-500 mt-0.5">Continuous RAG crawling & SMC matrix alignment</p>
           </div>
 
-          {/* Card B: CMC20 Market Index */}
-          <div className="quant-card p-3.5 flex flex-col justify-between space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">CMC20 Top Assets</span>
-              <span className="inline-flex items-center gap-0.5 text-xs font-bold text-[var(--accent-green)]">
-                <TrendingUp className="size-3" /> +{cmc20Change24h}%
-              </span>
-            </div>
-            <div>
-              <p className="text-2xl font-bold leading-none text-white tabular-nums">
-                {formatPrice(cmc20Index)}
-              </p>
-              <p className="text-[10px] text-zinc-500 mt-1">SMC weighted average of top 20 assets</p>
-            </div>
-            <div className="pt-2 border-t border-white/[0.03] flex items-center justify-center h-10">
-              <MiniSparkline data={sparklineCmc20} trend="up" />
-            </div>
-          </div>
-
-          {/* Card C: Fear & Greed Dial (SVG Circular Gauge) */}
-          <div className="quant-card p-3.5 flex flex-col justify-between">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">Fear & Greed Index</span>
-              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded uppercase">
-                Greed
-              </span>
-            </div>
-
-            <div className="flex items-center justify-center relative py-1">
-              {/* Semi-circular gauge */}
-              <svg width="100" height="60" viewBox="0 0 100 55" className="overflow-visible">
-                <defs>
-                  <linearGradient id="gauge-grad" x1="0" y1="0" x2="1" y2="0">
-                    <stop offset="0%" stopColor="#FF3B30" />    {/* Red */}
-                    <stop offset="50%" stopColor="#FF9F00" />   {/* Orange */}
-                    <stop offset="100%" stopColor="#00FF85" />  {/* Green */}
-                  </linearGradient>
-                </defs>
-                {/* Arc path */}
-                <path
-                  d="M 10 50 A 40 40 0 0 1 90 50"
-                  fill="none"
-                  stroke="rgba(255,255,255,0.06)"
-                  strokeWidth="8"
-                  strokeLinecap="round"
-                />
-                <path
-                  d="M 10 50 A 40 40 0 0 1 90 50"
-                  fill="none"
-                  stroke="url(#gauge-grad)"
-                  strokeWidth="8"
-                  strokeLinecap="round"
-                  strokeDasharray="125"
-                  strokeDashoffset={125 - (125 * fearAndGreedVal) / 100}
-                />
-                {/* Needle */}
-                <g transform={`translate(50,50) rotate(${-90 + (180 * fearAndGreedVal) / 100})`}>
-                  <line x1="0" y1="0" x2="0" y2="-42" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" />
-                  <circle cx="0" cy="0" r="4" fill="#ffffff" />
-                </g>
-              </svg>
-              <div className="absolute bottom-1 flex flex-col items-center">
-                <span className="text-xl font-black text-white">{fearAndGreedVal}</span>
+          {/* Card 2: High-Conviction AI Signal */}
+          {(() => {
+            const activeSignal = INITIAL_SIGNALS[signalIndex];
+            const isBuy = activeSignal.action === "BUY";
+            return (
+              <div
+                onClick={() => onSignalTrigger?.(`Provide a deep-dive analysis of the high-conviction AI Intelligence Signal for ${activeSignal.symbol}. The signal is a ${activeSignal.action} trigger using the ${activeSignal.strategy} strategy on the ${activeSignal.timeframe} timeframe. The reported reasoning is: '${activeSignal.reason}'. Please give more details, target validation, and risk management guidelines.`)}
+                className="quant-card p-3.5 flex flex-col justify-between space-y-2 relative overflow-hidden group cursor-pointer active:scale-[0.98] hover:border-emerald-500/30 hover:shadow-[0_0_25px_rgba(16,185,129,0.1)] transition-all duration-300"
+              >
+                <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-full blur-xl pointer-events-none" />
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1">
+                    <Sparkles className="size-3 text-emerald-400" />
+                    AI Intelligence Signal
+                  </span>
+                  <span className={cn(
+                    "inline-flex items-center gap-0.5 text-[10px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider",
+                    isBuy ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"
+                  )}>
+                    {activeSignal.action}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <AssetLogoIcon
+                    symbol={activeSignal.symbol}
+                    assetClass={activeSignal.assetClass}
+                    sector={activeSignal.sector}
+                    size="sm"
+                    className="rounded-full border border-white/[0.05]"
+                  />
+                  <div className="flex flex-col">
+                    <span className="text-sm font-black text-white leading-none">{activeSignal.symbol}</span>
+                    <span className="text-[9px] text-zinc-500 font-extrabold mt-1">{activeSignal.strategy} ({activeSignal.timeframe})</span>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[10px] text-zinc-400 line-clamp-2 h-7 font-medium leading-normal">
+                    {activeSignal.reason}
+                  </p>
+                  <p className="text-[9px] text-zinc-500 border-t border-white/[0.04] pt-1.5 mt-1.5 flex justify-between">
+                    <span>Conviction Rating</span>
+                    <span className="text-emerald-400 font-extrabold uppercase">94% Highly Probable</span>
+                  </p>
+                </div>
               </div>
-            </div>
+            );
+          })()}
 
-            <p className="text-[10px] text-zinc-500 text-center mt-1">Extreme leverage volatility expected</p>
-          </div>
-
-          {/* Card D: Altcoin Season Track */}
-          <div className="quant-card p-3.5 flex flex-col justify-between space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">Altcoin Season Index</span>
-              <span className="text-[10px] font-bold text-cyan-400 bg-cyan-500/10 px-1.5 py-0.5 rounded">
-                BTC Season
-              </span>
-            </div>
-
-            <div className="space-y-2 py-2">
-              <div className="flex justify-between text-[9px] font-semibold text-zinc-600">
-                <span>BITCOIN</span>
-                <span>ALTCOIN</span>
+          {/* Card 3: Smart Money Concepts */}
+          {(() => {
+            const activeSMC = INITIAL_SIGNALS[smcIndex];
+            const isBullish = activeSMC.action === "BUY";
+            return (
+              <div
+                onClick={() => onSignalTrigger?.(`Analyze the Smart Money Concepts (SMC) Order Flow signal detected for ${activeSMC.symbol}. The action is ${activeSMC.action === "BUY" ? "BUY (Liquidity Sweep)" : "SELL (Supply Mitigation)"} with structure shift ${activeSMC.action === "BUY" ? "BOS (Bullish)" : "CHoCH (Bearish)"} and active sweep zone. Please outline key Fair Value Gaps, order blocks, and trade boundaries.`)}
+                className="quant-card p-3.5 flex flex-col justify-between space-y-2 relative overflow-hidden group cursor-pointer active:scale-[0.98] hover:border-purple-500/30 hover:shadow-[0_0_25px_rgba(168,85,247,0.1)] transition-all duration-300"
+              >
+                <div className="absolute top-0 right-0 w-24 h-24 bg-purple-500/5 rounded-full blur-xl pointer-events-none" />
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1">
+                    <Gauge className="size-3 text-purple-400" />
+                    SMC Order Flow
+                  </span>
+                  <span className={cn(
+                    "text-[8px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider",
+                    isBullish ? "bg-purple-500/10 text-purple-400" : "bg-blue-500/10 text-blue-400"
+                  )}>
+                    {isBullish ? "Liquidity Raid" : "Supply Mitigation"}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <AssetLogoIcon
+                    symbol={activeSMC.symbol}
+                    assetClass={activeSMC.assetClass}
+                    sector={activeSMC.sector}
+                    size="sm"
+                    className="rounded-full border border-white/[0.05]"
+                  />
+                  <div className="flex flex-col">
+                    <span className="text-sm font-black text-white leading-none">{activeSMC.symbol}</span>
+                    <span className="text-[9px] text-zinc-500 font-extrabold mt-1">Structure Shift Detected</span>
+                  </div>
+                </div>
+                <div className="space-y-1 text-[10px] text-zinc-400">
+                  <div className="flex justify-between">
+                    <span>Structural Trend:</span>
+                    <span className="font-bold text-white uppercase">{isBullish ? "BOS (Bullish)" : "CHoCH (Bearish)"}</span>
+                  </div>
+                  <div className="flex justify-between border-t border-white/[0.04] pt-1">
+                    <span>Mitigation Zone:</span>
+                    <span className="font-extrabold text-[var(--accent-cyan)] uppercase">Active Sweep Zone</span>
+                  </div>
+                </div>
               </div>
-              {/* Linear Slider Track */}
-              <div className="relative w-full h-2 bg-zinc-850 rounded-full border border-white/[0.03]">
-                {/* Hot Zone Glow */}
-                <div
-                  className="absolute top-0 bottom-0 left-0 bg-gradient-to-r from-cyan-500 to-amber-500 rounded-full opacity-60"
-                  style={{ width: `${altcoinSeasonVal}%` }}
-                />
-                {/* Glowing Indicator Pin */}
-                <div
-                  className="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-white border-2 border-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.8)] -ml-2 transition-all duration-300"
-                  style={{ left: `${altcoinSeasonVal}%` }}
-                />
-              </div>
-              <div className="flex justify-between text-[10px] text-zinc-400 font-bold">
-                <span>Score: {altcoinSeasonVal}/100</span>
-                <span>30d Trend: Consolidated</span>
-              </div>
-            </div>
+            );
+          })()}
 
-            <p className="text-[10px] text-zinc-500 mt-1">Cap dominated by BTC liquidity pools</p>
-          </div>
-
-          {/* Card E: Aggregate Market RSI */}
-          <div className="quant-card p-3.5 flex flex-col justify-between space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">Average Market RSI</span>
-              <span className="text-[10px] font-bold text-zinc-400 bg-white/[0.04] px-1.5 py-0.5 rounded uppercase">
-                Neutral
-              </span>
-            </div>
-
-            <div className="space-y-2 py-2">
-              <div className="flex justify-between text-[9px] font-semibold text-zinc-600">
-                <span>OVERSOLD (30)</span>
-                <span>OVERBOUGHT (70)</span>
+          {/* Card 4: Predictive News Concept */}
+          {(() => {
+            const activeNews = MARKET_NEWS_POOL[newsIndex];
+            const sentimentColor = activeNews.sentiment === "bullish"
+              ? "text-[var(--accent-green)] bg-emerald-500/10"
+              : activeNews.sentiment === "bearish"
+              ? "text-[var(--accent-red)] bg-red-500/10"
+              : "text-zinc-400 bg-white/[0.04]";
+            return (
+              <div
+                onClick={() => onSignalTrigger?.(`Analyze the Predictive News Concept headline: '${activeNews.headline}'. The sentiment is ${activeNews.sentiment}. Summary: '${activeNews.summary}'. Please explain how this macro catalyst affects the involved symbols (${activeNews.symbols.join(", ")}) and predict potential volatility bounds.`)}
+                className="quant-card p-3.5 flex flex-col justify-between space-y-2 relative overflow-hidden group cursor-pointer active:scale-[0.98] hover:border-amber-500/30 hover:shadow-[0_0_25px_rgba(245,158,11,0.1)] transition-all duration-300"
+              >
+                <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-full blur-xl pointer-events-none" />
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1">
+                    <Compass className="size-3 text-amber-400" />
+                    AI Impact Predictor
+                  </span>
+                  <span className={cn("text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider", sentimentColor)}>
+                    {activeNews.sentiment}
+                  </span>
+                </div>
+                <div className="mt-0.5">
+                  <h4 className="text-[11px] font-bold text-white line-clamp-1 hover:underline cursor-pointer leading-tight">
+                    {activeNews.headline}
+                  </h4>
+                  <p className="text-[10px] text-zinc-500 line-clamp-2 h-7 mt-1 font-medium leading-normal">
+                    {activeNews.summary}
+                  </p>
+                </div>
+                <div className="pt-1.5 border-t border-white/[0.04] flex items-center justify-between">
+                  <span className="text-[9px] font-semibold text-zinc-500 uppercase">Impact Tickers</span>
+                  <div className="flex items-center gap-1">
+                    {activeNews.symbols.slice(0, 3).map((sym) => (
+                      <span key={sym} className="text-[9px] font-black text-white bg-white/[0.04] border border-white/[0.05] px-1 rounded flex items-center gap-0.5">
+                        <AssetLogoIcon symbol={sym} size="xs" className="rounded-full shrink-0" />
+                        {sym}
+                      </span>
+                    ))}
+                  </div>
+                </div>
               </div>
-              {/* RSI Indicator Track */}
-              <div className="relative w-full h-2 bg-zinc-850 rounded-full border border-white/[0.03] overflow-visible">
-                {/* Middle neutral zone */}
-                <div className="absolute inset-y-0 left-[30%] right-[30%] bg-emerald-500/10 border-x border-emerald-500/20" />
-                {/* Glowing Indicator Pin */}
-                <div
-                  className="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-emerald-400 border-2 border-zinc-950 shadow-[0_0_8px_rgba(16,185,129,0.8)] -ml-2 transition-all duration-300"
-                  style={{ left: `${marketAverageRsi}%` }}
-                />
-              </div>
-              <div className="flex justify-between text-[10px] text-zinc-400 font-bold">
-                <span>RSI: {marketAverageRsi}</span>
-                <span>Momentum: Consolidated</span>
-              </div>
-            </div>
+            );
+          })()}
 
-            <p className="text-[10px] text-zinc-500 mt-1">Aggregate RSI computed over 14 periods</p>
-          </div>
+          {/* Card 5: Tactical Market Opportunities */}
+          {(() => {
+            const activeOpp = INVEST_OPPORTUNITIES_POOL[oppIndex];
+            return (
+              <div
+                onClick={() => onSignalTrigger?.(`Explain the Tactical Market Opportunity: '${activeOpp.title}'. Horizon: ${activeOpp.horizon}, Thesis: '${activeOpp.thesis}'. Symbols involved: ${activeOpp.symbols.join(", ")}. Conviction score: ${activeOpp.conviction}/5. Provide structural entries, risk profiles, and expected thematic triggers.`)}
+                className="quant-card p-3.5 flex flex-col justify-between space-y-2 relative overflow-hidden group cursor-pointer active:scale-[0.98] hover:border-cyan-500/30 hover:shadow-[0_0_25px_rgba(6,182,212,0.1)] transition-all duration-300"
+              >
+                <div className="absolute top-0 right-0 w-24 h-24 bg-cyan-500/5 rounded-full blur-xl pointer-events-none" />
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1">
+                    <Zap className="size-3 text-cyan-400" />
+                    Thematic Opportunity
+                  </span>
+                  <span className="text-[9px] font-black text-cyan-400 bg-cyan-500/10 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                    {activeOpp.horizon}
+                  </span>
+                </div>
+                <div className="mt-0.5">
+                  <h4 className="text-xs font-black text-white truncate leading-tight">{activeOpp.title}</h4>
+                  <p className="text-[10px] text-zinc-400 line-clamp-2 h-7 mt-1 font-medium leading-normal">
+                    {activeOpp.thesis}
+                  </p>
+                </div>
+                <div className="pt-1.5 border-t border-white/[0.04] flex items-center justify-between">
+                  <div className="flex items-center gap-1">
+                    {activeOpp.symbols.slice(0, 2).map((sym) => (
+                      <span key={sym} className="text-[9px] font-black text-white bg-white/[0.04] border border-white/[0.05] px-1 rounded flex items-center gap-0.5">
+                        <AssetLogoIcon symbol={sym} size="xs" className="rounded-full shrink-0" />
+                        {sym}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-0.5">
+                    {Array.from({ length: 5 }).map((_, idx) => (
+                      <Sparkles
+                        key={idx}
+                        className={cn(
+                          "size-2.5",
+                          idx < activeOpp.conviction ? "text-yellow-400 fill-yellow-400" : "text-zinc-800"
+                        )}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
         </div>
 
@@ -659,37 +858,56 @@ export function HomeSection({ sidebarQuotes, goToChatWithPrompt }: HomeSectionPr
                     const isUp1h = asset.change1h >= 0;
                     const isUp24h = asset.change24h >= 0;
                     
+                    const tickDir = tickDirections[asset.symbol];
+                    const flashingClass = tickDir === "up"
+                      ? "bg-emerald-500/10 hover:bg-emerald-500/15"
+                      : tickDir === "down"
+                      ? "bg-red-500/10 hover:bg-red-500/15"
+                      : "hover:bg-white/[0.02]";
+
                     return (
                       <tr
                         key={asset.symbol}
                         onClick={() => setSelectedAsset(asset)}
-                        className="group hover:bg-white/[0.02] cursor-pointer transition-colors text-xs font-medium text-white tabular-nums"
+                        className={cn(
+                          "group cursor-pointer text-xs font-medium text-white tabular-nums transition-all duration-500",
+                          flashingClass
+                        )}
                       >
                         {/* Rank */}
                         <td className="py-3.5 px-4 text-center text-zinc-500 font-bold group-hover:text-cyan-400 transition-colors">
                           {asset.rank}
                         </td>
 
-                        {/* Name / Symbol */}
+                        {/* Name / Symbol (With Logo) */}
                         <td className="py-3.5 px-3 font-semibold text-left">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-3">
+                            <AssetLogoIcon
+                              symbol={asset.symbol}
+                              assetClass={asset.asset_class}
+                              sector={asset.sector}
+                              size="sm"
+                              className="rounded-full shadow-md border border-white/[0.05]"
+                            />
                             <div className="flex flex-col">
-                              <span className="text-white font-black hover:underline group-hover:text-[var(--accent-cyan)] transition-colors">
-                                {asset.symbol}
-                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-white font-black hover:underline group-hover:text-[var(--accent-cyan)] transition-colors">
+                                  {asset.symbol}
+                                </span>
+                                {/* Visual Asset Class Badge */}
+                                <span className={cn(
+                                  "text-[8px] font-extrabold uppercase px-1 py-0.5 rounded",
+                                  asset.asset_class === "crypto" 
+                                    ? "bg-purple-500/10 text-purple-400" 
+                                    : "bg-emerald-500/10 text-emerald-400"
+                                )}>
+                                  {asset.asset_class ?? "CFD"}
+                                </span>
+                              </div>
                               <span className="text-[10px] text-zinc-500 font-medium max-w-[150px] truncate">
                                 {asset.name}
                               </span>
                             </div>
-                            {/* Visual Asset Class Badge */}
-                            <span className={cn(
-                              "text-[8px] font-extrabold uppercase px-1 py-0.5 rounded",
-                              asset.asset_class === "crypto" 
-                                ? "bg-purple-500/10 text-purple-400" 
-                                : "bg-emerald-500/10 text-emerald-400"
-                            )}>
-                              {asset.asset_class ?? "CFD"}
-                            </span>
                           </div>
                         </td>
 
@@ -806,46 +1024,6 @@ export function HomeSection({ sidebarQuotes, goToChatWithPrompt }: HomeSectionPr
           </div>
         </div>
 
-        {/* ======================================================== */}
-        {/* 4. BOTTOM FLOATING AI COPILOT PILL BAR                  */}
-        {/* ======================================================== */}
-        <div className="pt-2">
-          <form
-            onSubmit={handleCopilotSubmit}
-            className="quant-card bg-gradient-to-r from-zinc-950 via-cyan-950/20 to-zinc-950 border border-cyan-500/15 p-4 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-[0_0_25px_rgba(0,229,255,0.04)]"
-          >
-            <div className="flex items-start gap-3">
-              <div className="size-9 bg-cyan-500/10 border border-cyan-400/20 rounded-xl flex items-center justify-center text-cyan-400 shrink-0">
-                <Sparkles className="size-4 animate-bounce" />
-              </div>
-              <div>
-                <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
-                  ASK CMC CO-PILOT
-                  <span className="text-[8px] bg-cyan-500 text-zinc-950 font-black px-1 rounded tracking-normal">ALPHA</span>
-                </h3>
-                <p className="text-[11px] text-zinc-500 font-medium">
-                  Trigger automated deep RAG scans on catalysts, supply chains, or historical technical indicators.
-                </p>
-              </div>
-            </div>
-
-            <div className="relative flex-1 max-w-2xl w-full">
-              <input
-                type="text"
-                value={copilotInput}
-                onChange={(e) => setCopilotInput(e.target.value)}
-                placeholder="Ask co-pilot... (e.g. Analyze BTCUSD daily order blocks or explain AAPL breakout)"
-                className="w-full bg-black/60 border border-white/[0.08] focus:border-cyan-400 rounded-lg pl-3 pr-10 py-2.5 text-xs text-white placeholder-zinc-500 font-medium focus:outline-none focus:ring-1 focus:ring-cyan-400 transition-all"
-              />
-              <button
-                type="submit"
-                className="absolute right-2 top-1/2 -translate-y-1/2 size-7 bg-cyan-400 text-zinc-950 hover:bg-cyan-300 rounded-md flex items-center justify-center transition-colors shadow-lg"
-              >
-                <MessageSquare className="size-3.5 stroke-[2.5]" />
-              </button>
-            </div>
-          </form>
-        </div>
 
       </div>
 
@@ -862,10 +1040,17 @@ export function HomeSection({ sidebarQuotes, goToChatWithPrompt }: HomeSectionPr
             
             {/* Header */}
             <div className="flex items-start justify-between border-b border-white/[0.08] pb-4">
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-3">
+                <AssetLogoIcon
+                  symbol={selectedAsset.symbol}
+                  assetClass={selectedAsset.asset_class}
+                  sector={selectedAsset.sector}
+                  size="md"
+                  className="rounded-full shadow-lg border border-white/[0.05]"
+                />
                 <div className="flex flex-col">
-                  <span className="text-lg font-black text-[var(--accent-cyan)]">{selectedAsset.symbol}</span>
-                  <span className="text-xs text-zinc-500 font-bold">{selectedAsset.name}</span>
+                  <span className="text-lg font-black text-[var(--accent-cyan)] leading-none">{selectedAsset.symbol}</span>
+                  <span className="text-xs text-zinc-500 font-bold mt-1.5">{selectedAsset.name}</span>
                 </div>
               </div>
               <button

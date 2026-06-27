@@ -12,9 +12,9 @@ const MOBILE_NAV_ITEMS: Array<{
   icon: typeof Wallet;
 }> = [
   { tab: "home", label: "Home", icon: Home },
+  { tab: "chat", label: "Charts", icon: MessageSquare },
   { tab: "markets", label: "Markets", icon: Briefcase },
-  { tab: "wallet", label: "Wallet", icon: Wallet },
-  { tab: "chat", label: "Chat", icon: MessageSquare },
+  { tab: "wallet", label: "Wallets", icon: Wallet },
 ];
 
 export function AppBottomNav() {
