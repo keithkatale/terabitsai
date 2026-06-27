@@ -72,9 +72,10 @@ function NavItem({
 }
 
 const APP_NAV_ITEMS: Array<{ tab: AppTab; label: string; icon: typeof Wallet }> = [
-  { tab: "chat", label: "Chat", icon: MessageSquare },
+  { tab: "home", label: "Home", icon: Home },
   { tab: "markets", label: "Markets", icon: Briefcase },
-  { tab: "home", label: "Wallet", icon: Wallet },
+  { tab: "wallet", label: "Wallet", icon: Wallet },
+  { tab: "chat", label: "Chat", icon: MessageSquare },
 ];
 
 function AppTabNav({ expanded }: { expanded: boolean }) {

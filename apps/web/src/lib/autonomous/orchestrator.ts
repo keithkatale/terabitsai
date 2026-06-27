@@ -66,7 +66,7 @@ async function runSubagentTasks(
           userPrompt: task.instruction,
           systemInstruction: `You are a ${task.role}. ${assetContext} Be concise.`,
           temperature: 0.2,
-          maxTokens: 800,
+          maxTokens: 4096,
         });
         return { role: task.role, asset: task.asset, status: "success" as const, report };
       } catch (err) {

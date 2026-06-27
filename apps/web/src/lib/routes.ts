@@ -1,5 +1,5 @@
 /** Authenticated app shell lives under /chat (not /app). */
-export const APP_BASE = "/chat";
+export const APP_BASE = "/app";
 
 export const CHAT_DRAFT_SEGMENT = "new";
 

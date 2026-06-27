@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import { APP_BASE, chatDraftPath } from "@/lib/routes";
+import { APP_BASE } from "@/lib/routes";
 
-export default function LegacyAppPage() {
+export default function AppRootPage() {
   redirect(`${APP_BASE}/markets`);
 }

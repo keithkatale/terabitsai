@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { chatDraftPath } from "@/lib/routes";
 import { Loader2 } from "lucide-react";
@@ -11,6 +11,18 @@ import type { ProfileQuestionPayload } from "@/lib/onboard/profile-question-fall
 import { AnalyticsEvents, captureEvent } from "@/lib/posthog/analytics";
 
 type TranscriptLine = { role: "user" | "assistant"; content: string };
+
+type CompletedTurn = {
+  question: string;
+  answer: string;
+};
+
+type SetupPhase =
+  | "welcome"
+  | "loading-first"
+  | "question"
+  | "loading-next"
+  | "complete";
 
 function TypewriterText({
   text,
@@ -106,6 +118,15 @@ function SetupPrimaryButton({
   );
 }
 
+function CompletedTurnCard({ turn }: { turn: CompletedTurn }) {
+  return (
+    <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3">
+      <p className="text-sm leading-relaxed text-zinc-400">{turn.question}</p>
+      <p className="mt-2 text-sm font-medium text-cyan-300/90">{turn.answer}</p>
+    </div>
+  );
+}
+
 type AccountSnapshot = {
   plan: string;
   planLabel: string;
@@ -119,16 +140,18 @@ type AccountSnapshot = {
 
 export function SetupQuestionnaire() {
   const router = useRouter();
+  const requestIdRef = useRef(0);
+
   const [profile, setProfile] = useState<OnboardProfileDraft>({});
   const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
   const [answeredCount, setAnsweredCount] = useState(0);
-  const [payload, setPayload] = useState<ProfileQuestionPayload | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [activePayload, setActivePayload] = useState<ProfileQuestionPayload | null>(null);
+  const [completedTurns, setCompletedTurns] = useState<CompletedTurn[]>([]);
+  const [phase, setPhase] = useState<SetupPhase>("welcome");
   const [contextLoading, setContextLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [showWelcome, setShowWelcome] = useState(true);
   const [welcomeDone, setWelcomeDone] = useState(false);
-  const [questionDone, setQuestionDone] = useState(false);
+  const [questionReady, setQuestionReady] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [account, setAccount] = useState<AccountSnapshot | null>(null);
@@ -136,8 +159,9 @@ export function SetupQuestionnaire() {
     "Welcome to Terabits. I'll ask a few quick questions so your AI advisor understands how you trade and invest.",
   );
 
+  const isLoadingQuestion = phase === "loading-first" || phase === "loading-next";
   const loadingLabel =
-    answeredCount === 0 ? "Preparing the first question…" : "Preparing next question…";
+    phase === "loading-first" ? "Preparing the first question…" : "Preparing next question…";
 
   useEffect(() => {
     fetch("/api/onboard/context", { credentials: "include" })
@@ -156,43 +180,72 @@ export function SetupQuestionnaire() {
       label: string;
       value: string | number | string[];
     }) => {
-      setLoading(true);
-      setError(null);
-      setQuestionDone(false);
-      setSelected([]);
+      const requestId = ++requestIdRef.current;
+      const previousPayload = activePayload;
 
-      const res = await fetch("/api/onboard/conversation", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ profile, transcript, answeredCount, answer }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error ?? "Something went wrong");
-        setLoading(false);
-        return;
+      setError(null);
+      setSelected([]);
+      setQuestionReady(false);
+      setActivePayload(null);
+      setPhase(answer ? "loading-next" : "loading-first");
+
+      if (answer && previousPayload) {
+        setCompletedTurns((prev) => [
+          ...prev,
+          { question: previousPayload.say, answer: answer.label },
+        ]);
       }
 
-      setProfile(data.profile);
-      setTranscript(data.transcript);
-      setAnsweredCount(data.answeredCount);
-      setPayload(data.payload);
-      if (data.account) setAccount(data.account);
-      setLoading(false);
+      try {
+        const res = await fetch("/api/onboard/conversation", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ profile, transcript, answeredCount, answer }),
+        });
+        const data = await res.json();
+
+        if (requestId !== requestIdRef.current) return;
+
+        if (!res.ok) {
+          if (answer) {
+            setCompletedTurns((prev) => prev.slice(0, -1));
+          }
+          setActivePayload(previousPayload);
+          setPhase(previousPayload ? "question" : "loading-first");
+          setQuestionReady(Boolean(previousPayload));
+          setError(data.error ?? "Something went wrong");
+          return;
+        }
+
+        setProfile(data.profile);
+        setTranscript(data.transcript);
+        setAnsweredCount(data.answeredCount);
+        setActivePayload(data.payload);
+        if (data.account) setAccount(data.account);
+        setPhase(data.payload?.done ? "complete" : "question");
+      } catch {
+        if (requestId !== requestIdRef.current) return;
+        if (answer) {
+          setCompletedTurns((prev) => prev.slice(0, -1));
+        }
+        setActivePayload(previousPayload);
+        setPhase(previousPayload ? "question" : "loading-first");
+        setQuestionReady(Boolean(previousPayload));
+        setError("Something went wrong. Please try again.");
+      }
     },
-    [profile, transcript, answeredCount],
+    [profile, transcript, answeredCount, activePayload],
   );
 
-  useEffect(() => {
-    if (!showWelcome && welcomeDone && !payload) {
-      void fetchNext();
-    }
-  }, [showWelcome, welcomeDone, payload, fetchNext]);
+  const startQuestionnaire = useCallback(() => {
+    setPhase("loading-first");
+    void fetchNext();
+  }, [fetchNext]);
 
   const handleSelectOption = (optionId: string) => {
-    if (!payload?.field || loading || submitting) return;
+    if (!activePayload?.field || isLoadingQuestion || submitting || !questionReady) return;
 
-    if (payload.multiSelect) {
+    if (activePayload.multiSelect) {
       setSelected((prev) =>
         prev.includes(optionId) ? prev.filter((id) => id !== optionId) : [...prev, optionId],
       );
@@ -203,18 +256,18 @@ export function SetupQuestionnaire() {
   };
 
   const handleNext = async () => {
-    if (!payload?.field || selected.length === 0 || loading || submitting) return;
+    if (!activePayload?.field || selected.length === 0 || isLoadingQuestion || submitting) return;
 
-    if (payload.multiSelect) {
+    if (activePayload.multiSelect) {
       const labels = selected
-        .map((id) => payload.options.find((o) => o.id === id)?.label ?? id)
+        .map((id) => activePayload.options.find((o) => o.id === id)?.label ?? id)
         .join(", ");
       const markets = selected.flatMap((id) => {
-        const v = payload.values[id];
+        const v = activePayload.values[id];
         return Array.isArray(v) ? v : [String(v)];
       });
       await fetchNext({
-        field: payload.field,
+        field: activePayload.field,
         label: labels,
         value: [...new Set(markets)],
       });
@@ -222,9 +275,9 @@ export function SetupQuestionnaire() {
     }
 
     const optionId = selected[0];
-    const label = payload.options.find((o) => o.id === optionId)?.label ?? optionId;
-    const value = payload.values[optionId] ?? optionId;
-    await fetchNext({ field: payload.field, label, value });
+    const label = activePayload.options.find((o) => o.id === optionId)?.label ?? optionId;
+    const value = activePayload.values[optionId] ?? optionId;
+    await fetchNext({ field: activePayload.field, label, value });
   };
 
   const handleComplete = async () => {
@@ -247,18 +300,24 @@ export function SetupQuestionnaire() {
   };
 
   const hasSelection = selected.length > 0;
+  const currentStep = Math.min(completedTurns.length + 1, 5);
 
   return (
     <div className="relative flex min-h-full flex-col overflow-hidden bg-[#050508]">
       <div className="relative z-10 mx-auto flex w-full max-w-lg flex-1 flex-col px-4 py-8">
         <div className="mb-6 flex items-center gap-3">
-          <AssistantSiriOrb active={loading || submitting || contextLoading} sizePx={32} />
+          <AssistantSiriOrb
+            active={isLoadingQuestion || submitting || contextLoading}
+            sizePx={32}
+          />
           <div className="min-w-0 flex-1">
             <h1 className="text-lg font-bold text-white">Account setup</h1>
             <p className="text-xs text-zinc-500">
-              {showWelcome
+              {phase === "welcome"
                 ? "Getting started"
-                : `Step ${Math.min(answeredCount + 1, 5)} of ~5`}
+                : phase === "complete"
+                  ? "All set"
+                  : `Step ${currentStep} of ~5`}
             </p>
             {account ? (
               <p className="mt-1 truncate text-[10px] text-zinc-600">
@@ -278,7 +337,7 @@ export function SetupQuestionnaire() {
           </p>
         ) : null}
 
-        {showWelcome ? (
+        {phase === "welcome" ? (
           <div className="flex flex-1 flex-col justify-center">
             {contextLoading ? (
               <div className="mb-8 flex items-center gap-2 text-zinc-500">
@@ -291,17 +350,21 @@ export function SetupQuestionnaire() {
               </p>
             )}
             {welcomeDone && !contextLoading ? (
-              <SetupPrimaryButton
-                onClick={() => setShowWelcome(false)}
-                className="self-start"
-              >
+              <SetupPrimaryButton onClick={startQuestionnaire} className="self-start">
                 Let&apos;s go
               </SetupPrimaryButton>
             ) : null}
           </div>
-        ) : payload?.done ? (
+        ) : phase === "complete" && activePayload?.done ? (
           <div className="flex flex-1 flex-col justify-center gap-6">
-            <p className="text-lg leading-relaxed text-zinc-200">{payload.say}</p>
+            {completedTurns.length > 0 ? (
+              <div className="mb-2 flex max-h-48 flex-col gap-2 overflow-y-auto">
+                {completedTurns.map((turn, index) => (
+                  <CompletedTurnCard key={`${turn.question}-${index}`} turn={turn} />
+                ))}
+              </div>
+            ) : null}
+            <p className="text-lg leading-relaxed text-zinc-200">{activePayload.say}</p>
             <p className="text-sm text-zinc-500">
               {account?.isOnFreeTrial ? (
                 <>
@@ -313,7 +376,10 @@ export function SetupQuestionnaire() {
                 </>
               ) : (
                 <>
-                  Your <span className="font-semibold text-zinc-200">{account?.planLabel ?? "plan"}</span>{" "}
+                  Your{" "}
+                  <span className="font-semibold text-zinc-200">
+                    {account?.planLabel ?? "plan"}
+                  </span>{" "}
                   profile is ready.
                 </>
               )}
@@ -329,43 +395,58 @@ export function SetupQuestionnaire() {
           </div>
         ) : (
           <div className="flex flex-1 flex-col gap-6">
-            {payload ? (
-              <p className="text-lg leading-relaxed text-zinc-200">
-                {questionDone ? (
-                  payload.say
-                ) : (
-                  <TypewriterText text={payload.say} onComplete={() => setQuestionDone(true)} />
-                )}
-              </p>
-            ) : loading ? (
-              <div className="flex items-center gap-2 text-zinc-500">
-                <Loader2 className="size-4 animate-spin" />
-                <span className="text-sm">{loadingLabel}</span>
+            {completedTurns.length > 0 ? (
+              <div className="flex max-h-56 flex-col gap-2 overflow-y-auto">
+                {completedTurns.map((turn, index) => (
+                  <CompletedTurnCard key={`${turn.question}-${index}`} turn={turn} />
+                ))}
               </div>
             ) : null}
 
-            {questionDone && payload && !payload.done ? (
-              <div className="flex flex-col gap-2.5">
-                {payload.options.map((opt) => (
-                  <SetupOptionButton
-                    key={opt.id}
-                    label={opt.label}
-                    selected={selected.includes(opt.id)}
-                    disabled={loading}
-                    onClick={() => handleSelectOption(opt.id)}
-                  />
-                ))}
-
-                {hasSelection ? (
-                  <SetupPrimaryButton
-                    disabled={loading}
-                    onClick={() => void handleNext()}
-                    className="mt-2 w-full"
-                  >
-                    Next
-                  </SetupPrimaryButton>
-                ) : null}
+            {isLoadingQuestion ? (
+              <div className="flex flex-1 flex-col justify-center">
+                <div className="flex items-center gap-2 text-zinc-500">
+                  <Loader2 className="size-4 animate-spin" />
+                  <span className="text-sm">{loadingLabel}</span>
+                </div>
               </div>
+            ) : activePayload ? (
+              <>
+                <p className="text-lg leading-relaxed text-zinc-200">
+                  {questionReady ? (
+                    activePayload.say
+                  ) : (
+                    <TypewriterText
+                      text={activePayload.say}
+                      onComplete={() => setQuestionReady(true)}
+                    />
+                  )}
+                </p>
+
+                {questionReady && !activePayload.done ? (
+                  <div className="flex flex-col gap-2.5">
+                    {activePayload.options.map((opt) => (
+                      <SetupOptionButton
+                        key={opt.id}
+                        label={opt.label}
+                        selected={selected.includes(opt.id)}
+                        disabled={isLoadingQuestion}
+                        onClick={() => handleSelectOption(opt.id)}
+                      />
+                    ))}
+
+                    {hasSelection ? (
+                      <SetupPrimaryButton
+                        disabled={isLoadingQuestion}
+                        onClick={() => void handleNext()}
+                        className="mt-2 w-full"
+                      >
+                        Next
+                      </SetupPrimaryButton>
+                    ) : null}
+                  </div>
+                ) : null}
+              </>
             ) : null}
           </div>
         )}

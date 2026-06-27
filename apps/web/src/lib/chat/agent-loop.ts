@@ -38,50 +38,103 @@ type StreamConsumeResult = {
   parts: Array<Record<string, unknown>>;
   reportTextDelta: string;
   bufferedVisibleText: string;
+  finishReason?: string;
 };
 
-/** Consume a Gemini stream — replace parts each chunk, emit reasoning/text deltas only. */
+function mergeChunkPart(accumulatedParts: Array<Record<string, any>>, chunkPart: Record<string, any>) {
+  if (!chunkPart) return;
+
+  const lastPart = accumulatedParts[accumulatedParts.length - 1];
+  let merged = false;
+
+  if (lastPart) {
+    const isChunkThought = Boolean(chunkPart.thought);
+    const isLastThought = Boolean(lastPart.thought);
+
+    const isChunkText = typeof chunkPart.text === "string";
+    const isLastText = typeof lastPart.text === "string";
+
+    const isChunkFC = Boolean(chunkPart.functionCall);
+    const isLastFC = Boolean(lastPart.functionCall);
+
+    if (isChunkText && isLastText && isChunkThought === isLastThought && !isChunkFC && !isLastFC) {
+      // Merge text/thought parts
+      lastPart.text = (lastPart.text ?? "") + (chunkPart.text ?? "");
+      merged = true;
+    } else if (isChunkFC && isLastFC) {
+      // Merge functionCall parts
+      if (!lastPart.functionCall) {
+        lastPart.functionCall = {};
+      }
+      const existingFC = lastPart.functionCall;
+      const chunkFC = chunkPart.functionCall;
+
+      if (chunkFC.name) {
+        existingFC.name = chunkFC.name;
+      }
+
+      if (chunkFC.args !== undefined) {
+        if (typeof chunkFC.args === "string") {
+          existingFC.args = (existingFC.args ?? "") + chunkFC.args;
+        } else if (typeof chunkFC.args === "object" && chunkFC.args !== null) {
+          if (typeof existingFC.args === "object" && existingFC.args !== null) {
+            existingFC.args = { ...existingFC.args, ...chunkFC.args };
+          } else {
+            existingFC.args = JSON.parse(JSON.stringify(chunkFC.args));
+          }
+        }
+      }
+      merged = true;
+    }
+  }
+
+  if (!merged) {
+    // If not merged, push a deep copy of chunkPart as a new part
+    accumulatedParts.push(JSON.parse(JSON.stringify(chunkPart)));
+  }
+}
+
+/** Consume a Gemini stream — accumulate parts sequentially across chunks, emit reasoning/text deltas as-is. */
 async function consumeModelStream(
-  responseStream: AsyncIterable<{ candidates?: Array<{ content?: { parts?: unknown[] } }> }>,
+  responseStream: AsyncIterable<{
+    candidates?: Array<{
+      content?: { parts?: unknown[] };
+      finishReason?: string;
+    }>;
+  }>,
   onEvent: (event: AgentLoopEvent) => void,
   options: { emitVisibleText: boolean },
 ): Promise<StreamConsumeResult> {
-  let parts: Array<Record<string, unknown>> = [];
-  const reasoningEmitted = new Map<number, number>();
-  const textEmitted = new Map<number, number>();
+  const accumulatedParts: Array<Record<string, unknown>> = [];
   let reportTextDelta = "";
   let bufferedVisibleText = "";
+  let finishReason: string | undefined = undefined;
 
   for await (const chunk of responseStream) {
-    const chunkParts = chunk.candidates?.[0]?.content?.parts;
+    const candidate = chunk.candidates?.[0];
+    const chunkParts = candidate?.content?.parts;
+    if (candidate?.finishReason) {
+      finishReason = candidate.finishReason;
+    }
     if (!chunkParts?.length) continue;
 
-    parts = chunkParts as Array<Record<string, unknown>>;
+    chunkParts.forEach((part) => {
+      const p = part as Record<string, any>;
+      mergeChunkPart(accumulatedParts, p);
 
-    parts.forEach((part, idx) => {
-      const p = part as { thought?: boolean; text?: string; functionCall?: unknown };
-      if (p.thought && typeof p.text === "string") {
-        const prev = reasoningEmitted.get(idx) ?? 0;
-        if (p.text.length > prev) {
-          onEvent({ type: "reasoning", text: p.text.slice(prev) });
-          reasoningEmitted.set(idx, p.text.length);
-        }
+      if (p.thought && typeof p.text === "string" && p.text) {
+        onEvent({ type: "reasoning", text: p.text });
       } else if (typeof p.text === "string" && p.text && !p.functionCall) {
-        const prev = textEmitted.get(idx) ?? 0;
-        if (p.text.length > prev) {
-          const delta = p.text.slice(prev);
-          textEmitted.set(idx, p.text.length);
-          bufferedVisibleText += delta;
-          if (options.emitVisibleText) {
-            onEvent({ type: "text", text: delta });
-            reportTextDelta += delta;
-          }
+        bufferedVisibleText += p.text;
+        if (options.emitVisibleText) {
+          onEvent({ type: "text", text: p.text });
+          reportTextDelta += p.text;
         }
       }
     });
   }
 
-  return { parts, reportTextDelta, bufferedVisibleText };
+  return { parts: accumulatedParts, reportTextDelta, bufferedVisibleText, finishReason };
 }
 
 function extractFunctionCalls(parts: Array<Record<string, unknown>>) {
@@ -189,7 +242,7 @@ export async function runAgentLoop(params: {
       config: toolConfig,
     });
 
-    const { parts, bufferedVisibleText } = await consumeModelStream(
+    const { parts, bufferedVisibleText, finishReason } = await consumeModelStream(
       responseStream,
       onEvent,
       { emitVisibleText: false },
@@ -204,43 +257,27 @@ export async function runAgentLoop(params: {
         consecutiveEmptyTurns = 0;
 
         const trimmed = reportText.trim();
+        const isTruncated = finishReason === "MAX_TOKENS";
 
-        // After tools, short answers ending in "." were incorrectly treated as complete.
-        if (hadToolCalls && trimmed.length < MIN_SUBSTANTIVE_REPORT) {
-          contents.push({
-            role: "model",
-            parts: [{ text: bufferedVisibleText }],
-          });
-          contents.push({
-            role: "user",
-            parts: [
-              {
-                text:
-                  trimmed.length < 80
-                    ? "Write your complete, detailed analysis and recommendations now. Include all findings from your tool calls."
-                    : "Continue and complete your analysis. Provide the full detailed response with all data points, levels, and recommendations.",
-              },
-            ],
-          });
-          loopBreakReason = "continue_after_tools";
-          continue;
-        }
+        const endsWithCompletePunctuation =
+          /[.!?]['"*)_]*$/.test(trimmed) ||
+          trimmed.endsWith("```") ||
+          trimmed.endsWith("}") ||
+          trimmed.endsWith("]");
 
         const seemsComplete =
-          trimmed.length >= MIN_SUBSTANTIVE_REPORT ||
-          (trimmed.length > 200 &&
-            !hadToolCalls &&
-            (trimmed.endsWith(".") ||
-              trimmed.endsWith("!") ||
-              trimmed.endsWith(":") ||
-              trimmed.endsWith("```")));
+          isTruncated ? false :
+          (finishReason === "STOP" ? true : endsWithCompletePunctuation);
 
-        if (seemsComplete) {
+        const isTooShortAfterTools = hadToolCalls && trimmed.length < MIN_SUBSTANTIVE_REPORT;
+
+        if (seemsComplete && !isTooShortAfterTools) {
           loopBreakReason = "seems_complete";
           break;
         }
 
-        if (trimmed.length < 120) {
+        // If no tools ran and the response is extremely short (less than a complete sentence/greeting buffer), ask to continue
+        if (!hadToolCalls && trimmed.length < 120) {
           contents.push({
             role: "model",
             parts: [{ text: bufferedVisibleText }],
@@ -253,8 +290,32 @@ export async function runAgentLoop(params: {
           continue;
         }
 
-        loopBreakReason = "default_break_with_text";
-        break;
+        // Otherwise, ask the model to continue its output precisely
+        let continuePrompt = "";
+        if (isTruncated) {
+          continuePrompt = "Your previous response was cut off due to length limits. Please continue your response precisely where you left off, without repeating yourself or restarting.";
+        } else if (isTooShortAfterTools) {
+          continuePrompt = trimmed.length < 80
+            ? "Write your complete, detailed analysis and recommendations now. Include all findings from your tool calls."
+            : "Continue and complete your analysis. Provide the full detailed response with all data points, levels, and recommendations.";
+        } else {
+          continuePrompt = "Please continue your response and complete your explanation or analysis fully.";
+        }
+
+        contents.push({
+          role: "model",
+          parts: [{ text: bufferedVisibleText }],
+        });
+        contents.push({
+          role: "user",
+          parts: [{ text: continuePrompt }],
+        });
+        loopBreakReason = isTruncated
+          ? "continue_truncated"
+          : isTooShortAfterTools
+            ? "continue_after_tools"
+            : "continue_incomplete";
+        continue;
       } else {
         consecutiveEmptyTurns++;
       }

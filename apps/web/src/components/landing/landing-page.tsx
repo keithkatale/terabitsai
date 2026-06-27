@@ -46,7 +46,7 @@ const FAQ_ITEMS = [
 
 export function LandingPage() {
   const { user } = useAccount();
-  const ctaHref = user ? "/chat/markets" : "/signup?next=/chat/markets";
+  const ctaHref = user ? "/app/markets" : "/signup?next=/app/markets";
 
   return (
     <div

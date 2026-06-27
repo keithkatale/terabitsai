@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Briefcase, MessageSquare, Wallet } from "lucide-react";
+import { Briefcase, Home, MessageSquare, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { tabPath, useAppTab, type AppTab } from "@/contexts/app-tab-context";
 import { AnalyticsEvents, captureEvent } from "@/lib/posthog/analytics";
@@ -11,9 +11,10 @@ const MOBILE_NAV_ITEMS: Array<{
   label: string;
   icon: typeof Wallet;
 }> = [
-  { tab: "chat", label: "Chat", icon: MessageSquare },
+  { tab: "home", label: "Home", icon: Home },
   { tab: "markets", label: "Markets", icon: Briefcase },
-  { tab: "home", label: "Wallet", icon: Wallet },
+  { tab: "wallet", label: "Wallet", icon: Wallet },
+  { tab: "chat", label: "Chat", icon: MessageSquare },
 ];
 
 export function AppBottomNav() {

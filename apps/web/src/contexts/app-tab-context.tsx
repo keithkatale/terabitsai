@@ -18,14 +18,14 @@ import {
   isConversationIdSegment,
 } from "@/lib/routes";
 
-export type AppTab = "home" | "markets" | "chat";
+export type AppTab = "home" | "markets" | "chat" | "wallet";
 
 const TAB_ALIASES: Record<string, AppTab> = {
   home: "home",
-  balances: "home",
-  wallet: "home",
-  personal: "home",
-  portfolio: "home",
+  balances: "wallet",
+  wallet: "wallet",
+  personal: "wallet",
+  portfolio: "wallet",
   markets: "markets",
   investing: "markets",
   chat: "chat",
@@ -47,6 +47,8 @@ export function parseAppTab(value: string | null | undefined): AppTab {
 export function tabPath(tab: AppTab, conversationId?: string | null): string {
   switch (tab) {
     case "home":
+      return `${APP_BASE}/home`;
+    case "wallet":
       return `${APP_BASE}/wallet`;
     case "markets":
       return `${APP_BASE}/markets`;
@@ -76,9 +78,12 @@ export function parseTabFromPathname(pathname: string): {
     return { tab: "markets", conversationId: null };
   }
 
+  if (pathname.startsWith(`${APP_BASE}/wallet`)) {
+    return { tab: "wallet", conversationId: null };
+  }
+
   if (
     pathname === APP_BASE ||
-    pathname.startsWith(`${APP_BASE}/wallet`) ||
     pathname.startsWith(`${APP_BASE}/home`)
   ) {
     return { tab: "home", conversationId: null };

@@ -91,6 +91,7 @@ import {
   CHAT_LANDING_MAX_TAGGED_ASSETS,
 } from "@/components/workspace/chat-landing-hero";
 import { HomeSection } from "@/components/workspace/app-sections/home-section";
+import { WalletSection } from "@/components/workspace/app-sections/wallet-section";
 import { MarketsTerminal } from "@/components/markets/markets-terminal";
 import { WalletActionsBar } from "@/components/workspace/wallet-actions-bar";
 import {
@@ -1895,23 +1896,32 @@ Provide:
     <div className="relative h-full min-h-0 w-full">
       <TabPanel tab="home" activeTab={mode}>
         <div className="flex h-full min-h-0 flex-col overflow-hidden">
+          <HomeSection
+            sidebarQuotes={sidebarQuotes}
+            goToChatWithPrompt={goToChatWithPrompt}
+          />
+        </div>
+      </TabPanel>
+
+      <TabPanel tab="wallet" activeTab={mode}>
+        <div className="flex h-full min-h-0 flex-col overflow-hidden">
           <WalletActionsBar />
           {userPlan !== "premium" ? (
             <PremiumUpgradeGate currentPlan={userPlan} />
           ) : (
-            <HomeSection
-          balance={balance}
-          summary={summary}
-          userEmail={user?.email}
-          accountLoading={accountLoading}
-            accountRefreshing={accountRefreshing}
-            positionsRefreshing={positionsRefreshing}
-          tradingMode={tradingMode}
-          positions={positions}
-          sidebarQuotes={sidebarQuotes}
-          onDeposit={openDeposit}
-          onWithdraw={openWithdraw}
-            onManagePosition={setActivePositionId}
+            <WalletSection
+              balance={balance}
+              summary={summary}
+              userEmail={user?.email}
+              accountLoading={accountLoading}
+              accountRefreshing={accountRefreshing}
+              positionsRefreshing={positionsRefreshing}
+              tradingMode={tradingMode}
+              positions={positions}
+              sidebarQuotes={sidebarQuotes}
+              onDeposit={openDeposit}
+              onWithdraw={openWithdraw}
+              onManagePosition={setActivePositionId}
             />
           )}
         </div>
