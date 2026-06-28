@@ -118,14 +118,18 @@ export const renderComparativeChartDeclaration = {
 export const getMarketOverviewDeclaration = {
   name: "get_market_overview",
   description:
-    "Build a contextual market overview from live Capital.com data. Pass symbols[] relevant to the user's question. Returns quant_ui markup — the client renders it automatically; do not paste it yourself.",
+    "Build a contextual market overview from live Capital.com data. Pass symbols[] relevant to the user's question, OR set scan_broad_market to true (or omit symbols entirely) to trigger a complete multi-asset cross-sector scanning of 30+ assets across Crypto, Stocks, FX, and Commodities, identifying top movers, technical setups, and news-backed trends. Returns quant_ui markup — the client renders it automatically; do not paste it yourself.",
   parameters: {
     type: Type.OBJECT,
     properties: {
       symbols: {
         type: Type.ARRAY,
-        description: 'Optional tickers, e.g. ["BTCUSD","ETHUSD","US100"]. Defaults to top markets.',
+        description: 'Optional tickers to fetch specific assets, e.g. ["BTCUSD","ETHUSD","US100"]. Defaults to scanning the broader market if omitted.',
         items: { type: Type.STRING },
+      },
+      scan_broad_market: {
+        type: Type.BOOLEAN,
+        description: "Set to true to scan 30+ assets from the catalog across all asset classes, correlating technical signals and news.",
       },
     },
   },

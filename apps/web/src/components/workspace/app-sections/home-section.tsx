@@ -18,10 +18,13 @@ import {
   ShieldCheck,
   AlertTriangle,
   HelpCircle,
+  Send,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ASSET_CATALOG, type CatalogAsset } from "@/lib/catalog/asset-catalog";
 import { AssetLogoIcon } from "@/components/ui/asset-logo";
+import { MarkdownContent } from "@/components/ai-elements/markdown-content";
 import {
   INITIAL_SIGNALS,
   MARKET_NEWS_POOL,
@@ -38,6 +41,15 @@ const MARQUEE_STYLE = `
   @keyframes marquee {
     0% { transform: translateX(0); }
     100% { transform: translateX(-50%); }
+  }
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+  .animate-shimmer {
+    background: linear-gradient(90deg, rgba(255,255,255,0.01) 25%, rgba(255,255,255,0.04) 50%, rgba(255,255,255,0.01) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite linear;
   }
   .marquee-container {
     overflow: hidden;
@@ -67,6 +79,7 @@ const MARQUEE_STYLE = `
   }
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
   }
 `;
 
@@ -182,6 +195,230 @@ export function HomeSection({
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedAsset, setSelectedAsset] = useState<EnrichedAsset | null>(null);
   const [copilotInput, setCopilotInput] = useState("");
+
+  // ========================================================
+  // Side Panel Live Analysis & Interactive Chat States/Handlers
+  // ========================================================
+  const [activeDrawerTab, setActiveDrawerTab] = useState<"setup" | "chat">("setup");
+  
+  // 1. Live AI Setup Analysis State
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [analysisReasoning, setAnalysisReasoning] = useState("");
+  const [analysisData, setAnalysisData] = useState<{
+    summary?: string;
+    bias?: string;
+    confidence?: number;
+    entry_zone?: string;
+    stop_loss?: string;
+    take_profit?: string;
+    sizing?: string;
+  } | null>(null);
+  const [snapshotUrl, setSnapshotUrl] = useState<string | null>(null);
+
+  // 2. Interactive Real-Time Chat State
+  const [drawerMessages, setDrawerMessages] = useState<Array<{ role: "user" | "assistant"; text: string; id: string }>>([]);
+  const [drawerInput, setDrawerInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Trigger setup analysis stream
+  const fetchSetupAnalysis = async (symbol: string) => {
+    setAnalysisLoading(true);
+    setAnalysisError(null);
+    setAnalysisReasoning("");
+    setAnalysisData(null);
+    setSnapshotUrl(null);
+
+    try {
+      const response = await fetch("/api/markets/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symbol, interval: "D", indicators: ["RSI", "MACD", "Volume"] }),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || `HTTP error ${response.status}`);
+      }
+
+      if (!response.body) {
+        throw new Error("Response body is not readable");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || !trimmed.startsWith("data: ")) continue;
+
+          const dataStr = trimmed.slice(6);
+          if (dataStr === "[DONE]") continue;
+
+          try {
+            const parsed = JSON.parse(dataStr);
+            if (parsed.type === "reasoning") {
+              setAnalysisReasoning((prev) => prev + parsed.text);
+            } else if (parsed.type === "analysis") {
+              setAnalysisData(parsed.analysis);
+              if (parsed.snapshot_url) {
+                setSnapshotUrl(parsed.snapshot_url);
+              }
+            } else if (parsed.type === "done") {
+              setAnalysisData(parsed.analysis);
+              if (parsed.snapshot_url) {
+                setSnapshotUrl(parsed.snapshot_url);
+              }
+            }
+          } catch (e) {
+            console.error("Error parsing analysis SSE chunk", e);
+          }
+        }
+      }
+    } catch (err: any) {
+      console.error("fetchSetupAnalysis failed:", err);
+      setAnalysisError(err.message || "Failed to complete AI setup analysis");
+    } finally {
+      setAnalysisLoading(false);
+    }
+  };
+
+  // Trigger drawer message stream
+  const sendDrawerChatMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!drawerInput.trim() || chatLoading || !selectedAsset) return;
+
+    const userText = drawerInput.trim();
+    setDrawerInput("");
+    setChatLoading(true);
+
+    const userMsgId = `user-${Date.now()}`;
+    const assistantMsgId = `assistant-${Date.now()}`;
+
+    // Update messages local state
+    const updatedMessages = [
+      ...drawerMessages,
+      { role: "user" as const, text: userText, id: userMsgId },
+    ];
+    setDrawerMessages(updatedMessages);
+
+    // Add empty assistant message that we will stream into
+    setDrawerMessages((prev) => [
+      ...prev,
+      { role: "assistant" as const, text: "", id: assistantMsgId },
+    ]);
+
+    try {
+      const history = updatedMessages.map((m) => ({
+        role: m.role,
+        content: m.text,
+      }));
+
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: userText,
+          pinnedAssets: [selectedAsset.symbol],
+          history,
+          tradingMode: "demo",
+        }),
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `HTTP error ${response.status}`);
+      }
+
+      if (!response.body) {
+        throw new Error("Response body is not readable");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+
+          try {
+            const event = JSON.parse(trimmed);
+            if (event.type === "text") {
+              setDrawerMessages((prev) => {
+                const copy = [...prev];
+                const last = copy[copy.length - 1];
+                if (last && last.id === assistantMsgId) {
+                  last.text = (last.text || "") + event.text;
+                }
+                return copy;
+              });
+            }
+          } catch (err) {
+            // ignore parse failures of non-JSON or partial lines in SSE
+          }
+        }
+      }
+    } catch (err: any) {
+      console.error("sendDrawerChatMessage failed:", err);
+      setDrawerMessages((prev) => {
+        const copy = [...prev];
+        const last = copy[copy.length - 1];
+        if (last && last.id === assistantMsgId) {
+          last.text = (last.text || "") + `\n\n*(Error: ${err.message || "Failed to stream message response"}*)`;
+        }
+        return copy;
+      });
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  // Auto-scroll chat messages
+  useEffect(() => {
+    if (activeDrawerTab === "chat" && chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [drawerMessages, activeDrawerTab]);
+
+  // Reset and prime chat/setups when selectedAsset changes
+  useEffect(() => {
+    if (selectedAsset) {
+      setActiveDrawerTab("setup");
+      fetchSetupAnalysis(selectedAsset.symbol);
+      setDrawerMessages([
+        {
+          id: "init",
+          role: "assistant",
+          text: `Hello! I am your Terabits AI co-pilot. I am monitoring **${selectedAsset.symbol}** (${selectedAsset.name}) in real-time. Ask me anything about this asset's market structure, price action, or trading strategies!`
+        }
+      ]);
+      setDrawerInput("");
+    } else {
+      setDrawerMessages([]);
+      setAnalysisData(null);
+      setSnapshotUrl(null);
+      setAnalysisReasoning("");
+    }
+  }, [selectedAsset]);
 
   // Real-time ticking and flashing state hooks
   const [liveQuotesState, setLiveQuotesState] = useState<Record<string, { spot: number; change24hPct?: number; bid?: number; ask?: number }>>({});
@@ -436,7 +673,9 @@ export function HomeSection({
   const handleCopilotSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!copilotInput.trim()) return;
-    if (goToChatWithPrompt) {
+    if (onSignalTrigger) {
+      onSignalTrigger(copilotInput.trim());
+    } else if (goToChatWithPrompt) {
       goToChatWithPrompt(copilotInput.trim());
     } else {
       // Fallback
@@ -448,7 +687,9 @@ export function HomeSection({
   // Direct trigger to chat about specific asset
   const askCopilotAboutAsset = (asset: CatalogAsset) => {
     const prompt = `Provide a comprehensive technical analysis of ${asset.symbol} (${asset.name}). Please outline detected order blocks, Fair Value Gaps, current daily RSI metrics, and simulated CFD trade boundaries.`;
-    if (goToChatWithPrompt) {
+    if (onSignalTrigger) {
+      onSignalTrigger(prompt);
+    } else if (goToChatWithPrompt) {
       goToChatWithPrompt(prompt);
     } else {
       sessionStorage.setItem("chat:pending", JSON.stringify({ prompt, tags: [] }));
@@ -461,7 +702,7 @@ export function HomeSection({
       {/* Dynamic Keyframe style sheet */}
       <style>{MARQUEE_STYLE}</style>
 
-      <div className="mx-auto w-full max-w-[1550px] p-2 sm:p-4 lg:p-5 space-y-4">
+      <div className="mx-auto w-full max-w-[1550px] p-2 sm:p-4 lg:p-5 space-y-4 @container">
         
         {/* Header Title */}
         <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
@@ -501,7 +742,7 @@ export function HomeSection({
         {/* ======================================================== */}
         {/* 1. TOP INDICATORS CAROUSEL / CARDS GRID                 */}
         {/* ======================================================== */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3.5">
+        <div className="grid grid-cols-1 @md:grid-cols-2 @2xl:grid-cols-3 @5xl:grid-cols-5 gap-3.5">
           
           {/* Card 1: AI Scanner Status */}
           <div
@@ -1061,153 +1302,326 @@ export function HomeSection({
               </button>
             </div>
 
-            {/* Content (Scrollable) */}
-            <div className="flex-1 overflow-y-auto py-4 space-y-4 custom-scrollbar pr-1">
-              
-              {/* Telemetry Pricing Panel */}
-              <div className="grid grid-cols-2 gap-3.5">
-                <div className="bg-white/[0.02] border border-white/[0.05] p-3 rounded-lg text-center">
-                  <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block">Price Quote</span>
-                  <span className="text-lg font-black text-white block mt-0.5">
-                    {formatPrice(selectedAsset.spotPrice, selectedAsset.symbol)}
-                  </span>
-                </div>
-                <div className="bg-white/[0.02] border border-white/[0.05] p-3 rounded-lg text-center">
-                  <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block">24h Change</span>
-                  <span className={cn(
-                    "text-lg font-black block mt-0.5",
-                    selectedAsset.change24h >= 0 ? "text-[var(--accent-green)]" : "text-[var(--accent-red)]"
-                  )}>
-                    {selectedAsset.change24h >= 0 ? "+" : ""}{selectedAsset.change24h.toFixed(2)}%
-                  </span>
-                </div>
-              </div>
+            {/* Tab Triggers */}
+            <div className="flex border-b border-white/[0.08] mt-2 shrink-0">
+              <button
+                onClick={() => setActiveDrawerTab("setup")}
+                className={cn(
+                  "flex-1 py-3 text-xs font-bold transition-all border-b-2 text-center",
+                  activeDrawerTab === "setup"
+                    ? "border-[var(--accent-cyan)] text-[var(--accent-cyan)] bg-gradient-to-t from-[var(--accent-cyan)]/5 to-transparent"
+                    : "border-transparent text-zinc-400 hover:text-white"
+                )}
+              >
+                AI Signals & Entry Zones
+              </button>
+              <button
+                onClick={() => setActiveDrawerTab("chat")}
+                className={cn(
+                  "flex-1 py-3 text-xs font-bold transition-all border-b-2 text-center",
+                  activeDrawerTab === "chat"
+                    ? "border-[var(--accent-cyan)] text-[var(--accent-cyan)] bg-gradient-to-t from-[var(--accent-cyan)]/5 to-transparent"
+                    : "border-transparent text-zinc-400 hover:text-white"
+                )}
+              >
+                Interactive Chat
+              </button>
+            </div>
 
-              {/* Dynamic SVG Candlestick technical Chart */}
-              <div className="bg-black/60 border border-white/[0.08] rounded-xl p-3 space-y-2">
-                <div className="flex items-center justify-between text-[11px] font-bold text-zinc-400">
-                  <span className="flex items-center gap-1">
-                    <Activity className="size-3.5 text-cyan-400" />
-                    TECHNICAL OUTLOOK (1D INTERVAL)
-                  </span>
-                  <span className="text-[9px] uppercase font-bold text-zinc-600 bg-zinc-800 px-1.5 py-0.5 rounded">
-                    Simulated Candle Grid
-                  </span>
-                </div>
+            {activeDrawerTab === "setup" ? (
+              <>
+                {/* Content (Scrollable) */}
+                <div className="flex-1 overflow-y-auto py-4 space-y-4 custom-scrollbar pr-1">
+                  
+                  {/* Telemetry Pricing Panel */}
+                  <div className="grid grid-cols-2 gap-3.5">
+                    <div className="bg-white/[0.02] border border-white/[0.05] p-3 rounded-lg text-center">
+                      <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block">Price Quote</span>
+                      <span className="text-lg font-black text-white block mt-0.5">
+                        {formatPrice(selectedAsset.spotPrice, selectedAsset.symbol)}
+                      </span>
+                    </div>
+                    <div className="bg-white/[0.02] border border-white/[0.05] p-3 rounded-lg text-center">
+                      <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block">24h Change</span>
+                      <span className={cn(
+                        "text-lg font-black block mt-0.5",
+                        selectedAsset.change24h >= 0 ? "text-[var(--accent-green)]" : "text-[var(--accent-red)]"
+                      )}>
+                        {selectedAsset.change24h >= 0 ? "+" : ""}{selectedAsset.change24h.toFixed(2)}%
+                      </span>
+                    </div>
+                  </div>
 
-                {/* Draw clean technical candles */}
-                <div className="relative w-full h-[150px] bg-zinc-950/40 border border-white/[0.03] rounded-lg overflow-hidden flex items-end justify-between px-4 py-2">
-                  {/* Grid Lines */}
-                  <div className="absolute inset-x-0 top-1/4 border-t border-white/[0.02]" />
-                  <div className="absolute inset-x-0 top-2/4 border-t border-white/[0.02]" />
-                  <div className="absolute inset-x-0 top-3/4 border-t border-white/[0.02]" />
+                  {/* GCP TradingView Screenshot or Fallback */}
+                  <div className="bg-black/60 border border-white/[0.08] rounded-xl p-3.5 space-y-2 relative overflow-hidden">
+                    <div className="flex items-center justify-between text-[11px] font-bold text-zinc-400 mb-2">
+                      <span className="flex items-center gap-1.5">
+                        <Activity className="size-3.5 text-cyan-400" />
+                        LIVE SETUP SNAPSHOT
+                      </span>
+                      <span className="text-[9px] uppercase font-bold text-zinc-600 bg-zinc-800 px-1.5 py-0.5 rounded">
+                        GCP Cloud Run
+                      </span>
+                    </div>
 
-                  {/* Draw 10 candles based on the symbol hash */}
-                  {Array.from({ length: 11 }).map((_, idx) => {
-                    const seed = (selectedAsset.symbol.charCodeAt(0) ?? 65) + idx;
-                    const heightPct = 30 + ((seed * 7) % 60); // 30% to 90%
-                    const candleBodyHeight = 10 + ((seed * 11) % 40); // 10px to 50px
-                    const isGreen = seed % 2 === 0;
-                    
-                    return (
-                      <div key={idx} className="flex flex-col items-center flex-1 group/candle relative" style={{ height: `${heightPct}%` }}>
-                        {/* Upper Wick */}
-                        <div className="w-[1.5px] bg-zinc-600 h-10 absolute -top-2" />
-                        {/* Candle Body */}
-                        <div
-                          className={cn(
-                            "w-4 rounded-[1.5px] border-x z-10 transition-all cursor-crosshair",
-                            isGreen 
-                              ? "bg-[var(--accent-green)] border-[var(--accent-green-bright)] hover:brightness-125 hover:shadow-[0_0_8px_rgba(0,255,133,0.5)]" 
-                              : "bg-[var(--accent-red)] border-red-400 hover:brightness-125 hover:shadow-[0_0_8px_rgba(255,59,48,0.5)]"
-                          )}
-                          style={{ height: `${candleBodyHeight}px` }}
+                    {snapshotUrl ? (
+                      <div className="relative w-full aspect-video rounded-lg overflow-hidden border border-white/[0.05] group/chart bg-zinc-900/50">
+                        <img 
+                          src={snapshotUrl} 
+                          alt={`${selectedAsset.symbol} live chart snapshot`}
+                          className="w-full h-full object-cover transition-transform duration-300 group-hover/chart:scale-[1.02]"
                         />
-                        {/* Lower Wick */}
-                        <div className="w-[1.5px] bg-zinc-600 h-10 absolute bottom-0" />
                       </div>
-                    );
-                  })}
-                </div>
+                    ) : analysisLoading ? (
+                      <div className="relative w-full h-[150px] rounded-lg border border-white/[0.05] bg-zinc-900/20 flex flex-col items-center justify-center space-y-3 overflow-hidden">
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/[0.03] to-transparent animate-shimmer" style={{ backgroundSize: '200% 100%' }} />
+                        <Loader2 className="size-6 text-[var(--accent-cyan)] animate-spin" />
+                        <span className="text-xs text-zinc-400 font-bold animate-pulse">Requesting high-fidelity TradingView snapshot...</span>
+                      </div>
+                    ) : (
+                      /* Graceful Fallback: Beautiful simulated candle grid when snapshot is not available */
+                      <div className="space-y-3">
+                        <div className="relative w-full h-[140px] bg-zinc-950/40 border border-white/[0.03] rounded-lg overflow-hidden flex items-end justify-between px-4 py-2">
+                          <div className="absolute inset-x-0 top-1/4 border-t border-white/[0.02]" />
+                          <div className="absolute inset-x-0 top-2/4 border-t border-white/[0.02]" />
+                          <div className="absolute inset-x-0 top-3/4 border-t border-white/[0.02]" />
 
-                <div className="flex items-center justify-between text-[10px] text-zinc-500 font-bold">
-                  <span>EMA(20): Bullish Cross</span>
-                  <span>EMA(200): Under-bought</span>
-                </div>
-              </div>
+                          {Array.from({ length: 11 }).map((_, idx) => {
+                            const seed = (selectedAsset.symbol.charCodeAt(0) ?? 65) + idx;
+                            const heightPct = 30 + ((seed * 7) % 60);
+                            const candleBodyHeight = 10 + ((seed * 11) % 40);
+                            const isGreen = seed % 2 === 0;
+                            
+                            return (
+                              <div key={idx} className="flex flex-col items-center flex-1 group/candle relative" style={{ height: `${heightPct}%` }}>
+                                <div className="w-[1.5px] bg-zinc-600 h-10 absolute -top-2" />
+                                <div
+                                  className={cn(
+                                    "w-3 rounded-[1px] border-x z-10 transition-all cursor-crosshair",
+                                    isGreen 
+                                      ? "bg-[var(--accent-green)] border-[var(--accent-green-bright)] hover:brightness-125" 
+                                      : "bg-[var(--accent-red)] border-red-400 hover:brightness-125"
+                                  )}
+                                  style={{ height: `${candleBodyHeight}px` }}
+                                />
+                                <div className="w-[1.5px] bg-zinc-600 h-10 absolute bottom-0" />
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div className="flex items-center justify-between text-[10px] text-zinc-500 font-bold px-1">
+                          <span>EMA(20): Bullish Cross</span>
+                          <span>EMA(200): Under-bought</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
 
-              {/* Technical Indicator Gauges */}
-              <div className="bg-white/[0.01] border border-white/[0.06] rounded-xl p-3.5 space-y-2">
-                <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block">Momentum Summary</span>
-                
-                <div className="space-y-2">
-                  <div className="flex justify-between text-xs text-zinc-400">
-                    <span>Relative Strength Index (RSI)</span>
-                    <span className="font-bold text-white">56.5 (Neutral)</span>
-                  </div>
-                  <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                    <div className="h-full bg-cyan-400" style={{ width: "56.5%" }} />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex justify-between text-xs text-zinc-400">
-                    <span>Moving Average Convergence (MACD)</span>
-                    <span className="font-bold text-emerald-400 uppercase">Bullish Impulse</span>
-                  </div>
-                  <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                    <div className="h-full bg-emerald-500" style={{ width: "75%" }} />
-                  </div>
-                </div>
-              </div>
-
-              {/* Smart Money Concepts & Order Blocks */}
-              <div className="bg-white/[0.01] border border-white/[0.06] rounded-xl p-3.5 space-y-3">
-                <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block">SMART MONEY CONCEPTS (SMC)</span>
-                
-                <div className="space-y-2 text-xs">
-                  {/* FVG */}
-                  <div className="flex justify-between items-start border-b border-white/[0.03] pb-2">
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-zinc-200 font-semibold">Fair Value Gap (FVG)</span>
-                      <span className="text-[10px] text-zinc-500">Unmitigated daily structural gap</span>
+                  {/* AI Setup Analysis Stats Grid */}
+                  <div className="bg-white/[0.01] border border-white/[0.06] rounded-xl p-3.5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">CONCRETE SIGNAL PARAMETERS</span>
+                      {analysisData?.bias && (
+                        <span className={cn(
+                          "text-[9px] font-black uppercase px-2 py-0.5 rounded tracking-wider shadow-[0_0_8px_rgba(0,0,0,0.5)]",
+                          analysisData.bias.toLowerCase().includes("bullish") || analysisData.bias.toLowerCase().includes("buy")
+                            ? "bg-[var(--accent-green)]/15 text-[var(--accent-green-bright)] border border-[var(--accent-green-bright)]/30"
+                            : analysisData.bias.toLowerCase().includes("bearish") || analysisData.bias.toLowerCase().includes("sell")
+                            ? "bg-[var(--accent-red)]/15 text-red-400 border border-red-500/30"
+                            : "bg-zinc-800 text-zinc-300 border border-zinc-700"
+                        )}>
+                          {analysisData.bias}
+                        </span>
+                      )}
                     </div>
-                    <span className="text-[9px] font-bold text-amber-400 bg-amber-500/10 px-1.5 rounded uppercase">
-                      Open Zone
-                    </span>
+
+                    {analysisLoading && !analysisData ? (
+                      <div className="space-y-2 py-4">
+                        <div className="h-5 w-2/3 bg-white/[0.02] rounded animate-pulse" />
+                        <div className="grid grid-cols-2 gap-2 mt-2">
+                          <div className="h-12 bg-white/[0.02] rounded animate-pulse" />
+                          <div className="h-12 bg-white/[0.02] rounded animate-pulse" />
+                          <div className="h-12 bg-white/[0.02] rounded animate-pulse" />
+                          <div className="h-12 bg-white/[0.02] rounded animate-pulse" />
+                        </div>
+                      </div>
+                    ) : analysisData ? (
+                      <div className="space-y-3.5">
+                        {analysisData.confidence && (
+                          <div className="space-y-1.5">
+                            <div className="flex justify-between text-xs text-zinc-400 font-bold">
+                              <span>Signal Confidence</span>
+                              <span className="text-[var(--accent-cyan)]">{analysisData.confidence}%</span>
+                            </div>
+                            <div className="h-1.5 bg-zinc-900 rounded-full overflow-hidden border border-white/[0.02]">
+                              <div 
+                                className="h-full bg-gradient-to-r from-cyan-500 to-[var(--accent-cyan)] shadow-[0_0_8px_rgba(0,229,255,0.4)] transition-all duration-500" 
+                                style={{ width: `${analysisData.confidence}%` }} 
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="grid grid-cols-2 gap-2.5 pt-1">
+                          <div className="bg-white/[0.01] border border-white/[0.04] rounded-lg p-2.5">
+                            <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block">Entry Zone</span>
+                            <span className="text-xs font-black text-white mt-1 block">
+                              {analysisData.entry_zone || "Pending Execution"}
+                            </span>
+                          </div>
+                          <div className="bg-white/[0.01] border border-white/[0.04] rounded-lg p-2.5">
+                            <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block">Risk Sizing</span>
+                            <span className="text-xs font-black text-cyan-400 mt-1 block">
+                              {analysisData.sizing || "Standard Risk"}
+                            </span>
+                          </div>
+                          <div className="bg-white/[0.01] border border-white/[0.04] rounded-lg p-2.5 border-l-red-500/40">
+                            <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block">Invalidation (SL)</span>
+                            <span className="text-xs font-black text-red-400 mt-1 block">
+                              {analysisData.stop_loss || "None"}
+                            </span>
+                          </div>
+                          <div className="bg-white/[0.01] border border-white/[0.04] rounded-lg p-2.5 border-l-emerald-500/40">
+                            <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block">Target Take Profit</span>
+                            <span className="text-xs font-black text-[var(--accent-green-bright)] mt-1 block">
+                              {analysisData.take_profit || "Open Target"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center py-6 text-zinc-500 text-xs font-semibold border border-dashed border-white/[0.05] rounded-lg">
+                        No signal metrics resolved for {selectedAsset.symbol}
+                      </div>
+                    )}
                   </div>
 
-                  {/* Order Blocks */}
-                  <div className="flex justify-between items-start pt-1">
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-zinc-200 font-semibold">Institutional Order Block</span>
-                      <span className="text-[10px] text-zinc-500">Strong bullish mitigation support</span>
+                  {/* AI Streamed Reasoning */}
+                  <div className="bg-zinc-950/60 border border-white/[0.06] rounded-xl p-4 space-y-2.5">
+                    <div className="flex items-center gap-1.5 text-[10px] text-zinc-400 font-bold uppercase tracking-wider">
+                      <Sparkles className="size-3.5 text-cyan-400" />
+                      AI REASONING CHUNKS
                     </div>
-                    <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 rounded uppercase">
-                      Mitigated
-                    </span>
+                    
+                    <div className="text-xs leading-relaxed text-zinc-300 font-medium whitespace-pre-wrap selection:bg-cyan-500/20 max-h-[300px] overflow-y-auto custom-scrollbar">
+                      {analysisReasoning ? (
+                        <>
+                          <MarkdownContent markdown={analysisReasoning} isStreaming={analysisLoading} />
+                          {analysisLoading && (
+                            <span className="inline-block w-1.5 h-3.5 ml-1 bg-[var(--accent-cyan)] animate-pulse" />
+                          )}
+                        </>
+                      ) : analysisLoading ? (
+                        <div className="flex items-center gap-2 py-2">
+                          <Loader2 className="size-3 text-cyan-400 animate-spin" />
+                          <span className="text-zinc-500 italic animate-pulse">Decompressing market bias stream...</span>
+                        </div>
+                      ) : (
+                        <span className="text-zinc-500 italic">No analysis stream available.</span>
+                      )}
+                    </div>
+                  </div>
+
+                </div>
+
+                {/* Footer Controls for Setup Tab */}
+                <div className="border-t border-white/[0.08] pt-4 space-y-2 shrink-0">
+                  <button
+                    onClick={() => setActiveDrawerTab("chat")}
+                    className="w-full py-2.5 bg-[var(--accent-cyan)] text-zinc-950 hover:brightness-110 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-[0_0_15px_rgba(0,229,255,0.25)]"
+                  >
+                    <MessageSquare className="size-4" />
+                    Open Interactive Co-pilot Chat
+                  </button>
+                  <button
+                    onClick={() => setSelectedAsset(null)}
+                    className="w-full py-2 bg-zinc-900 hover:bg-zinc-850 rounded-lg text-xs font-semibold text-zinc-400 hover:text-white transition-colors border border-white/[0.04]"
+                  >
+                    Close Details
+                  </button>
+                </div>
+              </>
+            ) : (
+              /* INTERACTIVE CO-PILOT CHAT PANEL */
+              <>
+                {/* Chat Messages viewport */}
+                <div className="flex-1 overflow-y-auto py-4 space-y-4 custom-scrollbar pr-1 flex flex-col">
+                  {drawerMessages.length === 0 ? (
+                    <div className="flex-1 flex flex-col items-center justify-center text-center p-6 space-y-3">
+                      <MessageSquare className="size-8 text-zinc-600 animate-pulse" />
+                      <span className="text-xs font-bold text-zinc-500">Initializing secure session context...</span>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {drawerMessages.map((msg) => {
+                        const isUser = msg.role === "user";
+                        return (
+                          <div
+                            key={msg.id}
+                            className={cn(
+                              "flex w-full",
+                              isUser ? "justify-end" : "justify-start"
+                            )}
+                          >
+                            <div
+                              className={cn(
+                                "max-w-[85%] rounded-xl px-3.5 py-2.5 text-xs font-medium leading-relaxed shadow-lg transition-all",
+                                isUser
+                                  ? "bg-gradient-to-br from-cyan-600/90 to-blue-700/95 text-white rounded-br-none border border-cyan-400/20"
+                                  : "bg-zinc-900/90 border border-white/[0.05] text-zinc-200 rounded-bl-none border-l-2 border-l-[var(--accent-cyan)]"
+                              )}
+                            >
+                              {!isUser && msg.text === "" && chatLoading ? (
+                                <div className="flex items-center gap-2 text-zinc-400">
+                                  <Loader2 className="size-3 text-cyan-400 animate-spin" />
+                                  <span className="animate-pulse">Analyzing alpha opportunities...</span>
+                                </div>
+                              ) : (
+                                <MarkdownContent markdown={msg.text} isStreaming={!isUser && chatLoading && msg.id === drawerMessages[drawerMessages.length - 1]?.id} />
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <div ref={chatEndRef} />
+                    </div>
+                  )}
+                </div>
+
+                {/* Real-time Message Input Sticky Footer */}
+                <div className="border-t border-white/[0.08] pt-4 shrink-0">
+                  <form onSubmit={sendDrawerChatMessage} className="relative flex items-center">
+                    <input
+                      type="text"
+                      value={drawerInput}
+                      onChange={(e) => setDrawerInput(e.target.value)}
+                      disabled={chatLoading}
+                      placeholder={`Ask Terabits AI about ${selectedAsset.symbol}...`}
+                      className="w-full bg-zinc-900/60 hover:bg-zinc-900 focus:bg-zinc-900 border border-white/[0.06] focus:border-[var(--accent-cyan)] rounded-xl pl-4 pr-12 py-3 text-xs text-white placeholder-zinc-500 focus:outline-none transition-all focus:shadow-[0_0_12px_rgba(0,229,255,0.15)] disabled:opacity-50"
+                    />
+                    <button
+                      type="submit"
+                      disabled={chatLoading || !drawerInput.trim()}
+                      className={cn(
+                        "absolute right-2.5 p-1.5 rounded-lg bg-zinc-800 hover:bg-[var(--accent-cyan)] text-zinc-400 hover:text-zinc-950 disabled:bg-transparent disabled:text-zinc-600 transition-all",
+                        drawerInput.trim() && !chatLoading && "shadow-[0_0_8px_rgba(0,229,255,0.3)] animate-pulse"
+                      )}
+                    >
+                      <Send className="size-3.5" />
+                    </button>
+                  </form>
+                  <div className="flex justify-between items-center mt-3 px-1 text-[10px] text-zinc-500 font-bold">
+                    <span>Secure Quant Chat Session</span>
+                    <button 
+                      onClick={() => setSelectedAsset(null)}
+                      className="hover:text-white transition-colors"
+                    >
+                      Close Details
+                    </button>
                   </div>
                 </div>
-              </div>
-
-            </div>
-
-            {/* Action Bar (Footer) */}
-            <div className="border-t border-white/[0.08] pt-4 space-y-2">
-              <button
-                onClick={() => askCopilotAboutAsset(selectedAsset)}
-                className="w-full py-2.5 bg-[var(--accent-cyan)] text-zinc-950 hover:brightness-110 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-[0_0_15px_rgba(0,229,255,0.25)]"
-              >
-                <Sparkles className="size-4 animate-spin-slow" />
-                Ask Co-Pilot to Analyze {selectedAsset.symbol}
-              </button>
-              <button
-                onClick={() => setSelectedAsset(null)}
-                className="w-full py-2 bg-zinc-900 hover:bg-zinc-850 rounded-lg text-xs font-semibold text-zinc-400 hover:text-white transition-colors border border-white/[0.04]"
-              >
-                Close Details
-              </button>
-            </div>
+              </>
+            )}
 
           </div>
         </div>

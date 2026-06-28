@@ -274,13 +274,13 @@ export function ChatMessage({
 
   // Extract user updates for separate display
   const userUpdates = useMemo(() => {
-    let updateIdx = 0;
-    return message.parts
-      .filter((p) => p.type === "user_update" && p.text?.trim())
-      .map((p) => ({
-        id: `update-${updateIdx++}`,
-        text: p.text ?? "",
-      }));
+    const allUpdates = message.parts.filter((p) => p.type === "user_update" && p.text?.trim());
+    if (allUpdates.length === 0) return [];
+    const lastUpdate = allUpdates[allUpdates.length - 1];
+    return [{
+      id: "update-latest",
+      text: lastUpdate.text ?? "",
+    }];
   }, [message.parts]);
 
   const hasFinalText = message.parts.some((p) => p.type === "text" && p.text?.trim());

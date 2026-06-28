@@ -273,10 +273,11 @@ export function MarketsChatPanel({
                 if (!lastMsg || lastMsg.id !== assistantMsgId) return prev;
 
                 if (event.type === "user_update") {
-                  const activityParts = activityPartsFromMessage(lastMsg.parts);
+                  const partsWithoutPrevUserUpdates = lastMsg.parts.filter((p) => p.type !== "user_update");
+                  const activityParts = activityPartsFromMessage(partsWithoutPrevUserUpdates);
                   const nextActivityParts = applyUserUpdateToParts(activityParts, event.message);
                   const parts: MessagePart[] = [
-                    ...lastMsg.parts,
+                    ...partsWithoutPrevUserUpdates,
                     { type: "user_update", text: event.message },
                   ];
                   updated[updated.length - 1] = {
@@ -589,8 +590,8 @@ export function MarketsChatPanel({
                 </Conversation>
 
                 {/* Input bar - same as main chat */}
-                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-[var(--terminal-surface)] via-[var(--terminal-surface)]/95 to-transparent pb-3 pt-6">
-                  <div className="relative mx-auto w-full max-w-full px-3">
+                <div className="absolute bottom-0 left-0 right-0 pointer-events-none pb-3 pt-6 bg-transparent">
+                  <div className="relative mx-auto w-full max-w-full px-3 pointer-events-auto">
                     <InputBar
                       value={value}
                       onChange={setValue}

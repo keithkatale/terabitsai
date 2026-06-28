@@ -92,7 +92,7 @@ export function ResizablePane({
           <div className="h-4 w-0.5 rounded-full bg-zinc-400" />
         </div>
       </div>
-      <div className="min-w-0 flex-1">{children}</div>
+      <div className="min-w-0 flex-1 h-full flex flex-col">{children}</div>
     </div>
   );
 }

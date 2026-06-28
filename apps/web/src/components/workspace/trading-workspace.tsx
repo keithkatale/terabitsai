@@ -1534,9 +1534,11 @@ export function TradingWorkspace() {
 
         // Navigate AFTER messages are in state (deferred to next tick)
         // This prevents the route change from triggering a re-render that shows the landing hero
-        setTimeout(() => {
-          navigateToConversation(convId!, { replace: true });
-        }, 0);
+        if (mode !== "home") {
+          setTimeout(() => {
+            navigateToConversation(convId!, { replace: true });
+          }, 0);
+        }
       } catch (err) {
         console.error("Failed to create conversation:", err);
         // Remove the optimistic messages on error
@@ -1602,10 +1604,11 @@ export function TradingWorkspace() {
               if (!lastMsg || lastMsg.id !== assistantMsgId) return prev;
 
               if (event.type === "user_update") {
-                const activityParts = activityPartsFromMessage(lastMsg.parts);
+                const partsWithoutPrevUserUpdates = lastMsg.parts.filter((p) => p.type !== "user_update");
+                const activityParts = activityPartsFromMessage(partsWithoutPrevUserUpdates);
                 const nextActivityParts = applyUserUpdateToParts(activityParts, event.message);
                 const parts: MessagePart[] = [
-                  ...lastMsg.parts,
+                  ...partsWithoutPrevUserUpdates,
                   { type: "user_update", text: event.message },
                 ];
                 updated[updated.length - 1] = {
@@ -1906,7 +1909,7 @@ Provide:
     <div className="relative h-full min-h-0 w-full">
       <TabPanel tab="home" activeTab={mode}>
         <div className="flex h-full min-h-0 flex-row overflow-hidden relative">
-          <div className="flex flex-1 min-w-0 flex-col overflow-hidden pb-20">
+          <div className="flex flex-1 min-w-0 flex-col overflow-hidden pb-0">
             <HomeSection
               sidebarQuotes={sidebarQuotes}
               goToChatWithPrompt={goToChatWithPrompt}
@@ -1918,7 +1921,7 @@ Provide:
           {/* Floating prompt box - only visible if right sidebar is closed */}
           {!isHomeChatSidebarOpen && (
             <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-full max-w-xl px-4 z-40 pointer-events-auto transition-all duration-300 animate-in fade-in slide-in-from-bottom-4">
-              <div className="bg-zinc-950/80 rounded-full shadow-[0_12px_45px_rgba(0,0,0,0.9),_0_0_25px_rgba(6,182,212,0.15)] p-1.5 backdrop-blur-2xl flex items-center gap-2">
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/10 bg-zinc-950/60 backdrop-blur-md shadow-2xl">
                 <button
                   type="button"
                   className="size-8 shrink-0 rounded-full flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/[0.06] transition-all"
@@ -2009,6 +2012,7 @@ Provide:
                                 key={message.id}
                                 message={message}
                                 isAssistantStreaming={loading && isLastMessage}
+                                hideAssistantOrb={true}
                                 livePrices={sidebarQuotes}
                                 onClosePosition={closePosition}
                                 onOpenAgentDetail={(agent) => setOpenAgentId(agent.id)}
@@ -2029,26 +2033,28 @@ Provide:
                 )}
                 
                 {/* Sidebar bottom Sticky Input Bar */}
-                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-[var(--terminal-surface)] via-[var(--terminal-surface)]/95 to-transparent pb-3 pt-6 px-4 border-t border-white/[0.04]">
-                  <InputBar
-                    value={value}
-                    onChange={setValue}
-                    onSend={({ content }) => {
-                      const tags = [...taggedAssets];
-                      setTaggedAssets([]);
-                      handleSend(content, tags);
-                    }}
-                    disabled={loading}
-                    status={loading ? "streaming" : "ready"}
-                    placeholder="Ask co-pilot in sidebar..."
-                    variant="landing"
-                    taggedAssets={taggedAssets}
-                    onRemoveTaggedAsset={removeTaggedAsset}
-                    onToggleTaggedAsset={toggleTaggedAsset}
-                    maxTaggedAssets={MAX_TAGGED_ASSETS}
-                    selectedAiTools={selectedAiTools}
-                    onSelectedAiToolsChange={setSelectedAiTools}
-                  />
+                <div className="absolute bottom-0 left-0 right-0 pointer-events-none pb-3 pt-6 px-4 bg-transparent">
+                  <div className="pointer-events-auto">
+                    <InputBar
+                      value={value}
+                      onChange={setValue}
+                      onSend={({ content }) => {
+                        const tags = [...taggedAssets];
+                        setTaggedAssets([]);
+                        handleSend(content, tags);
+                      }}
+                      disabled={loading}
+                      status={loading ? "streaming" : "ready"}
+                      placeholder="Ask co-pilot in sidebar..."
+                      variant="landing"
+                      taggedAssets={taggedAssets}
+                      onRemoveTaggedAsset={removeTaggedAsset}
+                      onToggleTaggedAsset={toggleTaggedAsset}
+                      maxTaggedAssets={MAX_TAGGED_ASSETS}
+                      selectedAiTools={selectedAiTools}
+                      onSelectedAiToolsChange={setSelectedAiTools}
+                    />
+                  </div>
                 </div>
               </div>
             </ResizablePane>
@@ -2169,8 +2175,8 @@ Provide:
                 </ConversationContent>
                 <ConversationScrollButton className="border-white/8 bg-[var(--terminal-surface)] text-zinc-300 hover:text-white" />
               </Conversation>
-              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-[var(--background)] via-[var(--background)]/95 to-transparent pb-3 pt-6">
-                <div className="relative mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
+              <div className="absolute bottom-0 left-0 right-0 pointer-events-none pb-3 pt-6 bg-transparent">
+                <div className="relative mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 pointer-events-auto">
                 <InputBar
                   value={value}
                   onChange={setValue}

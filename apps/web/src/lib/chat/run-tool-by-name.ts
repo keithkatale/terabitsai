@@ -132,7 +132,8 @@ export async function runToolByName(
 
   if (name === "get_market_overview") {
     const symbols = Array.isArray(args?.symbols) ? (args.symbols as string[]) : undefined;
-    return fetchMarketOverview(symbols);
+    const scanBroadMarket = args?.scan_broad_market as boolean | undefined;
+    return fetchMarketOverview(symbols, scanBroadMarket);
   }
 
   if (name === "search_market_intel") {
