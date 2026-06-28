@@ -448,14 +448,140 @@ function NodeView({
       );
 
     case "barlist": {
-      const max = node.max ?? Math.max(...node.items.map((i) => i.value), 1);
+      const isKeyLevels = node.title?.toLowerCase().includes("key levels");
+      const isIndicators = node.title?.toLowerCase().includes("indicators");
+      const hasNumericValues = node.items && node.items.some((it) => typeof it.value === "number" && !isNaN(it.value));
+
+      if (isKeyLevels && node.items) {
+        // Parse and sort levels descending
+        const itemsWithMeta = node.items.map((it) => {
+          const isSupport = it.label.toLowerCase().includes("support") || it.accent === "emerald";
+          const isResistance = it.label.toLowerCase().includes("resistance") || it.accent === "rose";
+          const priceMatch = it.label.match(/\$?([\d,]+(?:\.\d+)?)/);
+          const priceVal = priceMatch ? parseFloat(priceMatch[1].replace(/,/g, "")) : null;
+          return {
+            ...it,
+            isSupport,
+            isResistance,
+            price: priceVal,
+          };
+        });
+
+        // Sort descending by price if available, otherwise keep original order
+        const sortedItems = [...itemsWithMeta].sort((a, b) => {
+          if (a.price != null && b.price != null) return b.price - a.price;
+          return 0;
+        });
+
+        return (
+          <div className="rounded-xl border border-zinc-800/60 bg-zinc-950/45 p-4 relative overflow-hidden">
+            {/* Visual backdrop highlight */}
+            <div className="absolute top-0 right-0 size-24 bg-rose-500/5 blur-3xl pointer-events-none" />
+            <div className="absolute bottom-0 left-0 size-24 bg-emerald-500/5 blur-3xl pointer-events-none" />
+
+            <div className="flex items-center justify-between mb-4 pb-2 border-b border-white/[0.04]">
+              <div className="flex items-center gap-1.5">
+                <div className="size-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                <span className="text-xs font-bold uppercase tracking-wider text-zinc-300">{node.title || "Key S/R Levels"}</span>
+              </div>
+              <span className="text-[9px] font-black text-zinc-500 bg-zinc-900 px-1.5 py-0.5 rounded tracking-wider">LADDER VIEW</span>
+            </div>
+
+            <div className="relative space-y-4">
+              {/* Vertical line axis */}
+              <div className="absolute left-[38px] top-2 bottom-2 w-px bg-gradient-to-b from-rose-500/30 via-zinc-800 to-emerald-500/30 border-dashed" />
+
+              {sortedItems.map((it, i) => {
+                const badgeBg = it.isSupport ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : it.isResistance ? "bg-rose-500/10 border-rose-500/20 text-rose-400" : "bg-cyan-500/10 border-cyan-500/20 text-cyan-400";
+                const dotColor = it.isSupport ? "bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.6)]" : it.isResistance ? "bg-rose-400 shadow-[0_0_8px_rgba(239,68,68,0.6)]" : "bg-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.6)]";
+                
+                return (
+                  <div key={i} className="flex items-center gap-4 relative group/row transition-all duration-200 hover:translate-x-0.5">
+                    {/* Level Label/Price Badge */}
+                    <div className={cn("w-20 text-[10px] font-extrabold uppercase py-1 px-2 rounded-md border text-center shrink-0 tracking-wider", badgeBg)}>
+                      {it.label.split("·")[1]?.trim() || it.label}
+                    </div>
+
+                    {/* Timeline Node dot */}
+                    <div className="relative flex items-center justify-center shrink-0">
+                      <div className={cn("size-2 rounded-full z-10 transition-transform duration-300 group-hover/row:scale-125", dotColor)} />
+                    </div>
+
+                    {/* Connector line and description */}
+                    <div className="flex-1 flex items-center min-w-0">
+                      <span className="text-[10px] font-bold text-zinc-500 uppercase mr-2 shrink-0">{it.isSupport ? "Support" : it.isResistance ? "Resistance" : "Level"}</span>
+                      <div className="flex-1 border-b border-dashed border-white/[0.04] mx-1 shrink" />
+                      <span className="text-xs font-semibold text-zinc-300 truncate pl-2 max-w-[60%] select-all">
+                        {String(it.value)}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      }
+
+      if ((isIndicators || !hasNumericValues) && node.items) {
+        // Render as a beautiful status list/feed instead of horizontal bars
+        return (
+          <div className="rounded-xl border border-zinc-800/60 bg-zinc-950/45 p-4">
+            <div className="flex items-center justify-between mb-4 pb-2 border-b border-white/[0.04]">
+              <span className="text-xs font-bold uppercase tracking-wider text-zinc-300">{node.title || "Technical Indicators"}</span>
+              <span className="text-[9px] font-black text-zinc-500 bg-zinc-900 px-1.5 py-0.5 rounded tracking-wider">OSCILLATOR STATUS</span>
+            </div>
+
+            <div className="space-y-3">
+              {node.items.map((it, i) => {
+                const valStr = String(it.value).toLowerCase();
+                const isBullish = it.accent === "emerald" || it.label.toLowerCase().includes("rsi") && !valStr.includes("bearish") || it.accent === "cyan" || valStr.includes("bullish") || valStr.includes("above");
+                const isBearish = it.accent === "rose" || valStr.includes("bearish") || valStr.includes("below");
+                
+                const badgeColor = isBullish 
+                  ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" 
+                  : isBearish 
+                  ? "bg-rose-500/10 border-rose-500/20 text-rose-400" 
+                  : "bg-zinc-800 border-zinc-700/50 text-zinc-400";
+
+                const dotColor = isBullish 
+                  ? "bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.5)]" 
+                  : isBearish 
+                  ? "bg-rose-400 shadow-[0_0_8px_rgba(239,68,68,0.5)]" 
+                  : "bg-zinc-500 shadow-[0_0_8px_rgba(113,113,122,0.5)]";
+
+                return (
+                  <div key={i} className="flex flex-col p-3 rounded-lg border border-white/[0.02] bg-white/[0.01] hover:bg-white/[0.03] transition-colors duration-200">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-xs font-extrabold text-white tracking-wide">{it.label}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className={cn("size-1.5 rounded-full", dotColor)} />
+                        <span className={cn("text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded border tracking-wider", badgeColor)}>
+                          {isBullish ? "Bullish" : isBearish ? "Bearish" : "Neutral"}
+                        </span>
+                      </div>
+                    </div>
+                    <p className="text-xs leading-relaxed text-zinc-400 font-medium">
+                      {String(it.value)}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      }
+
+      // Default fallback if we do have numeric values (standard bar chart / progress)
+      const max = node.max ?? Math.max(...(node.items || []).map((i) => Number(i.value) || 0), 1);
       return (
         <div className="rounded-xl border border-zinc-800/60 bg-zinc-950/40 p-4">
           {node.title ? <p className="mb-3 text-sm font-semibold text-zinc-100">{node.title}</p> : null}
           <div className="space-y-2.5">
-            {node.items.map((it, i) => {
+            {(node.items || []).map((it, i) => {
               const tok = accent(it.accent ?? (["cyan", "violet", "emerald", "amber", "rose", "sky"][i % 6] as GenUiAccent));
-              const pct = Math.max(2, (it.value / max) * 100);
+              const numVal = Number(it.value) || 0;
+              const pct = Math.max(2, (numVal / max) * 100);
               return (
                 <div key={i}>
                   <div className="mb-1 flex items-center justify-between text-[11px]">

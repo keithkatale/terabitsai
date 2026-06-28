@@ -46,7 +46,62 @@ import {
   Activity,
   X,
   Eye,
+  LayoutGrid,
 } from "lucide-react";
+
+import { normalizeGenUiPayload } from "@/components/generative-ui/genui-types";
+import { GenUiRenderer } from "@/components/generative-ui/genui-renderer";
+import { QuantUiRenderer } from "@/components/quant-ui/quant-ui-renderer";
+import { TradeReceiptCard } from "@/components/ai-elements/message";
+
+function getGenUiColSpan(payload: any): number {
+  try {
+    const nodes = normalizeGenUiPayload(payload);
+    if (!nodes) return 1;
+    for (const node of nodes) {
+      if (node.type === "chart" || node.type === "table") return 2;
+      if (node.type === "grid" && (node.columns ?? 1) > 1) return 2;
+      if (node.type === "section" && node.children) {
+        for (const child of node.children) {
+          if (child.type === "chart" || child.type === "table") return 2;
+          if (child.type === "grid" && (child.columns ?? 1) > 1) return 2;
+        }
+      }
+    }
+  } catch {}
+  return 1;
+}
+
+function getGenUiTitle(payload: any): string {
+  try {
+    if (payload && typeof payload === "object") {
+      if ("title" in payload && typeof (payload as any).title === "string") {
+        return (payload as any).title;
+      }
+    }
+    const nodes = normalizeGenUiPayload(payload);
+    if (nodes) {
+      for (const node of nodes) {
+        if (node.type === "section" && node.title) return node.title;
+        if ("title" in node && node.title) return node.title as string;
+      }
+    }
+  } catch {}
+  return "Market Intelligence";
+}
+
+function getQuantUiTitleAndSpan(text: string): { title: string; colSpan: number } {
+  let title = "Market Signal Grid";
+  let colSpan = 1;
+  try {
+    const titleMatch = text.match(/title="([^"]+)"/);
+    if (titleMatch) title = titleMatch[1];
+    if (text.includes("<quant:chart") || text.includes("<quant:compare")) {
+      colSpan = 2;
+    }
+  } catch {}
+  return { title, colSpan };
+}
 
 import { ChatMessage as ChatMessageBubble } from "@/components/ai-elements/message";
 import { FollowUpSuggestions } from "@/components/ai-elements/follow-up-suggestions";
@@ -370,6 +425,51 @@ export function TradingWorkspace() {
   const [responseSpacerHeight, setResponseSpacerHeight] = useState(0);
   const [userPlan, setUserPlan] = useState<"free" | "pro" | "premium">("free");
   const [isHomeChatSidebarOpen, setIsHomeChatSidebarOpen] = useState(false);
+
+  // Helper for micro-sparklines on terminal canvas
+  const buildLocalLinePath = useCallback((data: number[], w: number, h: number, pad = 2) => {
+    if (data.length === 0) return { line: "", area: "" };
+    const min = Math.min(...data);
+    const max = Math.max(...data);
+    const range = max - min || 1;
+    const stepX = (w - pad * 2) / Math.max(1, data.length - 1);
+    const pts = data.map((d, i) => {
+      const x = pad + i * stepX;
+      const y = pad + (h - pad * 2) * (1 - (d - min) / range);
+      return [x, y] as const;
+    });
+    const line = pts.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`).join(" ");
+    const area = `${line} L${pts[pts.length - 1][0].toFixed(2)},${h} L${pts[0][0].toFixed(2)},${h} Z`;
+    return { line, area };
+  }, []);
+
+  const bentoWidgets = useMemo(() => {
+    const list: Array<{
+      id: string;
+      type: "genui" | "quant-ui" | "trade-execution";
+      title: string;
+      payload?: any;
+      text?: string;
+      colSpan: number;
+    }> = [];
+    messages.forEach((msg) => {
+      msg.parts.forEach((part, idx) => {
+        const id = `${msg.id}-${idx}`;
+        if (part.type === "trade-execution") {
+          try {
+            const trade = typeof part.text === "string" ? JSON.parse(part.text) : part.text;
+            list.push({ id, type: "trade-execution", title: `${trade.symbol} Order Receipt`, payload: trade, colSpan: 1 });
+          } catch {}
+        } else if (part.type === "genui" && part.payload != null) {
+          list.push({ id, type: "genui", title: getGenUiTitle(part.payload), payload: part.payload, colSpan: getGenUiColSpan(part.payload) });
+        } else if (part.type === "quant-ui" && part.text?.includes("<quant:")) {
+          const { title, colSpan } = getQuantUiTitleAndSpan(part.text);
+          list.push({ id, type: "quant-ui", title, text: part.text, colSpan });
+        }
+      });
+    });
+    return list;
+  }, [messages]);
 
   useEffect(() => {
     fetch("/api/subscription/status", { credentials: "include" })
@@ -2125,92 +2225,318 @@ Provide:
               onSelectedAiToolsChange={setSelectedAiTools}
             />
           ) : (
-            <div className="relative flex min-h-0 flex-1 flex-col px-2 py-4 sm:px-4">
-              <Conversation className="min-h-0 flex-1 pb-24">
-                <ConversationContent
-                  ref={chatScrollRef}
-                  className="space-y-6 bg-transparent"
-                >
-                  <div className="mx-auto w-full max-w-3xl space-y-6 px-4 sm:px-6 lg:px-8">
-                  {messages.map((message, messageIndex) => {
-                    const isLastMessage = messageIndex === messages.length - 1;
-                    const isActiveUserTurn =
-                      loading &&
-                      message.role === "user" &&
-                      messageIndex === messages.length - 2;
-                    return (
-                      <ChatMessageBubble
-                        key={message.id}
-                        message={message}
-                        isAssistantStreaming={loading && isLastMessage}
-                        livePrices={sidebarQuotes}
-                        onClosePosition={closePosition}
-                        onOpenAgentDetail={(agent) => setOpenAgentId(agent.id)}
-                        rootRef={
-                          isActiveUserTurn
-                            ? (el) => {
-                                lastUserMessageRef.current = el;
-                              }
-                            : undefined
-                        }
-                      />
-                    );
-                  })}
-                  {loading && responseSpacerHeight > 0 ? (
-                    <div
-                      aria-hidden
-                      className="pointer-events-none shrink-0"
-                      style={{ minHeight: responseSpacerHeight }}
-                    />
-                  ) : null}
-                  {!loading && !isQuestionActive ? (
-                    <FollowUpSuggestions
-                      question={followUpQuestion}
-                      disabled={loading}
-                      onSelect={handleFollowUpSelect}
-                      className="pb-2 pt-1"
-                    />
-                  ) : null}
-                  </div>
-                </ConversationContent>
-                <ConversationScrollButton className="border-white/8 bg-[var(--terminal-surface)] text-zinc-300 hover:text-white" />
-              </Conversation>
-              <div className="absolute bottom-0 left-0 right-0 pointer-events-none pb-3 pt-6 bg-transparent">
-                <div className="relative mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 pointer-events-auto">
-                <InputBar
-                  value={value}
-                  onChange={setValue}
-                  onSend={({ content }) => {
-                    const tags = [...taggedAssets];
-                    setTaggedAssets([]);
-                    handleSend(content, tags);
-                  }}
-                    disabled={loading || isQuestionActive}
-                  status={loading ? "streaming" : "ready"}
-                    placeholder={
-                      isQuestionActive
-                        ? "Answer the question below…"
-                        : "Continue the conversation…"
-                    }
-                  variant="landing"
-                  taggedAssets={taggedAssets}
-                  onRemoveTaggedAsset={removeTaggedAsset}
-                    onToggleTaggedAsset={toggleTaggedAsset}
-                  maxTaggedAssets={MAX_TAGGED_ASSETS}
-                    selectedAiTools={selectedAiTools}
-                    onSelectedAiToolsChange={setSelectedAiTools}
-                  />
-                  {isQuestionActive && activeQuestion ? (
-                    <div className="absolute bottom-0 left-0 right-0 z-50 pointer-events-auto">
-                      <div className="mx-auto w-full max-w-2xl">
-                        <InteractiveQuestionForm
-                          question={activeQuestion}
-                          onSubmit={handleQuestionSubmit}
-                          onDismiss={handleQuestionDismiss}
-                        />
+            <div className="relative flex h-full w-full overflow-hidden">
+              {/* DESKTOP SPLIT VIEW: Bento Canvas Left, Compact Chat Right */}
+              <div className="hidden lg:flex flex-1 h-full min-w-0 overflow-hidden">
+                {/* Main Workspace Canvas (Bento Grid) */}
+                <div className="flex-1 h-full overflow-y-auto p-4 scrollbar-thin">
+                  {bentoWidgets.length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center p-6 text-center max-w-4xl mx-auto space-y-6 animate-fade-in">
+                      <div className="space-y-2">
+                        <h3 className="text-lg font-bold text-white uppercase tracking-wider flex items-center justify-center gap-2">
+                          <span className="size-2 rounded-full bg-cyan-400 animate-ping" />
+                          Bloomberg Terminal Canvas
+                        </h3>
+                        <p className="text-xs text-zinc-500 max-w-md mx-auto">
+                          Interactive canvas ready. Real-time active market quotes are flashed below. Ask Copilot to run technical analyses, generate models, or execute trades to populate this workspace.
+                        </p>
+                      </div>
+                      
+                      {/* Real-time watch list fallback */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full mt-4">
+                        {[
+                          { symbol: "US500", name: "S&P 500 Index", color: "cyan" as const, sparkData: [5120, 5132, 5115, 5140, 5130, 5145, 5138, 5155] },
+                          { symbol: "GOLD", name: "Gold Spot Price", color: "amber" as const, sparkData: [2150, 2162, 2145, 2170, 2155, 2180, 2168, 2195] },
+                          { symbol: "BTCUSD", name: "Bitcoin / USD", color: "emerald" as const, sparkData: [64200, 64500, 63900, 64900, 64400, 65200, 64800, 65500] },
+                          { symbol: "ETHUSD", name: "Ethereum / USD", color: "violet" as const, sparkData: [3420, 3450, 3390, 3490, 3440, 3520, 3480, 3555] }
+                        ].map((item) => {
+                          const quote = sidebarQuotes[item.symbol] ?? { spot: item.sparkData[item.sparkData.length - 1], change24hPct: 0.15 };
+                          const spot = quote.spot ?? item.sparkData[item.sparkData.length - 1];
+                          const change = quote.change24hPct ?? 0;
+                          const isUp = change >= 0;
+                          
+                          const currentSpark = item.sparkData.map(val => val * (spot / item.sparkData[item.sparkData.length - 1]));
+
+                          return (
+                            <div
+                              key={item.symbol}
+                              onClick={() => handleCardClick(item.symbol)}
+                              className="group relative rounded-xl border border-white/[0.04] bg-zinc-950/30 p-4 flex flex-col justify-between hover:border-white/[0.08] hover:bg-zinc-950/50 transition-all duration-300 cursor-pointer text-left"
+                            >
+                              <div className="absolute top-0 right-0 size-24 bg-white/[0.01] blur-2xl group-hover:bg-cyan-500/[0.02] transition-all duration-500" />
+                              
+                              <div className="flex justify-between items-start">
+                                <div>
+                                  <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500 group-hover:text-zinc-400 transition-colors">
+                                    {item.name}
+                                  </span>
+                                  <h4 className="text-base font-extrabold text-white font-mono mt-1">
+                                    {item.symbol}
+                                  </h4>
+                                </div>
+                                <span className={cn(
+                                  "text-[10px] font-bold px-1.5 py-0.5 rounded font-mono",
+                                  isUp ? "bg-emerald-500/10 text-emerald-400" : "bg-rose-500/10 text-rose-400"
+                                )}>
+                                  {isUp ? "+" : ""}{change.toFixed(2)}%
+                                </span>
+                              </div>
+
+                              <div className="flex items-end justify-between mt-4">
+                                <span className="text-xl font-bold tracking-tight text-white font-mono">
+                                  ${spot.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                                <div className="w-[100px] h-[30px] opacity-75 group-hover:opacity-100 transition-opacity">
+                                  <svg viewBox="0 0 100 30" width="100" height="30" className="overflow-visible">
+                                    <path
+                                      d={buildLocalLinePath(currentSpark, 100, 30).line}
+                                      fill="none"
+                                      stroke={isUp ? "#34d399" : "#f87171"}
+                                      strokeWidth={1.5}
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    />
+                                  </svg>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
-                  ) : null}
+                  ) : (
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 auto-rows-max animate-fade-in">
+                      {bentoWidgets.map((item) => (
+                        <div
+                          key={item.id}
+                          className={cn(
+                            "rounded-xl border border-white/[0.04] bg-zinc-950/40 backdrop-blur-md p-4 flex flex-col gap-3 group transition-all duration-300 hover:border-white/[0.08] hover:shadow-[0_8px_30px_rgb(0,0,0,0.4)] relative overflow-hidden",
+                            item.colSpan === 2 ? "col-span-1 xl:col-span-2" : "col-span-1"
+                          )}
+                        >
+                          <div className="absolute inset-0 bg-gradient-to-tr from-white/[0.01] via-transparent to-transparent pointer-events-none" />
+                          <div className="flex items-center justify-between border-b border-white/[0.04] pb-2 shrink-0">
+                            <div className="flex items-center gap-2">
+                              <div className="size-1.5 rounded-full bg-cyan-500 animate-pulse" />
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 truncate max-w-[200px] sm:max-w-[300px]">
+                                {item.title || "Terminal Node"}
+                              </span>
+                            </div>
+                            <span className="text-[8px] font-black text-zinc-600 bg-zinc-900/60 px-1.5 py-0.5 rounded uppercase tracking-widest shrink-0">
+                              {item.type}
+                            </span>
+                          </div>
+                          <div className="flex-1 overflow-x-auto scrollbar-none text-left">
+                            {item.type === "trade-execution" && (
+                              <div className="flex justify-center py-2">
+                                <TradeReceiptCard
+                                  trade={item.payload}
+                                  currentPrice={sidebarQuotes[item.payload.symbol]?.spot}
+                                  onClosePosition={closePosition}
+                                />
+                              </div>
+                            )}
+                            {item.type === "genui" && (
+                              <GenUiRenderer payload={item.payload} />
+                            )}
+                            {item.type === "quant-ui" && (
+                              <QuantUiRenderer markup={item.text ?? ""} />
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Right side Chat Panel */}
+                <ResizablePane
+                  minWidth={360}
+                  maxWidth={600}
+                  defaultWidth={420}
+                  side="right"
+                  className="hidden lg:flex shrink-0 h-full border-l border-white/[0.04] bg-[var(--terminal-surface)] flex-col relative overflow-hidden"
+                >
+                  <div className="flex flex-col h-full w-full min-h-0 relative">
+                    <Conversation className="min-h-0 flex-1 pb-24">
+                      <ConversationContent
+                        ref={chatScrollRef}
+                        className="space-y-6 bg-transparent py-4 px-3"
+                      >
+                        <div className="w-full space-y-6">
+                          {messages.map((message, messageIndex) => {
+                            const isLastMessage = messageIndex === messages.length - 1;
+                            const isActiveUserTurn =
+                              loading &&
+                              message.role === "user" &&
+                              messageIndex === messages.length - 2;
+                            return (
+                              <ChatMessageBubble
+                                key={message.id}
+                                message={message}
+                                isAssistantStreaming={loading && isLastMessage}
+                                livePrices={sidebarQuotes}
+                                onClosePosition={closePosition}
+                                onOpenAgentDetail={(agent) => setOpenAgentId(agent.id)}
+                                hideVisualWidgets={true}
+                                rootRef={
+                                  isActiveUserTurn
+                                    ? (el) => {
+                                        lastUserMessageRef.current = el;
+                                      }
+                                    : undefined
+                                }
+                              />
+                            );
+                          })}
+                          {loading && responseSpacerHeight > 0 ? (
+                            <div
+                              aria-hidden
+                              className="pointer-events-none shrink-0"
+                              style={{ minHeight: responseSpacerHeight }}
+                            />
+                          ) : null}
+                          {!loading && !isQuestionActive ? (
+                            <FollowUpSuggestions
+                              question={followUpQuestion}
+                              disabled={loading}
+                              onSelect={handleFollowUpSelect}
+                              className="pb-2 pt-1 px-1"
+                            />
+                          ) : null}
+                        </div>
+                      </ConversationContent>
+                      <ConversationScrollButton className="border-white/8 bg-[var(--terminal-surface)] text-zinc-300 hover:text-white" />
+                    </Conversation>
+
+                    <div className="absolute bottom-0 left-0 right-0 pointer-events-none pb-3 pt-6 bg-transparent z-10">
+                      <div className="relative w-full px-3 pointer-events-auto">
+                        <InputBar
+                          value={value}
+                          onChange={setValue}
+                          onSend={({ content }) => {
+                            const tags = [...taggedAssets];
+                            setTaggedAssets([]);
+                            handleSend(content, tags);
+                          }}
+                          disabled={loading || isQuestionActive}
+                          status={loading ? "streaming" : "ready"}
+                          placeholder={
+                            isQuestionActive
+                              ? "Answer the question below…"
+                              : "Continue the conversation…"
+                          }
+                          variant="landing"
+                          taggedAssets={taggedAssets}
+                          onRemoveTaggedAsset={removeTaggedAsset}
+                          onToggleTaggedAsset={toggleTaggedAsset}
+                          maxTaggedAssets={MAX_TAGGED_ASSETS}
+                          selectedAiTools={selectedAiTools}
+                          onSelectedAiToolsChange={setSelectedAiTools}
+                        />
+                        {isQuestionActive && activeQuestion ? (
+                          <div className="absolute bottom-0 left-0 right-0 z-50 pointer-events-auto px-3">
+                            <InteractiveQuestionForm
+                              question={activeQuestion}
+                              onSubmit={handleQuestionSubmit}
+                              onDismiss={handleQuestionDismiss}
+                            />
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                </ResizablePane>
+              </div>
+
+              {/* MOBILE SINGLE FEED VIEW (<lg) */}
+              <div className="flex lg:hidden relative flex-1 h-full min-h-0 flex-col px-2 py-4 sm:px-4">
+                <Conversation className="min-h-0 flex-1 pb-24">
+                  <ConversationContent
+                    ref={chatScrollRef}
+                    className="space-y-6 bg-transparent"
+                  >
+                    <div className="mx-auto w-full max-w-3xl space-y-6 px-4 sm:px-6 lg:px-8">
+                      {messages.map((message, messageIndex) => {
+                        const isLastMessage = messageIndex === messages.length - 1;
+                        const isActiveUserTurn =
+                          loading &&
+                          message.role === "user" &&
+                          messageIndex === messages.length - 2;
+                        return (
+                          <ChatMessageBubble
+                            key={message.id}
+                            message={message}
+                            isAssistantStreaming={loading && isLastMessage}
+                            livePrices={sidebarQuotes}
+                            onClosePosition={closePosition}
+                            onOpenAgentDetail={(agent) => setOpenAgentId(agent.id)}
+                            rootRef={
+                              isActiveUserTurn
+                                ? (el) => {
+                                    lastUserMessageRef.current = el;
+                                  }
+                                : undefined
+                            }
+                          />
+                        );
+                      })}
+                      {loading && responseSpacerHeight > 0 ? (
+                        <div
+                          aria-hidden
+                          className="pointer-events-none shrink-0"
+                          style={{ minHeight: responseSpacerHeight }}
+                        />
+                      ) : null}
+                      {!loading && !isQuestionActive ? (
+                        <FollowUpSuggestions
+                          question={followUpQuestion}
+                          disabled={loading}
+                          onSelect={handleFollowUpSelect}
+                          className="pb-2 pt-1"
+                        />
+                      ) : null}
+                    </div>
+                  </ConversationContent>
+                  <ConversationScrollButton className="border-white/8 bg-[var(--terminal-surface)] text-zinc-300 hover:text-white" />
+                </Conversation>
+                <div className="absolute bottom-0 left-0 right-0 pointer-events-none pb-3 pt-6 bg-transparent">
+                  <div className="relative mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 pointer-events-auto">
+                    <InputBar
+                      value={value}
+                      onChange={setValue}
+                      onSend={({ content }) => {
+                        const tags = [...taggedAssets];
+                        setTaggedAssets([]);
+                        handleSend(content, tags);
+                      }}
+                      disabled={loading || isQuestionActive}
+                      status={loading ? "streaming" : "ready"}
+                      placeholder={
+                        isQuestionActive
+                          ? "Answer the question below…"
+                          : "Continue the conversation…"
+                      }
+                      variant="landing"
+                      taggedAssets={taggedAssets}
+                      onRemoveTaggedAsset={removeTaggedAsset}
+                      onToggleTaggedAsset={toggleTaggedAsset}
+                      maxTaggedAssets={MAX_TAGGED_ASSETS}
+                      selectedAiTools={selectedAiTools}
+                      onSelectedAiToolsChange={setSelectedAiTools}
+                    />
+                    {isQuestionActive && activeQuestion ? (
+                      <div className="absolute bottom-0 left-0 right-0 z-50 pointer-events-auto">
+                        <div className="mx-auto w-full max-w-2xl">
+                          <InteractiveQuestionForm
+                            question={activeQuestion}
+                            onSubmit={handleQuestionSubmit}
+                            onDismiss={handleQuestionDismiss}
+                          />
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               </div>
             </div>

@@ -195,6 +195,7 @@ export function ChatMessage({
   onOpenAgentDetail,
   guestSignInCta = false,
   rootRef,
+  hideVisualWidgets = false,
 }: {
   message: ChatMessageData;
   isAssistantStreaming?: boolean;
@@ -204,6 +205,7 @@ export function ChatMessage({
   onOpenAgentDetail?: (agent: SubAgentState) => void;
   guestSignInCta?: boolean;
   rootRef?: React.Ref<HTMLDivElement | null>;
+  hideVisualWidgets?: boolean;
 }) {
   const sessionDivider = message.parts.find((p) => p.type === "session_divider");
   if (sessionDivider?.text) {
@@ -328,6 +330,14 @@ export function ChatMessage({
           });
           return message.parts.map((part, idx) => {
             if (part.type === "trade-execution") {
+              if (hideVisualWidgets) {
+                return (
+                  <div key={`${message.id}-${idx}`} className="my-1 inline-flex items-center gap-1.5 rounded-md border border-emerald-500/20 bg-emerald-500/5 px-2.5 py-1 text-xs text-emerald-400 font-semibold uppercase tracking-wider">
+                    <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    Trade Receipt Loaded on Canvas
+                  </div>
+                );
+              }
               try {
                 const trade = typeof part.text === "string" ? JSON.parse(part.text) : part.text;
                 const currentSpotPrice =
@@ -347,9 +357,25 @@ export function ChatMessage({
               }
             }
             if (part.type === "genui" && part.payload != null) {
+              if (hideVisualWidgets) {
+                return (
+                  <div key={`${message.id}-${idx}`} className="my-1 inline-flex items-center gap-1.5 rounded-md border border-cyan-500/20 bg-cyan-500/5 px-2.5 py-1 text-xs text-cyan-400 font-semibold uppercase tracking-wider">
+                    <span className="size-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                    Visualization Loaded on Canvas
+                  </div>
+                );
+              }
               return <GenUiRenderer key={`${message.id}-${idx}`} payload={part.payload} />;
             }
             if (part.type === "quant-ui" && part.text?.includes("<quant:")) {
+              if (hideVisualWidgets) {
+                return (
+                  <div key={`${message.id}-${idx}`} className="my-1 inline-flex items-center gap-1.5 rounded-md border border-cyan-500/20 bg-cyan-500/5 px-2.5 py-1 text-xs text-cyan-400 font-semibold uppercase tracking-wider">
+                    <span className="size-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                    Visualization Loaded on Canvas
+                  </div>
+                );
+              }
               return <QuantUiRenderer key={`${message.id}-${idx}`} markup={part.text} />;
             }
             if (part.type === "text" && part.text?.trim()) {
