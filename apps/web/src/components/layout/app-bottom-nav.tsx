@@ -1,10 +1,10 @@
 "use client";
 
-import Link from "next/link";
-import { Briefcase, Home, MessageSquare, Wallet } from "lucide-react";
+import { Home, MessageSquare, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { tabPath, useAppTab, type AppTab } from "@/contexts/app-tab-context";
 import { AnalyticsEvents, captureEvent } from "@/lib/posthog/analytics";
+import type { MouseEvent } from "react";
 
 const MOBILE_NAV_ITEMS: Array<{
   tab: AppTab;
@@ -13,12 +13,22 @@ const MOBILE_NAV_ITEMS: Array<{
 }> = [
   { tab: "home", label: "Home", icon: Home },
   { tab: "chat", label: "Chat", icon: MessageSquare },
-  { tab: "markets", label: "Markets", icon: Briefcase },
-  { tab: "wallet", label: "Wallets", icon: Wallet },
+  { tab: "wallet", label: "Managed Account", icon: Wallet },
 ];
 
+function shouldUseNativeNavigation(event: MouseEvent<HTMLAnchorElement>) {
+  return (
+    event.defaultPrevented ||
+    event.button !== 0 ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.shiftKey ||
+    event.altKey
+  );
+}
+
 export function AppBottomNav() {
-  const { activeTab } = useAppTab();
+  const { activeTab, setActiveTab } = useAppTab();
 
   return (
     <nav
@@ -32,15 +42,18 @@ export function AppBottomNav() {
       {MOBILE_NAV_ITEMS.map(({ tab, label, icon: Icon }) => {
         const selected = activeTab === tab;
         return (
-          <Link
+          <a
             key={tab}
             href={tabPath(tab)}
             aria-label={label}
             aria-current={selected ? "page" : undefined}
-            onClick={() => {
+            onClick={(event) => {
+              if (shouldUseNativeNavigation(event)) return;
+              event.preventDefault();
               if (!selected) {
                 captureEvent(AnalyticsEvents.TAB_CHANGED, { tab });
               }
+              setActiveTab(tab);
             }}
             className={cn(
               "flex min-h-[var(--app-bottom-nav-height)] flex-1 flex-col items-center justify-center gap-0.5 px-2 transition-colors active:bg-white/[0.04]",
@@ -62,7 +75,7 @@ export function AppBottomNav() {
             >
               {label}
             </span>
-          </Link>
+          </a>
         );
       })}
     </nav>

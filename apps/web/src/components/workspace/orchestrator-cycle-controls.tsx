@@ -213,12 +213,12 @@ export function OrchestratorCycleControls() {
             type="button"
             onClick={() => {
               setOpen(false);
-              setActiveTab("markets");
+              setActiveTab("home");
             }}
             className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
           >
             <Settings2 className="size-3.5" />
-            More in Investing settings
+            More in Home
           </button>
         </div>
       ) : null}

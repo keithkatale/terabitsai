@@ -30,11 +30,14 @@ export interface MessagePart {
     | "trade-execution"
     | "genui"
     | "quant-ui"
+    | "canvas"
     | "monitor_directive"
     | "session_divider";
   text?: string;
   toolUseId?: string;
   payload?: unknown;
+  html?: string;
+  title?: string;
 }
 
 export interface ChatMessageData {

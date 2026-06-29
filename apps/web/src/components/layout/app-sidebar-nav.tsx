@@ -1,8 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import {
   ArrowUpRight,
   ChevronLeft,
@@ -10,7 +9,6 @@ import {
   Home,
   LogIn,
   LogOut,
-  Briefcase,
   MessageSquare,
   UserPlus,
   Wallet,
@@ -35,7 +33,7 @@ function NavItem({
   expanded: boolean;
   active?: boolean;
   primary?: boolean;
-  onClick?: () => void;
+  onClick?: (event: MouseEvent<HTMLAnchorElement | HTMLButtonElement>) => void;
 }) {
   const className = cn(
     "terminal-nav-item group w-full items-center text-left text-xs font-semibold transition-all duration-200",
@@ -56,30 +54,40 @@ function NavItem({
     </>
   );
 
-  if (onClick) {
+  if (href) {
     return (
-      <button type="button" onClick={onClick} title={label} className={className}>
+      <a href={href} onClick={onClick} title={label} className={className}>
         {content}
-      </button>
+      </a>
     );
   }
 
   return (
-    <Link href={href ?? "/"} title={label} className={className} prefetch scroll={false}>
+    <button type="button" onClick={onClick} title={label} className={className}>
       {content}
-    </Link>
+    </button>
+  );
+}
+
+function shouldUseNativeNavigation(event: MouseEvent<HTMLAnchorElement>) {
+  return (
+    event.defaultPrevented ||
+    event.button !== 0 ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.shiftKey ||
+    event.altKey
   );
 }
 
 const APP_NAV_ITEMS: Array<{ tab: AppTab; label: string; icon: typeof Wallet }> = [
   { tab: "home", label: "Home", icon: Home },
   { tab: "chat", label: "Chat", icon: MessageSquare },
-  { tab: "markets", label: "Markets", icon: Briefcase },
-  { tab: "wallet", label: "Wallets", icon: Wallet },
+  { tab: "wallet", label: "Managed Account", icon: Wallet },
 ];
 
 function AppTabNav({ expanded }: { expanded: boolean }) {
-  const { activeTab } = useAppTab();
+  const { activeTab, setActiveTab } = useAppTab();
 
   return (
     <>
@@ -91,6 +99,11 @@ function AppTabNav({ expanded }: { expanded: boolean }) {
           label={label}
           expanded={expanded}
           active={activeTab === tab}
+          onClick={(event) => {
+            if (shouldUseNativeNavigation(event as MouseEvent<HTMLAnchorElement>)) return;
+            event.preventDefault();
+            setActiveTab(tab);
+          }}
         />
       ))}
     </>
@@ -210,13 +223,13 @@ export function AppSidebarNav({
         ) : (
           <>
             <NavItem
-              href={`/login?next=${APP_BASE}/markets`}
+              href={`/login?next=${APP_BASE}/home`}
               icon={<LogIn className="size-4" strokeWidth={2} />}
               label="Sign in"
               expanded={expanded}
             />
             <NavItem
-              href={`/signup?next=${APP_BASE}/markets`}
+              href={`/signup?next=${APP_BASE}/home`}
               icon={<UserPlus className="size-4" strokeWidth={2} />}
               label="Get started"
               expanded={expanded}

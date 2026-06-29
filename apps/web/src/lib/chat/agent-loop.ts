@@ -3,7 +3,7 @@ import {
   getVertexGeminiClient,
   geminiIncludeThoughts,
 } from "@/lib/gemini/vertex-client";
-import { extractToolGenui, extractToolQuantUi } from "@/lib/chat/stream-types";
+import { extractToolGenui, extractToolQuantUi, extractToolCanvas } from "@/lib/chat/stream-types";
 import { isToolResultOk, runToolByName, type RunToolOptions, type ToolRunContext } from "@/lib/chat/run-tool-by-name";
 
 /** Minimum visible report length after tool calls before accepting completion. */
@@ -16,6 +16,7 @@ export type AgentLoopEvent =
   | { type: "status"; label: string; detail?: string }
   | { type: "genui"; payload: unknown; source?: string }
   | { type: "quant_ui"; markup: string; source?: string }
+  | { type: "canvas"; html: string; title?: string; source?: string }
   | { type: "tool_start"; toolUseId: string; name: string; args?: Record<string, unknown> }
   | {
       type: "tool_end";
@@ -32,6 +33,7 @@ export type AgentLoopResult = {
   reportText: string;
   pendingGenui: unknown;
   pendingQuantUi: string | null;
+  pendingCanvas: string | null;
 };
 
 type StreamConsumeResult = {
@@ -228,6 +230,7 @@ export async function runAgentLoop(params: {
   let loopCount = 0;
   let pendingGenui: unknown = null;
   let pendingQuantUi: string | null = null;
+  let pendingCanvas: string | null = null;
   let reportText = "";
   let hadToolCalls = false;
   let consecutiveEmptyTurns = 0;
@@ -252,8 +255,26 @@ export async function runAgentLoop(params: {
 
     if (functionCalls.length === 0) {
       if (bufferedVisibleText) {
-        onEvent({ type: "text", text: bufferedVisibleText });
-        reportText += bufferedVisibleText;
+        // Detect and extract canvas fences before emitting text
+        let textToEmit = bufferedVisibleText;
+        const canvasFenceRegex = /```canvas\s*\n?([\s\S]*?)```/gi;
+        let canvasMatch: RegExpExecArray | null;
+        
+        while ((canvasMatch = canvasFenceRegex.exec(bufferedVisibleText)) !== null) {
+          const canvasHtml = canvasMatch[1].trim();
+          if (canvasHtml) {
+            pendingCanvas = canvasHtml;
+            onEvent({ type: "canvas", html: canvasHtml });
+            // Strip the canvas fence from the text
+            textToEmit = textToEmit.replace(canvasMatch[0], "");
+          }
+        }
+        
+        textToEmit = textToEmit.trim();
+        if (textToEmit) {
+          onEvent({ type: "text", text: textToEmit });
+          reportText += textToEmit;
+        }
         consecutiveEmptyTurns = 0;
 
         const trimmed = reportText.trim();
@@ -269,7 +290,9 @@ export async function runAgentLoop(params: {
           isTruncated ? false :
           (finishReason === "STOP" ? true : endsWithCompletePunctuation);
 
-        const isTooShortAfterTools = hadToolCalls && trimmed.length < MIN_SUBSTANTIVE_REPORT;
+        // Canvas counts as substantive output
+        const hasCanvas = pendingCanvas !== null;
+        const isTooShortAfterTools = hadToolCalls && !hasCanvas && trimmed.length < MIN_SUBSTANTIVE_REPORT;
 
         if (seemsComplete && !isTooShortAfterTools) {
           loopBreakReason = "seems_complete";
@@ -382,10 +405,13 @@ export async function runAgentLoop(params: {
 
       const toolQuantUi = ok ? extractToolQuantUi(toolResult) : null;
       const toolGenui = ok ? extractToolGenui(toolResult) : null;
+      const toolCanvas = ok ? extractToolCanvas(toolResult) : null;
       if (toolQuantUi) {
         onEvent({ type: "quant_ui", markup: toolQuantUi, source: name });
       } else if (toolGenui) {
         onEvent({ type: "genui", payload: toolGenui, source: name });
+      } else if (toolCanvas) {
+        onEvent({ type: "canvas", html: toolCanvas.html, title: toolCanvas.title, source: name });
       }
 
       // For failed GenUI/chart tools, provide detailed error feedback to help the model retry
@@ -414,9 +440,10 @@ export async function runAgentLoop(params: {
     });
   }
 
-  // Force final response if tools ran but output is missing or still too short
+  // Force final response if tools ran but output is missing or still too short (canvas counts as substantive)
   const reportLen = reportText.trim().length;
-  const needsRecovery = hadToolCalls && reportLen < MIN_SUBSTANTIVE_REPORT;
+  const hasCanvas = pendingCanvas !== null;
+  const needsRecovery = hadToolCalls && !hasCanvas && reportLen < MIN_SUBSTANTIVE_REPORT;
 
   if (needsRecovery) {
     onEvent({ type: "status", label: "Finalizing response" });
@@ -460,5 +487,5 @@ export async function runAgentLoop(params: {
     onEvent({ type: "text", text: fallback });
   }
 
-  return { reportText: reportText.trim(), pendingGenui, pendingQuantUi };
+  return { reportText: reportText.trim(), pendingGenui, pendingQuantUi, pendingCanvas };
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useState, useMemo, useRef, useCallback, useId, type ReactNode } from "react";
 import { useAppTab, type AppTab } from "@/contexts/app-tab-context";
 import InputBar, { type TaggedAsset } from "@/components/ui/input-bar";
@@ -53,6 +54,7 @@ import { normalizeGenUiPayload } from "@/components/generative-ui/genui-types";
 import { GenUiRenderer } from "@/components/generative-ui/genui-renderer";
 import { QuantUiRenderer } from "@/components/quant-ui/quant-ui-renderer";
 import { TradeReceiptCard } from "@/components/ai-elements/message";
+import { CanvasDocument } from "@/components/canvas/canvas-document";
 
 function getGenUiColSpan(payload: any): number {
   try {
@@ -137,8 +139,7 @@ import {
   ConversationContent,
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
-import { MarketTerminal } from "@/components/terminal/market-terminal";
-import type { TerminalTabId, TradeData } from "@/components/terminal/types";
+import type { TradeData } from "@/components/terminal/types";
 import { categoryForAsset } from "@/lib/catalog/asset-catalog";
 import type { LiveSignal } from "@/lib/market/market-intel-data";
 import { PageBackground } from "@/components/ui/page-background";
@@ -146,9 +147,6 @@ import {
   ChatLandingHero,
   CHAT_LANDING_MAX_TAGGED_ASSETS,
 } from "@/components/workspace/chat-landing-hero";
-import { HomeSection } from "@/components/workspace/app-sections/home-section";
-import { WalletSection } from "@/components/workspace/app-sections/wallet-section";
-import { MarketsTerminal } from "@/components/markets/markets-terminal";
 import { WalletActionsBar } from "@/components/workspace/wallet-actions-bar";
 import {
   ConversationPicker,
@@ -160,6 +158,99 @@ import { APP_BASE, CHAT_DRAFT_SEGMENT } from "@/lib/routes";
 import { readCachedTradingMode } from "@/lib/account/user-app-preferences-client";
 import { usePortfolioSnapshotPoll } from "@/hooks/use-portfolio-snapshot-poll";
 import { synthesizeConversationTitleFromFirstUserText } from "@/lib/chat/conversation-title";
+
+function SkeletonBlock({ className }: { className?: string }) {
+  return (
+    <div
+      className={cn(
+        "animate-pulse rounded-xl bg-gradient-to-r from-white/[0.035] via-white/[0.075] to-white/[0.035] bg-[length:220%_100%]",
+        className,
+      )}
+    />
+  );
+}
+
+function TabContentSkeleton({
+  label,
+  variant = "dashboard",
+}: {
+  label: string;
+  variant?: "dashboard" | "wallet" | "chat";
+}) {
+  return (
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[var(--terminal-surface)] p-4 sm:p-6">
+      <div className="mb-5 flex shrink-0 items-center justify-between gap-4">
+        <div>
+          <div className="mb-2 flex items-center gap-2">
+            <span className="size-2 rounded-full bg-cyan-400 shadow-[0_0_14px_rgba(34,211,238,0.7)]" />
+            <span className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-300">
+              Loading
+            </span>
+          </div>
+          <p className="text-sm font-semibold text-zinc-300">{label}</p>
+        </div>
+        <SkeletonBlock className="hidden h-9 w-32 rounded-full sm:block" />
+      </div>
+
+      {variant === "chat" ? (
+        <div className="flex min-h-0 flex-1 gap-4">
+          <div className="hidden w-72 shrink-0 flex-col gap-3 rounded-2xl border border-white/8 bg-white/[0.025] p-3 lg:flex">
+            <SkeletonBlock className="h-9" />
+            {Array.from({ length: 7 }).map((_, idx) => (
+              <SkeletonBlock key={idx} className="h-12" />
+            ))}
+          </div>
+          <div className="flex min-w-0 flex-1 flex-col justify-end gap-4 rounded-2xl border border-white/8 bg-black/20 p-4">
+            <SkeletonBlock className="ml-auto h-16 w-2/3" />
+            <SkeletonBlock className="h-24 w-4/5" />
+            <SkeletonBlock className="h-14 w-1/2" />
+            <SkeletonBlock className="mt-4 h-14 rounded-full" />
+          </div>
+        </div>
+      ) : (
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-12">
+          <div className="space-y-4 lg:col-span-8">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              {Array.from({ length: 4 }).map((_, idx) => (
+                <SkeletonBlock key={idx} className="h-28" />
+              ))}
+            </div>
+            <SkeletonBlock className="h-64" />
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <SkeletonBlock className="h-40" />
+              <SkeletonBlock className="h-40" />
+            </div>
+          </div>
+          <div className="space-y-4 lg:col-span-4">
+            <SkeletonBlock className="h-48" />
+            <SkeletonBlock className="h-36" />
+            <SkeletonBlock className={variant === "wallet" ? "h-40" : "h-28"} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const HomeSection = dynamic(
+  () =>
+    import("@/components/workspace/app-sections/home-section").then(
+      (mod) => mod.HomeSection,
+    ),
+  {
+    loading: () => <TabContentSkeleton label="Preparing your dashboard" />,
+  },
+);
+
+const WalletSection = dynamic(
+  () =>
+    import("@/components/workspace/app-sections/wallet-section").then(
+      (mod) => mod.WalletSection,
+    ),
+  {
+    loading: () => <TabContentSkeleton label="Loading wallet data" variant="wallet" />,
+  },
+);
 
 // Self-contained custom Figma SVG icon component
 const Figma = ({ className }: { className?: string }) => (
@@ -181,11 +272,14 @@ interface MessagePart {
     | "trade-execution"
     | "genui"
     | "quant-ui"
+    | "canvas"
     | "monitor_directive"
     | "session_divider";
   text?: string;
   toolUseId?: string;
   payload?: unknown;
+  html?: string;
+  title?: string;
 }
 
 interface ChatMessage {
@@ -199,7 +293,7 @@ interface ChatMessage {
 }
 
 function mapPersistedParts(
-  parts: Array<{ type: string; text?: string; toolUseId?: string; payload?: unknown }>,
+  parts: Array<{ type: string; text?: string; toolUseId?: string; payload?: unknown; html?: string; title?: string }>,
 ): MessagePart[] {
   return parts.map((p) => {
     if (p.type === "genui" && p.payload != null) {
@@ -207,6 +301,9 @@ function mapPersistedParts(
     }
     if (p.type === "quant-ui" && p.payload != null) {
       return { type: "quant-ui" as const, payload: p.payload };
+    }
+    if (p.type === "canvas" && p.html) {
+      return { type: "canvas" as const, html: p.html, title: p.title };
     }
     if (p.type === "tool_ref" && p.toolUseId) {
       return { type: "tool_ref" as const, toolUseId: p.toolUseId };
@@ -424,7 +521,10 @@ export function TradingWorkspace() {
   const pendingChatScrollRef = useRef(false);
   const [responseSpacerHeight, setResponseSpacerHeight] = useState(0);
   const [userPlan, setUserPlan] = useState<"free" | "pro" | "premium">("free");
+  const [planLoading, setPlanLoading] = useState(true);
   const [isHomeChatSidebarOpen, setIsHomeChatSidebarOpen] = useState(false);
+  const [canvasLayoutMode, setCanvasLayoutMode] = useState<"auto" | "grid" | "focus">("auto");
+
 
   // Helper for micro-sparklines on terminal canvas
   const buildLocalLinePath = useCallback((data: number[], w: number, h: number, pad = 2) => {
@@ -471,13 +571,67 @@ export function TradingWorkspace() {
     return list;
   }, [messages]);
 
+  // Extract canvas documents (separate from bento widgets)
+  const canvasDocuments = useMemo(() => {
+    const list: Array<{
+      id: string;
+      messageId: string;
+      html: string;
+      title?: string;
+      timestamp: number;
+    }> = [];
+    messages.forEach((msg, msgIdx) => {
+      msg.parts.forEach((part, idx) => {
+        if (part.type === "canvas" && part.html) {
+          const id = `${msg.id}-${idx}`;
+          list.push({ 
+            id, 
+            messageId: msg.id,
+            html: part.html, 
+            title: part.title,
+            timestamp: msgIdx 
+          });
+        }
+      });
+    });
+    return list;
+  }, [messages]);
+
+  // Track canvas panel open state. It should only open when the AI emits a new canvas document,
+  // not merely because a conversation has started or an older thread was rehydrated.
+  const [canvasPanelOpen, setCanvasPanelOpen] = useState(false);
+  const canvasDocumentCountRef = useRef(0);
+
   useEffect(() => {
+    const previousCount = canvasDocumentCountRef.current;
+    if (canvasDocuments.length > previousCount && loading) {
+      setCanvasPanelOpen(true);
+    }
+    if (canvasDocuments.length === 0) {
+      setCanvasPanelOpen(false);
+    }
+    canvasDocumentCountRef.current = canvasDocuments.length;
+  }, [canvasDocuments.length, loading]);
+
+  const activeCanvasDocument =
+    canvasDocuments.length > 0 ? canvasDocuments[canvasDocuments.length - 1] : null;
+  const shouldShowCanvasPanel = Boolean(activeCanvasDocument && canvasPanelOpen);
+
+  useEffect(() => {
+    let cancelled = false;
     fetch("/api/subscription/status", { credentials: "include" })
       .then((r) => r.json())
       .then((d) => {
-        if (d?.plan) setUserPlan(d.plan);
+        if (!cancelled && d?.plan) setUserPlan(d.plan);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setPlanLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const resetCommandChatUi = useCallback(() => {
@@ -528,9 +682,6 @@ export function TradingWorkspace() {
     }
   }, [loading]);
 
-  const [activeTerminalTab, setActiveTerminalTab] = useState<TerminalTabId>("markets");
-  const [pinnedAssetTabs, setPinnedAssetTabs] = useState<string[]>([]);
-
   // Active Market selected symbol and category
   const [activeSymbol, setActiveSymbol] = useState("BTCUSD");
   const [activeCategory, setActiveCategory] = useState("Crypto");
@@ -546,29 +697,22 @@ export function TradingWorkspace() {
     setValue(`Analyze ${symbol} trend and recommend a simulated trading strategy.`);
   }, []);
 
-  const openAssetTab = useCallback((symbol: string) => {
+  const focusAsset = useCallback((symbol: string) => {
     setActiveSymbol(symbol);
     const asset = rawCapitalCatalog.find((a) => a.symbol === symbol);
     if (asset) {
       setActiveCategory(categoryForAsset(asset.asset_class, asset.sector ?? undefined));
     }
-    setPinnedAssetTabs((prev) => (prev.includes(symbol) ? prev : [...prev, symbol].slice(-6)));
-    setActiveTerminalTab(`asset:${symbol}`);
   }, []);
 
   const handleSignalClick = useCallback((sig: LiveSignal) => {
-    openAssetTab(sig.symbol);
+    focusAsset(sig.symbol);
     setActiveSymbol(sig.symbol);
     setActiveCategory(categoryForAsset(sig.assetClass, sig.sector));
     setValue(
       `Perform a detailed multi-agent team analysis on ${sig.symbol} regarding the recent ${sig.strategy} signal on the ${sig.timeframe} timeframe.`,
     );
-  }, [openAssetTab]);
-
-  const closeAssetTab = useCallback((symbol: string) => {
-    setPinnedAssetTabs((prev) => prev.filter((s) => s !== symbol));
-    setActiveTerminalTab((t) => (t === `asset:${symbol}` ? "markets" : t));
-  }, []);
+  }, [focusAsset]);
 
   const handleSymbolFromFeed = useCallback((symbol: string) => {
     const asset = rawCapitalCatalog.find((a) => a.symbol === symbol);
@@ -613,7 +757,7 @@ export function TradingWorkspace() {
 
   usePortfolioSnapshotPoll(
     tradingMode,
-    isTabActive("home") || isTabActive("markets"),
+    isTabActive("home"),
   );
 
   useEffect(() => {
@@ -1080,7 +1224,7 @@ export function TradingWorkspace() {
 
   useEffect(() => {
     if (!user) return;
-    if (!isTabActive("home") && !isTabActive("markets")) return;
+    if (!isTabActive("home")) return;
 
     const interval = window.setInterval(() => {
       void reloadPositions(true);
@@ -1313,6 +1457,48 @@ export function TradingWorkspace() {
       setMessages((prev) => [...prev, errorMsg]);
     }
   }, [positions, refreshAccount, reloadPositions, tradingMode]);
+
+  const renderCanvasWidget = useCallback((item: any, isFocus = false) => {
+    return (
+      <div
+        key={item.id}
+        className={cn(
+          "rounded-xl border border-white/[0.04] bg-zinc-950/40 backdrop-blur-md p-4 flex flex-col gap-3 group transition-all duration-300 hover:border-white/[0.08] hover:shadow-[0_8px_30px_rgb(0,0,0,0.4)] relative overflow-hidden",
+          isFocus ? "col-span-full border-cyan-500/20 bg-cyan-950/[0.02]" : ""
+        )}
+      >
+        <div className="absolute inset-0 bg-gradient-to-tr from-white/[0.01] via-transparent to-transparent pointer-events-none" />
+        <div className="flex items-center justify-between border-b border-white/[0.04] pb-2 shrink-0">
+          <div className="flex items-center gap-2">
+            <div className={cn("size-1.5 rounded-full animate-pulse", isFocus ? "bg-cyan-400 shadow-[0_0_6px_#22d3ee]" : "bg-cyan-500")} />
+            <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 truncate max-w-[200px] sm:max-w-[300px]">
+              {item.title || "Terminal Node"}
+            </span>
+          </div>
+          <span className="text-[8px] font-black text-zinc-600 bg-zinc-900/60 px-1.5 py-0.5 rounded uppercase tracking-widest shrink-0">
+            {item.type}
+          </span>
+        </div>
+        <div className="flex-1 overflow-x-auto scrollbar-none text-left">
+          {item.type === "trade-execution" && (
+            <div className="flex justify-center py-2">
+              <TradeReceiptCard
+                trade={item.payload}
+                currentPrice={sidebarQuotes[item.payload.symbol]?.spot}
+                onClosePosition={closePosition}
+              />
+            </div>
+          )}
+          {item.type === "genui" && (
+            <GenUiRenderer payload={item.payload} />
+          )}
+          {item.type === "quant-ui" && (
+            <QuantUiRenderer markup={item.text ?? ""} />
+          )}
+        </div>
+      </div>
+    );
+  }, [sidebarQuotes, closePosition]);
 
   const activePositionRow = useMemo(() => {
     if (!activePositionId) return null;
@@ -1558,7 +1744,7 @@ export function TradingWorkspace() {
     if (loading) return;
 
     if (!user) {
-      window.location.href = `/login?next=${encodeURIComponent(`${APP_BASE}/markets`)}`;
+      window.location.href = `/login?next=${encodeURIComponent(`${APP_BASE}/home`)}`;
       return;
     }
 
@@ -1756,6 +1942,12 @@ export function TradingWorkspace() {
 
               if (event.type === "quant_ui") {
                 const parts = [...lastMsg.parts, { type: "quant-ui" as const, text: event.markup }];
+                updated[updated.length - 1] = { ...lastMsg, parts, liveStatus: undefined, liveStatusDetail: undefined };
+                return updated;
+              }
+
+              if (event.type === "canvas") {
+                const parts = [...lastMsg.parts, { type: "canvas" as const, html: event.html, title: event.title }];
                 updated[updated.length - 1] = { ...lastMsg, parts, liveStatus: undefined, liveStatusDetail: undefined };
                 return updated;
               }
@@ -2005,9 +2197,15 @@ Provide:
     // eslint-disable-next-line react-hooks/exhaustive-deps -- bootstrap once from sessionStorage
   }, [mode]);
 
+  const accountInitialLoading = accountLoading && summary == null;
+  const walletInitialLoading = planLoading || accountInitialLoading;
+
   return (
     <div className="relative h-full min-h-0 w-full">
       <TabPanel tab="home" activeTab={mode}>
+        {accountInitialLoading ? (
+          <TabContentSkeleton label="Loading your trading dashboard" />
+        ) : (
         <div className="flex h-full min-h-0 flex-row overflow-hidden relative">
           <div className="flex flex-1 min-w-0 flex-col overflow-hidden pb-0">
             <HomeSection
@@ -2160,12 +2358,15 @@ Provide:
             </ResizablePane>
           )}
         </div>
+        )}
       </TabPanel>
 
       <TabPanel tab="wallet" activeTab={mode}>
         <div className="flex h-full min-h-0 flex-col overflow-hidden">
           <WalletActionsBar />
-          {userPlan !== "premium" ? (
+          {walletInitialLoading ? (
+            <TabContentSkeleton label="Loading wallet and plan details" variant="wallet" />
+          ) : userPlan !== "premium" ? (
             <PremiumUpgradeGate currentPlan={userPlan} />
           ) : (
             <WalletSection
@@ -2186,10 +2387,6 @@ Provide:
         </div>
       </TabPanel>
 
-      <TabPanel tab="markets" activeTab={mode}>
-        <MarketsTerminal />
-      </TabPanel>
-
       <TabPanel tab="chat" activeTab={mode}>
         {messages.length === 0 ? <PageBackground overlay="minimal" variant="orb" /> : null}
         <div className="relative flex h-full w-full overflow-hidden">
@@ -2205,7 +2402,9 @@ Provide:
           <ChatWidgetProvider onWidgetAction={handleWidgetAction}>
           <div className="relative flex h-full w-full overflow-hidden">
             <div className="relative flex h-full min-w-0 flex-1 flex-col overflow-hidden">
-          {messages.length === 0 ? (
+          {switchingConversation ? (
+            <TabContentSkeleton label="Loading conversation" variant="chat" />
+          ) : messages.length === 0 ? (
             <ChatLandingHero
               showBrandMark={false}
               tone="chat"
@@ -2228,134 +2427,228 @@ Provide:
             <div className="relative flex h-full w-full overflow-hidden">
               {/* DESKTOP SPLIT VIEW: Bento Canvas Left, Compact Chat Right */}
               <div className="hidden lg:flex flex-1 h-full min-w-0 overflow-hidden">
-                {/* Main Workspace Canvas (Bento Grid) */}
-                <div className="flex-1 h-full overflow-y-auto p-4 scrollbar-thin">
-                  {bentoWidgets.length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center p-6 text-center max-w-4xl mx-auto space-y-6 animate-fade-in">
-                      <div className="space-y-2">
-                        <h3 className="text-lg font-bold text-white uppercase tracking-wider flex items-center justify-center gap-2">
-                          <span className="size-2 rounded-full bg-cyan-400 animate-ping" />
-                          Bloomberg Terminal Canvas
-                        </h3>
-                        <p className="text-xs text-zinc-500 max-w-md mx-auto">
-                          Interactive canvas ready. Real-time active market quotes are flashed below. Ask Copilot to run technical analyses, generate models, or execute trades to populate this workspace.
-                        </p>
-                      </div>
-                      
-                      {/* Real-time watch list fallback */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full mt-4">
-                        {[
-                          { symbol: "US500", name: "S&P 500 Index", color: "cyan" as const, sparkData: [5120, 5132, 5115, 5140, 5130, 5145, 5138, 5155] },
-                          { symbol: "GOLD", name: "Gold Spot Price", color: "amber" as const, sparkData: [2150, 2162, 2145, 2170, 2155, 2180, 2168, 2195] },
-                          { symbol: "BTCUSD", name: "Bitcoin / USD", color: "emerald" as const, sparkData: [64200, 64500, 63900, 64900, 64400, 65200, 64800, 65500] },
-                          { symbol: "ETHUSD", name: "Ethereum / USD", color: "violet" as const, sparkData: [3420, 3450, 3390, 3490, 3440, 3520, 3480, 3555] }
-                        ].map((item) => {
-                          const quote = sidebarQuotes[item.symbol] ?? { spot: item.sparkData[item.sparkData.length - 1], change24hPct: 0.15 };
-                          const spot = quote.spot ?? item.sparkData[item.sparkData.length - 1];
-                          const change = quote.change24hPct ?? 0;
-                          const isUp = change >= 0;
-                          
-                          const currentSpark = item.sparkData.map(val => val * (spot / item.sparkData[item.sparkData.length - 1]));
-
-                          return (
-                            <div
-                              key={item.symbol}
-                              onClick={() => handleCardClick(item.symbol)}
-                              className="group relative rounded-xl border border-white/[0.04] bg-zinc-950/30 p-4 flex flex-col justify-between hover:border-white/[0.08] hover:bg-zinc-950/50 transition-all duration-300 cursor-pointer text-left"
-                            >
-                              <div className="absolute top-0 right-0 size-24 bg-white/[0.01] blur-2xl group-hover:bg-cyan-500/[0.02] transition-all duration-500" />
-                              
-                              <div className="flex justify-between items-start">
-                                <div>
-                                  <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500 group-hover:text-zinc-400 transition-colors">
-                                    {item.name}
-                                  </span>
-                                  <h4 className="text-base font-extrabold text-white font-mono mt-1">
-                                    {item.symbol}
-                                  </h4>
-                                </div>
-                                <span className={cn(
-                                  "text-[10px] font-bold px-1.5 py-0.5 rounded font-mono",
-                                  isUp ? "bg-emerald-500/10 text-emerald-400" : "bg-rose-500/10 text-rose-400"
-                                )}>
-                                  {isUp ? "+" : ""}{change.toFixed(2)}%
-                                </span>
-                              </div>
-
-                              <div className="flex items-end justify-between mt-4">
-                                <span className="text-xl font-bold tracking-tight text-white font-mono">
-                                  ${spot.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                </span>
-                                <div className="w-[100px] h-[30px] opacity-75 group-hover:opacity-100 transition-opacity">
-                                  <svg viewBox="0 0 100 30" width="100" height="30" className="overflow-visible">
-                                    <path
-                                      d={buildLocalLinePath(currentSpark, 100, 30).line}
-                                      fill="none"
-                                      stroke={isUp ? "#34d399" : "#f87171"}
-                                      strokeWidth={1.5}
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                    />
-                                  </svg>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
+                {/* AI canvas is only mounted after the assistant emits a canvas artifact. */}
+                <div className={cn("h-full flex-1 flex-col min-w-0 overflow-hidden", shouldShowCanvasPanel ? "flex" : "hidden")}>
+                  {/* Canvas Header */}
+                  <div className="bg-zinc-950/60 backdrop-blur-md border-b border-white/[0.04] px-4 py-2.5 flex items-center justify-between shrink-0 select-none">
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1.5 bg-zinc-900 border border-white/[0.04] px-2.5 py-1 rounded">
+                        <span className="size-1.5 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_8px_#22d3ee]" />
+                        <span className="text-[11px] font-black text-white font-mono tracking-wider">
+                          AI CANVAS
+                        </span>
                       </div>
                     </div>
-                  ) : (
-                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 auto-rows-max animate-fade-in">
-                      {bentoWidgets.map((item) => (
-                        <div
-                          key={item.id}
-                          className={cn(
-                            "rounded-xl border border-white/[0.04] bg-zinc-950/40 backdrop-blur-md p-4 flex flex-col gap-3 group transition-all duration-300 hover:border-white/[0.08] hover:shadow-[0_8px_30px_rgb(0,0,0,0.4)] relative overflow-hidden",
-                            item.colSpan === 2 ? "col-span-1 xl:col-span-2" : "col-span-1"
-                          )}
-                        >
-                          <div className="absolute inset-0 bg-gradient-to-tr from-white/[0.01] via-transparent to-transparent pointer-events-none" />
-                          <div className="flex items-center justify-between border-b border-white/[0.04] pb-2 shrink-0">
-                            <div className="flex items-center gap-2">
-                              <div className="size-1.5 rounded-full bg-cyan-500 animate-pulse" />
-                              <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 truncate max-w-[200px] sm:max-w-[300px]">
-                                {item.title || "Terminal Node"}
-                              </span>
-                            </div>
-                            <span className="text-[8px] font-black text-zinc-600 bg-zinc-900/60 px-1.5 py-0.5 rounded uppercase tracking-widest shrink-0">
-                              {item.type}
-                            </span>
-                          </div>
-                          <div className="flex-1 overflow-x-auto scrollbar-none text-left">
-                            {item.type === "trade-execution" && (
-                              <div className="flex justify-center py-2">
-                                <TradeReceiptCard
-                                  trade={item.payload}
-                                  currentPrice={sidebarQuotes[item.payload.symbol]?.spot}
-                                  onClosePosition={closePosition}
-                                />
-                              </div>
-                            )}
-                            {item.type === "genui" && (
-                              <GenUiRenderer payload={item.payload} />
-                            )}
-                            {item.type === "quant-ui" && (
-                              <QuantUiRenderer markup={item.text ?? ""} />
-                            )}
-                          </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setCanvasPanelOpen(false)}
+                        title="Close canvas"
+                        className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-black uppercase font-mono tracking-wider rounded border border-white/[0.06] bg-white/[0.02] text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100 transition-all duration-150"
+                      >
+                        <X className="size-3" />
+                        <span className="hidden md:inline">CLOSE</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Scrollable grid content */}
+                  <div className="flex-1 h-full overflow-y-auto p-4 scrollbar-thin">
+                    {false ? (
+                      <div className="h-full flex flex-col items-center justify-center p-6 text-center max-w-4xl mx-auto space-y-6 animate-fade-in">
+                        <div className="space-y-2">
+                          <h3 className="text-lg font-bold text-white uppercase tracking-wider flex items-center justify-center gap-2">
+                            <span className="size-2 rounded-full bg-cyan-400 animate-ping" />
+                            AI Canvas
+                          </h3>
+                          <p className="text-xs text-zinc-500 max-w-md mx-auto">
+                            The canvas opens only when the assistant creates a canvas document.
+                          </p>
                         </div>
-                      ))}
-                    </div>
-                  )}
+                        
+                        {/* Real-time watch list fallback */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full mt-4">
+                          {[
+                            { symbol: "US500", name: "S&P 500 Index", color: "cyan" as const, sparkData: [5120, 5132, 5115, 5140, 5130, 5145, 5138, 5155] },
+                            { symbol: "GOLD", name: "Gold Spot Price", color: "amber" as const, sparkData: [2150, 2162, 2145, 2170, 2155, 2180, 2168, 2195] },
+                            { symbol: "BTCUSD", name: "Bitcoin / USD", color: "emerald" as const, sparkData: [64200, 64500, 63900, 64900, 64400, 65200, 64800, 65500] },
+                            { symbol: "ETHUSD", name: "Ethereum / USD", color: "violet" as const, sparkData: [3420, 3450, 3390, 3490, 3440, 3520, 3480, 3555] }
+                          ].map((item) => {
+                            const quote = sidebarQuotes[item.symbol] ?? { spot: item.sparkData[item.sparkData.length - 1], change24hPct: 0.15 };
+                            const spot = quote.spot ?? item.sparkData[item.sparkData.length - 1];
+                            const change = quote.change24hPct ?? 0;
+                            const isUp = change >= 0;
+                            
+                            const currentSpark = item.sparkData.map(val => val * (spot / item.sparkData[item.sparkData.length - 1]));
+
+                            return (
+                              <div
+                                key={item.symbol}
+                                onClick={() => handleCardClick(item.symbol)}
+                                className="group relative rounded-xl border border-white/[0.04] bg-zinc-950/30 p-4 flex flex-col justify-between hover:border-white/[0.08] hover:bg-zinc-950/50 transition-all duration-300 cursor-pointer text-left"
+                              >
+                                <div className="absolute top-0 right-0 size-24 bg-white/[0.01] blur-2xl group-hover:bg-cyan-500/[0.02] transition-all duration-500" />
+                                
+                                <div className="flex justify-between items-start">
+                                  <div>
+                                    <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500 group-hover:text-zinc-400 transition-colors">
+                                      {item.name}
+                                    </span>
+                                    <h4 className="text-base font-extrabold text-white font-mono mt-1">
+                                      {item.symbol}
+                                    </h4>
+                                  </div>
+                                  <span className={cn(
+                                    "text-[10px] font-bold px-1.5 py-0.5 rounded font-mono",
+                                    isUp ? "bg-emerald-500/10 text-emerald-400" : "bg-rose-500/10 text-rose-400"
+                                  )}>
+                                    {isUp ? "+" : ""}{change.toFixed(2)}%
+                                  </span>
+                                </div>
+
+                                <div className="flex items-end justify-between mt-4">
+                                  <span className="text-xl font-bold tracking-tight text-white font-mono">
+                                    ${spot.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </span>
+                                  <div className="w-[100px] h-[30px] opacity-75 group-hover:opacity-100 transition-opacity">
+                                    <svg viewBox="0 0 100 30" width="100" height="30" className="overflow-visible">
+                                      <path
+                                        d={buildLocalLinePath(currentSpark, 100, 30).line}
+                                        fill="none"
+                                        stroke={isUp ? "#34d399" : "#f87171"}
+                                        strokeWidth={1.5}
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                      />
+                                    </svg>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      // Canvas + Widgets Layout
+                      <div className="flex flex-col gap-4 animate-fade-in text-left">
+                        {/* Active Canvas Document */}
+                        {activeCanvasDocument && (
+                          <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <div className="size-2 rounded-full bg-cyan-400 animate-pulse" />
+                                <h4 className="text-xs font-black uppercase tracking-wider text-zinc-300">
+                                  Active Canvas
+                                </h4>
+                              </div>
+                            </div>
+                            
+                            <div className="rounded-xl border border-white/[0.04] bg-zinc-950/40 backdrop-blur-md p-6 overflow-auto max-h-[70vh]">
+                              <CanvasDocument
+                                html={activeCanvasDocument.html}
+                                title={activeCanvasDocument.title}
+                                onAction={handleWidgetAction}
+                              />
+                            </div>
+
+                            {/* Canvas History Rail */}
+                            {canvasDocuments.length > 1 && canvasPanelOpen && (
+                              <div className="mt-4 pt-4 border-t border-white/[0.04]">
+                                <div className="text-[10px] font-bold text-zinc-500 mb-3 uppercase tracking-wider font-mono">
+                                  Canvas History ({canvasDocuments.length - 1})
+                                </div>
+                                <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                                  {canvasDocuments.slice(0, canvasDocuments.length - 1).reverse().map((doc) => (
+                                    <div
+                                      key={doc.id}
+                                      className="rounded-lg border border-white/[0.04] bg-zinc-950/20 p-3 cursor-pointer hover:border-white/[0.08] transition-all"
+                                      onClick={() => {
+                                        // Swap with active
+                                        const temp = canvasDocuments[canvasDocuments.length - 1];
+                                        canvasDocuments[canvasDocuments.length - 1] = doc;
+                                        const idx = canvasDocuments.findIndex(d => d.id === doc.id);
+                                        if (idx >= 0) canvasDocuments[idx] = temp;
+                                      }}
+                                    >
+                                      <div className="text-[10px] font-bold text-zinc-400 mb-1">
+                                        {doc.title || "Canvas Document"}
+                                      </div>
+                                      <div
+                                        className="text-[9px] text-zinc-600 line-clamp-2"
+                                        dangerouslySetInnerHTML={{ __html: doc.html.slice(0, 100) }}
+                                      />
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Tool visual widgets stay with the conversation; the canvas panel is only for canvas documents. */}
+                        {false && bentoWidgets.length > 0 && (
+                          <div className="space-y-4">
+                            <div className="flex items-center gap-2 pt-4 border-t border-white/[0.04]">
+                              <div className="size-2 rounded-full bg-violet-400" />
+                              <h4 className="text-xs font-black uppercase tracking-wider text-zinc-300">
+                                Data Widgets ({bentoWidgets.length})
+                              </h4>
+                            </div>
+
+                            {canvasLayoutMode === "focus" ? (
+                              <div className="flex flex-col gap-4">
+                                {renderCanvasWidget(bentoWidgets[bentoWidgets.length - 1], true)}
+                                {bentoWidgets.length > 1 && (
+                                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 auto-rows-max">
+                                    {bentoWidgets.slice(0, bentoWidgets.length - 1).map((item) => renderCanvasWidget(item))}
+                                  </div>
+                                )}
+                              </div>
+                            ) : canvasLayoutMode === "grid" ? (
+                              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 auto-rows-max">
+                                {bentoWidgets.map((item) => {
+                                  const spanClass = item.colSpan === 2 || item.title.toLowerCase().includes("levels") || item.title.toLowerCase().includes("chart")
+                                    ? "col-span-1 md:col-span-2 xl:col-span-2"
+                                    : "col-span-1";
+                                  return (
+                                    <div key={item.id} className={spanClass}>
+                                      {renderCanvasWidget(item)}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 auto-rows-max">
+                                {bentoWidgets.map((item) => (
+                                  <div
+                                    key={item.id}
+                                    className={cn(
+                                      item.colSpan === 2 ? "col-span-1 xl:col-span-2" : "col-span-1"
+                                    )}
+                                  >
+                                    {renderCanvasWidget(item)}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Right side Chat Panel */}
                 <ResizablePane
+                  fill={!shouldShowCanvasPanel}
                   minWidth={360}
                   maxWidth={600}
                   defaultWidth={420}
                   side="right"
-                  className="hidden lg:flex shrink-0 h-full border-l border-white/[0.04] bg-[var(--terminal-surface)] flex-col relative overflow-hidden"
+                  className={cn(
+                    "hidden lg:flex h-full bg-[var(--terminal-surface)] flex-col relative overflow-hidden",
+                    shouldShowCanvasPanel ? "shrink-0 border-l border-white/[0.04]" : "min-w-0 flex-1",
+                  )}
                 >
                   <div className="flex flex-col h-full w-full min-h-0 relative">
                     <Conversation className="min-h-0 flex-1 pb-24">
@@ -2363,7 +2656,7 @@ Provide:
                         ref={chatScrollRef}
                         className="space-y-6 bg-transparent py-4 px-3"
                       >
-                        <div className="w-full space-y-6">
+                        <div className="mx-auto w-full max-w-3xl space-y-6 px-3 sm:px-4">
                           {messages.map((message, messageIndex) => {
                             const isLastMessage = messageIndex === messages.length - 1;
                             const isActiveUserTurn =
@@ -2378,7 +2671,7 @@ Provide:
                                 livePrices={sidebarQuotes}
                                 onClosePosition={closePosition}
                                 onOpenAgentDetail={(agent) => setOpenAgentId(agent.id)}
-                                hideVisualWidgets={true}
+                                hideVisualWidgets={false}
                                 rootRef={
                                   isActiveUserTurn
                                     ? (el) => {

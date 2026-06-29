@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { AnalyticsEvents, captureEvent } from "@/lib/posthog/analytics";
 
@@ -17,7 +16,7 @@ export function LandingCtaButton({
   size?: "lg" | "md";
 }) {
   return (
-    <Link
+    <a
       href={href}
       onClick={() => {
         captureEvent(AnalyticsEvents.CTA_CLICKED, {
@@ -32,7 +31,7 @@ export function LandingCtaButton({
       )}
     >
       {children}
-    </Link>
+    </a>
   );
 }
 

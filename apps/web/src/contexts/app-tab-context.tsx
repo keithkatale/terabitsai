@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   APP_BASE,
   CHAT_DRAFT_SEGMENT,
@@ -18,7 +18,7 @@ import {
   isConversationIdSegment,
 } from "@/lib/routes";
 
-export type AppTab = "home" | "markets" | "chat" | "wallet";
+export type AppTab = "home" | "chat" | "wallet";
 
 const TAB_ALIASES: Record<string, AppTab> = {
   home: "home",
@@ -26,17 +26,17 @@ const TAB_ALIASES: Record<string, AppTab> = {
   wallet: "wallet",
   personal: "wallet",
   portfolio: "wallet",
-  markets: "markets",
-  investing: "markets",
+  markets: "home",
+  investing: "home",
   chat: "chat",
   command: "chat",
-  assets: "markets",
+  assets: "home",
   news: "chat",
-  signals: "markets",
-  engine: "markets",
-  autonomous: "markets",
-  manager: "markets",
-  wealth: "markets",
+  signals: "home",
+  engine: "home",
+  autonomous: "home",
+  manager: "home",
+  wealth: "home",
 };
 
 export function parseAppTab(value: string | null | undefined): AppTab {
@@ -50,8 +50,6 @@ export function tabPath(tab: AppTab, conversationId?: string | null): string {
       return `${APP_BASE}/home`;
     case "wallet":
       return `${APP_BASE}/wallet`;
-    case "markets":
-      return `${APP_BASE}/markets`;
     case "chat":
       if (conversationId && conversationId !== CHAT_DRAFT_SEGMENT) {
         return chatConversationPath(conversationId);
@@ -75,7 +73,7 @@ export function parseTabFromPathname(pathname: string): {
   }
 
   if (pathname.startsWith(`${APP_BASE}/markets`) || pathname.startsWith(`${APP_BASE}/investing`)) {
-    return { tab: "markets", conversationId: null };
+    return { tab: "home", conversationId: null };
   }
 
   if (pathname.startsWith(`${APP_BASE}/wallet`)) {
@@ -114,56 +112,92 @@ type AppTabContextValue = {
 const AppTabContext = createContext<AppTabContextValue | null>(null);
 
 export function AppTabProvider({ children }: { children: ReactNode }) {
-  const router = useRouter();
   const pathname = usePathname();
   const route = useMemo(() => parseTabFromPathname(pathname), [pathname]);
   const [activeTab, setActiveTabState] = useState<AppTab | null>(route.tab);
+  const [routeConversationId, setRouteConversationId] = useState<string | null>(
+    route.conversationId,
+  );
 
   useEffect(() => {
     setActiveTabState(route.tab);
-  }, [route.tab]);
+    setRouteConversationId(route.conversationId);
+  }, [route.tab, route.conversationId]);
+
+  useEffect(() => {
+    const onPopState = () => {
+      const nextRoute = parseTabFromPathname(window.location.pathname);
+      setActiveTabState(nextRoute.tab);
+      setRouteConversationId(nextRoute.conversationId);
+    };
+
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  const pushClientRoute = useCallback(
+    (
+      href: string,
+      nextRoute: { tab: AppTab | null; conversationId: string | null },
+      opts?: { replace?: boolean },
+    ) => {
+      if (typeof window === "undefined") return;
+
+      const currentHref = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      if (currentHref !== href) {
+        const method = opts?.replace ? "replaceState" : "pushState";
+        window.history[method](window.history.state, "", href);
+      }
+
+      setActiveTabState(nextRoute.tab);
+      setRouteConversationId(nextRoute.conversationId);
+    },
+    [],
+  );
 
   const setActiveTab = useCallback(
     (tab: AppTab) => {
-      router.push(tabPath(tab));
+      const href = tabPath(tab);
+      const nextRoute = parseTabFromPathname(href);
+      pushClientRoute(href, nextRoute);
     },
-    [router],
+    [pushClientRoute],
   );
 
   const navigateToConversation = useCallback(
     (conversationId: string, opts?: { replace?: boolean }) => {
       const href = tabPath("chat", conversationId);
-      if (opts?.replace) {
-        router.replace(href);
-      } else {
-        router.push(href);
-      }
+      pushClientRoute(
+        href,
+        { tab: "chat", conversationId },
+        opts,
+      );
     },
-    [router],
+    [pushClientRoute],
   );
 
   const navigateToNewChat = useCallback(
     (opts?: { replace?: boolean }) => {
       const href = chatDraftPath();
-      if (opts?.replace) {
-        router.replace(href);
-      } else {
-        router.push(href);
-      }
+      pushClientRoute(
+        href,
+        { tab: "chat", conversationId: CHAT_DRAFT_SEGMENT },
+        opts,
+      );
     },
-    [router],
+    [pushClientRoute],
   );
 
   const value = useMemo(
     () => ({
       activeTab,
-      routeConversationId: route.conversationId,
+      routeConversationId,
       setActiveTab,
       navigateToConversation,
       navigateToNewChat,
       isTabActive: (tab: AppTab) => activeTab === tab,
     }),
-    [activeTab, route.conversationId, setActiveTab, navigateToConversation, navigateToNewChat],
+    [activeTab, routeConversationId, setActiveTab, navigateToConversation, navigateToNewChat],
   );
 
   return <AppTabContext.Provider value={value}>{children}</AppTabContext.Provider>;

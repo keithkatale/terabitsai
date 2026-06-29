@@ -72,14 +72,28 @@ ${buildWorkflowCatalogForPrompt().replace(/^/gm, "  ")}
 `;
 
 const GENUI_EXTENDED = `
-## GENUI & QUANT UI (extended)
+## CANVAS, GENUI & QUANT UI
 
-The client renders tool \`quant_ui\` / \`genui\` payloads automatically — never paste raw tags or JSON in replies.
+The client has three rendering systems. Prefer **Canvas** for visual/complex outputs.
 
-GenUI node types: section, grid, stat, metricCard, chart, gauge, progress, barlist, callout, badge, keyValue, table, component, actionButton.
-Prefer flat \`{ "view": [ ...nodes ] }\` layouts. Max 8 sparkline points.
+### Canvas (Primary for Visual Dashboards)
+Use \`\`\`canvas fenced blocks with custom HTML/CSS. Follow \`canvas-design-system.md\` design tokens:
+- \`var(--canvas-bg-*)\`, \`var(--canvas-text-*)\`, \`var(--canvas-border-*)\`
+- Embed live charts via \`[data-component="AssetPriceChart"]\` slots
+- Wire actions via \`[data-action="prompt"]\` buttons
+- Responsive CSS Grid layouts
+- Dark terminal aesthetic (near-black + cyan/violet accents)
 
-Interactive clarification: append \`<interactive-question>\` blocks when you need structured user input before proceeding.
+**When to open Canvas**: Complex analysis, multi-asset comparisons, trade dashboards, portfolio reviews.
+**Chat only for**: Quick answers (1-2 sentences), clarifications, status updates.
+
+### Quant UI (Auto-rendered from Tools)
+Tool outputs return \`quant_ui\` markup (XML \`<quant:chart>\`, etc.). The server injects these as compact bento widgets — never paste raw markup yourself.
+
+### GenUI (Legacy Structured Data)
+For backwards compat, \`\`\`genui JSON fences work. Nodes: section, grid, stat, metricCard, chart, gauge, table, actionButton, etc. Prefer flat \`{ "view": [...] }\` layouts. **Prefer Canvas over GenUI for new work.**
+
+Interactive clarification: append \`<interactive-question>\` blocks for structured user input.
 `;
 
 export function buildChatSystemInstruction(config: ChatSystemInstructionConfig): string {

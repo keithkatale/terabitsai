@@ -2,7 +2,8 @@
 
 import Image from "next/image";
 import { Manrope, Inter, Poppins } from "next/font/google";
-import { useAccount } from "@/hooks/use-account";
+import { useEffect, useState } from "react";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { LandingHero } from "./landing-hero";
 import { LandingCtaSection } from "./landing-cta-section";
 import {
@@ -39,20 +40,34 @@ const FAQ_ITEMS = [
   "What's the impact of AI on market research?",
   "Can AI replace human judgment in trading?",
   "How does AI improve analysis effectiveness?",
-  "What are the benefits of the Markets terminal?",
+  "What are the benefits of AI market monitoring?",
   "Can AI help optimize portfolio monitoring?",
   "How do I get started with Terabits AI?",
 ];
 
 export function LandingPage() {
-  const { user } = useAccount();
-  const ctaHref = user ? "/app/markets" : "/signup?next=/app/markets";
+  const [ctaHref, setCtaHref] = useState("/signup?next=/app/home");
+
+  useEffect(() => {
+    let cancelled = false;
+    const supabase = createSupabaseBrowserClient();
+
+    void supabase.auth.getUser().then(({ data }) => {
+      if (!cancelled && data.user) {
+        setCtaHref("/app/home");
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div
       className={`landing-page min-h-screen w-full max-w-full overflow-x-clip pb-[calc(var(--landing-sticky-footer-height)+env(safe-area-inset-bottom,0px))] font-[family-name:var(--font-inter)] sm:pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] ${manrope.variable} ${inter.variable} ${poppins.variable}`}
     >
-      <LandingHero />
+      <LandingHero ctaHref={ctaHref} />
 
       <main className="mx-auto flex w-full max-w-[980px] flex-col items-center gap-[var(--landing-section-gap)] overflow-x-clip px-4 pt-[var(--landing-section-gap)] sm:px-6">
         {/* Manifesto */}

@@ -11,6 +11,7 @@ export interface ResizablePaneProps {
   side?: "left" | "right";
   className?: string;
   onWidthChange?: (width: number) => void;
+  fill?: boolean;
 }
 
 export function ResizablePane({
@@ -21,6 +22,7 @@ export function ResizablePane({
   side = "right",
   className,
   onWidthChange,
+  fill = false,
 }: ResizablePaneProps) {
   const [width, setWidth] = useState(defaultWidth);
   const [isDragging, setIsDragging] = useState(false);
@@ -69,29 +71,31 @@ export function ResizablePane({
   return (
     <div
       ref={paneRef}
-      className={cn("relative flex shrink-0", className)}
-      style={{ width }}
+      className={cn("relative flex", fill ? "min-w-0 flex-1" : "shrink-0", className)}
+      style={fill ? undefined : { width }}
     >
-      <div
-        className={cn(
-          "absolute top-0 bottom-0 z-10 w-1 cursor-col-resize transition-colors",
-          "hover:bg-cyan-500/40",
-          isDragging && "bg-cyan-500/60",
-          side === "right" ? "left-0 -translate-x-1/2" : "right-0 translate-x-1/2"
-        )}
-        onMouseDown={handleMouseDown}
-      >
+      {!fill ? (
         <div
           className={cn(
-            "absolute top-1/2 -translate-y-1/2 flex flex-col items-center justify-center gap-0.5 rounded-full bg-zinc-700/80 px-0.5 py-2 opacity-0 transition-opacity",
-            "hover:opacity-100",
-            isDragging && "opacity-100",
-            side === "right" ? "-left-1.5" : "-right-1.5"
+            "absolute top-0 bottom-0 z-10 w-1 cursor-col-resize transition-colors",
+            "hover:bg-cyan-500/40",
+            isDragging && "bg-cyan-500/60",
+            side === "right" ? "left-0 -translate-x-1/2" : "right-0 translate-x-1/2"
           )}
+          onMouseDown={handleMouseDown}
         >
-          <div className="h-4 w-0.5 rounded-full bg-zinc-400" />
+          <div
+            className={cn(
+              "absolute top-1/2 -translate-y-1/2 flex flex-col items-center justify-center gap-0.5 rounded-full bg-zinc-700/80 px-0.5 py-2 opacity-0 transition-opacity",
+              "hover:opacity-100",
+              isDragging && "opacity-100",
+              side === "right" ? "-left-1.5" : "-right-1.5"
+            )}
+          >
+            <div className="h-4 w-0.5 rounded-full bg-zinc-400" />
+          </div>
         </div>
-      </div>
+      ) : null}
       <div className="min-w-0 flex-1 h-full flex flex-col">{children}</div>
     </div>
   );

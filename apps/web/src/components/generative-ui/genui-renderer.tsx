@@ -452,6 +452,13 @@ function NodeView({
       const isIndicators = node.title?.toLowerCase().includes("indicators");
       const hasNumericValues = node.items && node.items.some((it) => typeof it.value === "number" && !isNaN(it.value));
 
+      const fmtPrice = (n: number | null | undefined): string => {
+        if (n == null || !Number.isFinite(n)) return "—";
+        if (n >= 1000) return `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+        if (n >= 1) return `$${n.toFixed(2)}`;
+        return `$${n.toFixed(4)}`;
+      };
+
       if (isKeyLevels && node.items) {
         // Parse and sort levels descending
         const itemsWithMeta = node.items.map((it) => {
@@ -473,48 +480,181 @@ function NodeView({
           return 0;
         });
 
-        return (
-          <div className="rounded-xl border border-zinc-800/60 bg-zinc-950/45 p-4 relative overflow-hidden">
-            {/* Visual backdrop highlight */}
-            <div className="absolute top-0 right-0 size-24 bg-rose-500/5 blur-3xl pointer-events-none" />
-            <div className="absolute bottom-0 left-0 size-24 bg-emerald-500/5 blur-3xl pointer-events-none" />
+        const prices = sortedItems.map((it) => it.price).filter((p): p is number => p !== null);
+        const minPrice = prices.length ? Math.min(...prices) : 1500;
+        const maxPrice = prices.length ? Math.max(...prices) : 1600;
+        const range = maxPrice - minPrice || 10;
+        const pad = range * 0.15;
+        const chartMin = minPrice - pad;
+        const chartMax = maxPrice + pad;
 
-            <div className="flex items-center justify-between mb-4 pb-2 border-b border-white/[0.04]">
-              <div className="flex items-center gap-1.5">
-                <div className="size-1.5 rounded-full bg-cyan-400 animate-pulse" />
-                <span className="text-xs font-bold uppercase tracking-wider text-zinc-300">{node.title || "Key S/R Levels"}</span>
+        // Map price to height % from top
+        const getPct = (price: number) => {
+          const rawPct = (price - chartMin) / (chartMax - chartMin);
+          return (1 - Math.max(0, Math.min(1, rawPct))) * 100; // 0% is top, 100% is bottom
+        };
+
+        const pSupports = sortedItems.filter((it) => it.isSupport && it.price != null);
+        const pResistances = sortedItems.filter((it) => it.isResistance && it.price != null);
+        
+        const firstSupPrice = pSupports.length ? pSupports[0].price : minPrice;
+        const firstResPrice = pResistances.length ? pResistances[0].price : maxPrice;
+        
+        // Map heights for realistic price action bounces
+        const supPct = getPct(firstSupPrice ?? minPrice);
+        const resPct = getPct(firstResPrice ?? maxPrice);
+        const midPct = (supPct + resPct) / 2;
+
+        const wavePoints = [
+          { x: 0, yPct: midPct },
+          { x: 100, yPct: Math.max(10, resPct + 12) },   // approaches first resistance
+          { x: 200, yPct: Math.max(5, resPct - 15) },   // quick overshoot
+          { x: 300, yPct: Math.min(90, resPct + 18) },  // pullback
+          { x: 400, yPct: Math.min(95, supPct - 1) },   // PERFECT bounce on first support floor!
+          { x: 500, yPct: Math.max(20, midPct - 20) },  // mid-range rally
+          { x: 600, yPct: Math.max(5, resPct - 25) },   // final breakout!
+        ];
+
+        return (
+          <div className="rounded-xl border border-zinc-800/60 bg-zinc-950/45 p-4 relative overflow-hidden flex flex-col gap-4">
+            {/* Ambient gradients */}
+            <div className="absolute -top-12 -right-12 size-40 bg-rose-500/10 blur-3xl pointer-events-none" />
+            <div className="absolute -bottom-12 -left-12 size-40 bg-emerald-500/10 blur-3xl pointer-events-none" />
+
+            <div className="flex items-center justify-between pb-2 border-b border-white/[0.04] z-10 shrink-0">
+              <div className="flex items-center gap-2">
+                <div className="size-2 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_8px_#22d3ee]" />
+                <span className="text-xs font-bold uppercase tracking-wider text-zinc-200">
+                  {node.title || "Key S/R Levels"}
+                </span>
               </div>
-              <span className="text-[9px] font-black text-zinc-500 bg-zinc-900 px-1.5 py-0.5 rounded tracking-wider">LADDER VIEW</span>
+              <span className="text-[9px] font-black text-cyan-400 bg-cyan-950/40 border border-cyan-800/30 px-2 py-0.5 rounded tracking-wider">
+                CHART MODEL SIMULATION
+              </span>
             </div>
 
-            <div className="relative space-y-4">
-              {/* Vertical line axis */}
-              <div className="absolute left-[38px] top-2 bottom-2 w-px bg-gradient-to-b from-rose-500/30 via-zinc-800 to-emerald-500/30 border-dashed" />
+            {/* Simulated Chart Area */}
+            <div className="relative h-[220px] w-full bg-zinc-950/30 rounded-lg border border-white/[0.02] overflow-hidden">
+              <svg className="absolute inset-0 size-full overflow-visible" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id="glow-wave-grad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.18" />
+                    <stop offset="100%" stopColor="#22d3ee" stopOpacity="0.0" />
+                  </linearGradient>
+                  <filter id="wave-glow" x="-10%" y="-10%" width="120%" height="120%">
+                    <feGaussianBlur stdDeviation="3" result="blur" />
+                    <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                  </filter>
+                </defs>
 
-              {sortedItems.map((it, i) => {
-                const badgeBg = it.isSupport ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : it.isResistance ? "bg-rose-500/10 border-rose-500/20 text-rose-400" : "bg-cyan-500/10 border-cyan-500/20 text-cyan-400";
-                const dotColor = it.isSupport ? "bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.6)]" : it.isResistance ? "bg-rose-400 shadow-[0_0_8px_rgba(239,68,68,0.6)]" : "bg-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.6)]";
+                {/* Grid lines */}
+                {[0.25, 0.5, 0.75].map((val, idx) => (
+                  <line
+                    key={idx}
+                    x1="0"
+                    y1={`${val * 100}%`}
+                    x2="100%"
+                    y2={`${val * 100}%`}
+                    stroke="rgba(255,255,255,0.015)"
+                    strokeWidth="1"
+                  />
+                ))}
+
+                {/* Price Wave Area Fill */}
+                <path
+                  d={`
+                    M 0,220
+                    ${wavePoints.map((p) => `L ${(p.x / 640) * 100}%, ${(p.yPct / 100) * 220}`).join(" ")}
+                    L 100%,220 Z
+                  `}
+                  fill="url(#glow-wave-grad)"
+                />
+
+                {/* Price Wave Path */}
+                <path
+                  d={wavePoints.map((p, i) => `${i === 0 ? "M" : "L"} ${(p.x / 640) * 100}%, ${(p.yPct / 100) * 220}`).join(" ")}
+                  fill="none"
+                  stroke="#22d3ee"
+                  strokeWidth="2"
+                  filter="url(#wave-glow)"
+                  className="opacity-70"
+                />
+
+                {/* Horizontal level lines */}
+                {sortedItems.map((it, idx) => {
+                  if (it.price == null) return null;
+                  const pct = getPct(it.price);
+                  const color = it.isSupport ? "rgba(52,211,153,0.35)" : it.isResistance ? "rgba(248,113,113,0.35)" : "rgba(56,189,248,0.35)";
+                  return (
+                    <line
+                      key={idx}
+                      x1="0"
+                      y1={`${pct}%`}
+                      x2="100%"
+                      y2={`${pct}%`}
+                      stroke={color}
+                      strokeWidth="1.2"
+                      strokeDasharray="4 3"
+                    />
+                  );
+                })}
+              </svg>
+
+              {/* Overlaid absolute HTML level badge rows */}
+              {sortedItems.map((it, idx) => {
+                if (it.price == null) return null;
+                const pct = getPct(it.price);
+                const badgeStyle = it.isSupport 
+                  ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20" 
+                  : it.isResistance 
+                  ? "bg-rose-500/10 border-rose-500/20 text-rose-400 hover:bg-rose-500/20" 
+                  : "bg-cyan-500/10 border-cyan-500/20 text-cyan-400 hover:bg-cyan-500/20";
                 
                 return (
-                  <div key={i} className="flex items-center gap-4 relative group/row transition-all duration-200 hover:translate-x-0.5">
-                    {/* Level Label/Price Badge */}
-                    <div className={cn("w-20 text-[10px] font-extrabold uppercase py-1 px-2 rounded-md border text-center shrink-0 tracking-wider", badgeBg)}>
-                      {it.label.split("·")[1]?.trim() || it.label}
+                  <div
+                    key={idx}
+                    className="absolute left-0 right-0 px-3 flex justify-between items-center select-none pointer-events-none h-0"
+                    style={{ top: `${pct}%` }}
+                  >
+                    {/* Level Tag (Left) */}
+                    <div className={cn(
+                      "pointer-events-auto border rounded px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-widest font-mono shadow-md backdrop-blur transition-all duration-150 cursor-crosshair hover:scale-105 -translate-y-1/2",
+                      badgeStyle
+                    )}>
+                      {it.label.split("·")[0]?.trim().slice(0,3).toUpperCase() || (it.isSupport ? "SUP" : "RES")} • {fmtPrice(it.price)}
                     </div>
 
-                    {/* Timeline Node dot */}
-                    <div className="relative flex items-center justify-center shrink-0">
-                      <div className={cn("size-2 rounded-full z-10 transition-transform duration-300 group-hover/row:scale-125", dotColor)} />
+                    {/* Note Tag (Right) */}
+                    <div className="pointer-events-auto bg-zinc-950/80 border border-white/[0.02] text-[9px] font-medium text-zinc-400 rounded px-2 py-0.5 shadow max-w-[200px] sm:max-w-[260px] truncate select-all backdrop-blur hover:text-zinc-200 hover:border-white/[0.08] transition-colors -translate-y-1/2">
+                      {String(it.value)}
                     </div>
+                  </div>
+                );
+              })}
+            </div>
 
-                    {/* Connector line and description */}
-                    <div className="flex-1 flex items-center min-w-0">
-                      <span className="text-[10px] font-bold text-zinc-500 uppercase mr-2 shrink-0">{it.isSupport ? "Support" : it.isResistance ? "Resistance" : "Level"}</span>
-                      <div className="flex-1 border-b border-dashed border-white/[0.04] mx-1 shrink" />
-                      <span className="text-xs font-semibold text-zinc-300 truncate pl-2 max-w-[60%] select-all">
-                        {String(it.value)}
-                      </span>
+            {/* List breakdown beneath the chart */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 z-10 shrink-0">
+              {sortedItems.map((it, i) => {
+                const borderCls = it.isSupport 
+                  ? "border-emerald-500/10 bg-emerald-500/[0.01]" 
+                  : it.isResistance 
+                  ? "border-rose-500/10 bg-rose-500/[0.01]" 
+                  : "border-cyan-500/10 bg-cyan-500/[0.01]";
+                const dotCls = it.isSupport ? "bg-emerald-400" : it.isResistance ? "bg-rose-400" : "bg-cyan-400";
+                return (
+                  <div key={i} className={cn("p-2 rounded-lg border flex flex-col hover:bg-white/[0.01] transition-colors duration-150 text-left", borderCls)}>
+                    <div className="flex items-center justify-between mb-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className={cn("size-1.5 rounded-full", dotCls)} />
+                        <span className="text-[10px] font-black text-white uppercase tracking-wider font-mono">
+                          {it.label}
+                        </span>
+                      </div>
                     </div>
+                    <span className="text-[10px] text-zinc-400 leading-relaxed font-semibold">
+                      {String(it.value)}
+                    </span>
                   </div>
                 );
               })}
@@ -524,15 +664,24 @@ function NodeView({
       }
 
       if ((isIndicators || !hasNumericValues) && node.items) {
-        // Render as a beautiful status list/feed instead of horizontal bars
         return (
-          <div className="rounded-xl border border-zinc-800/60 bg-zinc-950/45 p-4">
-            <div className="flex items-center justify-between mb-4 pb-2 border-b border-white/[0.04]">
-              <span className="text-xs font-bold uppercase tracking-wider text-zinc-300">{node.title || "Technical Indicators"}</span>
-              <span className="text-[9px] font-black text-zinc-500 bg-zinc-900 px-1.5 py-0.5 rounded tracking-wider">OSCILLATOR STATUS</span>
+          <div className="rounded-xl border border-zinc-800/60 bg-zinc-950/45 p-4 relative overflow-hidden flex flex-col gap-4">
+            {/* Visual backdrop highlight */}
+            <div className="absolute top-0 right-0 size-24 bg-cyan-500/5 blur-3xl pointer-events-none" />
+
+            <div className="flex items-center justify-between pb-2 border-b border-white/[0.04]">
+              <div className="flex items-center gap-1.5">
+                <div className="size-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                <span className="text-xs font-bold uppercase tracking-wider text-zinc-300">
+                  {node.title || "Technical Indicators"}
+                </span>
+              </div>
+              <span className="text-[9px] font-black text-zinc-500 bg-zinc-900 px-1.5 py-0.5 rounded tracking-wider">
+                GAUGE & STATUS VIEWS
+              </span>
             </div>
 
-            <div className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {node.items.map((it, i) => {
                 const valStr = String(it.value).toLowerCase();
                 const isBullish = it.accent === "emerald" || it.label.toLowerCase().includes("rsi") && !valStr.includes("bearish") || it.accent === "cyan" || valStr.includes("bullish") || valStr.includes("above");
@@ -550,9 +699,15 @@ function NodeView({
                   ? "bg-rose-400 shadow-[0_0_8px_rgba(239,68,68,0.5)]" 
                   : "bg-zinc-500 shadow-[0_0_8px_rgba(113,113,122,0.5)]";
 
+                // Parse numeric value
+                const numMatch = String(it.value).match(/(-?[\d\.]+)/);
+                const numVal = numMatch ? parseFloat(numMatch[1]) : null;
+                const isRsi = it.label.toLowerCase().includes("rsi");
+                const isMacd = it.label.toLowerCase().includes("macd");
+
                 return (
-                  <div key={i} className="flex flex-col p-3 rounded-lg border border-white/[0.02] bg-white/[0.01] hover:bg-white/[0.03] transition-colors duration-200">
-                    <div className="flex items-center justify-between mb-1.5">
+                  <div key={i} className="flex flex-col p-3 rounded-lg border border-white/[0.02] bg-white/[0.01] hover:bg-white/[0.03] transition-all duration-150 select-none text-left">
+                    <div className="flex items-center justify-between mb-2">
                       <span className="text-xs font-extrabold text-white tracking-wide">{it.label}</span>
                       <div className="flex items-center gap-1.5">
                         <span className={cn("size-1.5 rounded-full", dotColor)} />
@@ -561,7 +716,76 @@ function NodeView({
                         </span>
                       </div>
                     </div>
-                    <p className="text-xs leading-relaxed text-zinc-400 font-medium">
+
+                    {/* Custom Gauge meter layout */}
+                    {isRsi && numVal !== null && numVal >= 0 && numVal <= 100 ? (
+                      <div className="my-2.5 space-y-1">
+                        <div className="relative h-2 w-full rounded bg-zinc-800/40 border border-white/[0.02] overflow-hidden">
+                          <div className="absolute right-0 top-0 bottom-0 w-[30%] bg-rose-500/10" title="Overbought zone" />
+                          <div className="absolute left-0 top-0 bottom-0 w-[30%] bg-emerald-500/10" title="Oversold zone" />
+                          <div className="absolute left-[50%] top-0 bottom-0 w-px bg-white/10" />
+                          <div
+                            className="absolute size-2 rounded-full bg-cyan-400 -translate-x-1 top-0 shadow-[0_0_8px_#22d3ee] transition-all duration-1000"
+                            style={{ left: `${numVal}%` }}
+                          />
+                        </div>
+                        <div className="flex justify-between text-[8px] font-black text-zinc-500 font-mono">
+                          <span>OVERSOLD (30)</span>
+                          <span className="text-cyan-400 font-bold">RSI: {numVal}</span>
+                          <span>OVERBOUGHT (70)</span>
+                        </div>
+                      </div>
+                    ) : isMacd && numVal !== null ? (
+                      <div className="my-2.5 space-y-1">
+                        <div className="relative h-2 w-full rounded bg-zinc-800/40 border border-white/[0.02]">
+                          <div className="absolute left-1/2 top-0 bottom-0 w-px bg-zinc-600" />
+                          {numVal >= 0 ? (
+                            <div
+                              className="absolute left-1/2 top-0 bottom-0 bg-emerald-500/30 border-r border-emerald-400 transition-all duration-1000"
+                              style={{ width: `${Math.min(50, (numVal / 5) * 50)}%` }}
+                            />
+                          ) : (
+                            <div
+                              className="absolute right-1/2 top-0 bottom-0 bg-rose-500/30 border-l border-rose-400 transition-all duration-1000"
+                              style={{ width: `${Math.min(50, (Math.abs(numVal) / 5) * 50)}%` }}
+                            />
+                          )}
+                          <div
+                            className={cn(
+                              "absolute size-2 rounded-full -translate-x-1 top-0 transition-all duration-1000",
+                              numVal >= 0 ? "bg-emerald-400 shadow-[0_0_6px_#34d399]" : "bg-rose-400 shadow-[0_0_6px_#f87171]"
+                            )}
+                            style={{ left: `${50 + (numVal / 10) * 100}%` }}
+                          />
+                        </div>
+                        <div className="flex justify-between text-[8px] font-black text-zinc-500 font-mono">
+                          <span>BEARISH MOMENTUM</span>
+                          <span className={numVal >= 0 ? "text-emerald-400" : "text-rose-400"}>VALUE: {numVal}</span>
+                          <span>BULLISH MOMENTUM</span>
+                        </div>
+                      </div>
+                    ) : numVal !== null ? (
+                      <div className="my-2.5 space-y-1">
+                        <div className="relative h-2 w-full rounded bg-zinc-800/40 border border-white/[0.02]">
+                          <div
+                            className={cn(
+                              "absolute h-full rounded transition-all duration-1000",
+                              isBullish ? "bg-emerald-500/20 border-r border-emerald-400" : isBearish ? "bg-rose-500/20 border-r border-rose-400" : "bg-cyan-500/20 border-r border-cyan-400"
+                            )}
+                            style={{ width: `${Math.min(100, Math.max(5, numVal))}%` }}
+                          />
+                        </div>
+                        <div className="flex justify-between text-[8px] font-black text-zinc-500 font-mono">
+                          <span>MIN</span>
+                          <span className="text-zinc-400">VALUE: {numVal}</span>
+                          <span>MAX</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="my-1.5 h-1 border-b border-white/[0.02] border-dashed" />
+                    )}
+
+                    <p className="text-xs leading-relaxed text-zinc-400 font-medium mt-1">
                       {String(it.value)}
                     </p>
                   </div>

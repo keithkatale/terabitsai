@@ -5,6 +5,8 @@ import { APP_BASE, chatDraftPath } from "@/lib/routes";
 
 const AUTH_PATHS = new Set(["/login", "/signup"]);
 const PUBLIC_PATHS = new Set(["/pricing", "/auth/callback", "/api/webhooks/dodo"]);
+const ONBOARDED_USER_COOKIE = "terabits_onboarded_user";
+const ONBOARDING_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 
 function isPublicPath(pathname: string): boolean {
   if (AUTH_PATHS.has(pathname)) return true;
@@ -50,6 +52,17 @@ function redirectToPricing(request: NextRequest) {
   url.pathname = "/pricing";
   url.searchParams.set("upgrade", "terminal");
   return NextResponse.redirect(url);
+}
+
+function markOnboardingCompleted(response: NextResponse, userId: string) {
+  response.cookies.set(ONBOARDED_USER_COOKIE, userId, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: ONBOARDING_COOKIE_MAX_AGE,
+  });
+  return response;
 }
 
 export async function middleware(request: NextRequest) {
@@ -124,8 +137,10 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith(`${APP_BASE}/`) ||
     pathname === "/app" ||
     pathname.startsWith("/app/");
+  const hasCompletedOnboardingCookie =
+    request.cookies.get(ONBOARDED_USER_COOKIE)?.value === user!.id;
 
-  if (!setupExempt && isAppShellRoute) {
+  if (!setupExempt && isAppShellRoute && !hasCompletedOnboardingCookie) {
     const { data: profile, error: profileError } = await supabase
       .from("user_account_profiles")
       .select("onboarding_completed")
@@ -134,6 +149,9 @@ export async function middleware(request: NextRequest) {
 
     if (!profileError && !profile?.onboarding_completed) {
       return NextResponse.redirect(new URL(`${APP_BASE}/setup`, request.url));
+    }
+    if (!profileError && profile?.onboarding_completed) {
+      markOnboardingCompleted(response, user!.id);
     }
   }
 
@@ -150,7 +168,10 @@ export async function middleware(request: NextRequest) {
       .maybeSingle();
 
     if (!profileError && profile?.onboarding_completed) {
-      return NextResponse.redirect(new URL(chatDraftPath(), request.url));
+      return markOnboardingCompleted(
+        NextResponse.redirect(new URL(chatDraftPath(), request.url)),
+        user!.id,
+      );
     }
   }
 

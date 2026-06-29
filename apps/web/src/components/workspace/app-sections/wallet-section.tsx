@@ -25,7 +25,16 @@ import { AssetLogoIcon } from "@/components/ui/asset-logo";
 import type { TradeData } from "@/components/terminal/types";
 import type { LedgerSummaryResponse, TradingMode } from "@/lib/account/api";
 
-const CARD = "quant-card";
+const WALLET_CARD =
+  "relative overflow-hidden rounded-[14px] border border-white bg-white/[0.02] shadow-[0_0_40px_rgba(49,107,255,0.08)]";
+const WALLET_INNER_CARD =
+  "rounded-[10px] border border-[rgba(59,90,255,0.44)] bg-white/[0.02] shadow-[0_0_18px_rgba(49,107,255,0.08)]";
+const WALLET_GRADIENT_TEXT =
+  "bg-[linear-gradient(170deg,rgb(255,255,255)_18%,rgba(255,255,255,0.72)_100%)] bg-clip-text text-transparent";
+const WALLET_PRIMARY_BUTTON =
+  "relative overflow-hidden rounded-full border border-[#5988ff] bg-[#316bff] font-semibold text-white shadow-[0_8px_18px_rgba(49,107,255,0.32)] transition-all hover:bg-[#3f76ff] hover:shadow-[0_10px_24px_rgba(49,107,255,0.4)]";
+const WALLET_SECONDARY_BUTTON =
+  "rounded-full border border-white/15 bg-white/[0.03] font-semibold text-white/85 transition-all hover:border-[#5988ff]/70 hover:bg-[#316bff]/10 hover:text-white";
 
 function formatUsd(value: number, compact = false) {
   if (compact && Math.abs(value) >= 1000) {
@@ -60,7 +69,7 @@ function WalletKpi({
       : "text-white";
 
   return (
-    <div className={cn(CARD, "flex flex-col gap-2.5 p-4")}>
+    <div className={cn(WALLET_INNER_CARD, "flex flex-col gap-2.5 p-4")}>
       <div className="flex items-center justify-between gap-2">
         <span className="text-sm font-medium text-[var(--text-secondary)]">{label}</span>
         <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: dotColor }} />
@@ -96,16 +105,21 @@ function FundButton({
   label,
   icon,
   onClick,
+  variant = "primary",
 }: {
   label: string;
   icon: ReactNode;
   onClick: () => void;
+  variant?: "primary" | "secondary";
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="terminal-btn terminal-btn-primary inline-flex h-10 flex-1 items-center justify-center gap-2 text-sm font-semibold"
+      className={cn(
+        "inline-flex h-9 flex-1 items-center justify-center gap-2 px-4 text-sm",
+        variant === "primary" ? WALLET_PRIMARY_BUTTON : WALLET_SECONDARY_BUTTON,
+      )}
     >
       {icon}
       {label}
@@ -236,13 +250,21 @@ export function WalletSection({
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-[calc(var(--app-bottom-nav-height)+1rem+env(safe-area-inset-bottom,0px))] lg:pb-6">
-      <div className="mx-auto max-w-[1400px] p-2 sm:p-3 lg:p-3">
+    <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto bg-[#070707] pb-[calc(var(--app-bottom-nav-height)+1rem+env(safe-area-inset-bottom,0px))] lg:pb-6">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-72 bg-[radial-gradient(ellipse_at_top,rgba(49,107,255,0.24),rgba(7,7,14,0)_68%)]" />
+      <div className="relative mx-auto w-full max-w-[1400px] p-3 sm:p-4 lg:p-5">
         <div className="flex items-center justify-between gap-3">
-          <h1 className="text-lg font-semibold leading-tight text-white sm:text-xl">Wallet</h1>
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.24em] text-[#8fb0ff]">
+              AI Managed Investing
+            </p>
+            <h1 className={cn(WALLET_GRADIENT_TEXT, "mt-1 text-2xl font-bold leading-tight tracking-[-0.03em] sm:text-3xl")}>
+              Managed Account
+            </h1>
+          </div>
           {isBackgroundRefreshing ? (
             <Loader2
-              className="size-4 shrink-0 animate-spin text-zinc-500"
+              className="size-4 shrink-0 animate-spin text-[#8fb0ff]"
               aria-label="Updating"
             />
           ) : null}
@@ -253,12 +275,14 @@ export function WalletSection({
         </div>
 
         <div className="mt-2 grid grid-cols-1 gap-3 xl:grid-cols-12">
-          <section className={cn(CARD, "flex min-h-[320px] flex-col p-3 xl:col-span-7")}>
+          <section className={cn(WALLET_CARD, "flex min-h-[320px] flex-col p-4 xl:col-span-7")}>
+            <div className="pointer-events-none absolute -bottom-20 left-1/2 h-36 w-[80%] -translate-x-1/2 rounded-full bg-[#316bff]/20 blur-3xl" />
+            <div className="relative">
             <div className="mb-1 flex flex-wrap items-start justify-between gap-2">
               <div>
                 <button
                   type="button"
-                  className="inline-flex items-center gap-1 text-sm font-medium text-white"
+                className="inline-flex h-8 items-center gap-1 rounded-full px-2 text-sm font-semibold text-white transition-colors hover:bg-white/[0.05]"
                 >
                   Trading
                   <ChevronDown className="size-3.5 text-zinc-500" />
@@ -266,10 +290,10 @@ export function WalletSection({
                 <div className="mt-0.5 flex flex-wrap items-center gap-2">
                   <p
                     className={cn(
-                      "text-xl font-medium tabular-nums",
+                      "text-3xl font-bold tracking-[-0.04em] tabular-nums sm:text-4xl",
                       accountMovement < 0
                         ? "text-[var(--accent-red)]"
-                        : "text-[var(--accent-green-bright)]",
+                        : WALLET_GRADIENT_TEXT,
                     )}
                   >
                     {accountInitialLoading ? "…" : formatUsd(liveTotalBalance)}
@@ -328,12 +352,13 @@ export function WalletSection({
                 hideHeader
               />
             </div>
+            </div>
           </section>
 
-          <section className={cn(CARD, "flex flex-col gap-3 p-3 xl:col-span-5")}>
+          <section className={cn(WALLET_CARD, "flex flex-col gap-3 p-4 xl:col-span-5")}>
             <div className="flex items-center gap-2">
-              <Wallet className="size-4 text-zinc-400" />
-              <h2 className="text-lg font-medium text-white">Wallet</h2>
+              <Wallet className="size-4 text-[#8fb0ff]" />
+              <h2 className={cn(WALLET_GRADIENT_TEXT, "text-lg font-semibold")}>Managed Account</h2>
             </div>
 
             <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
@@ -383,11 +408,12 @@ export function WalletSection({
                 label="Withdraw"
                 icon={<ArrowUpFromLine className="size-4 stroke-[2.5]" />}
                 onClick={onWithdraw}
+                variant="secondary"
               />
             </div>
           </section>
 
-          <section className={cn(CARD, "flex flex-col gap-3 p-4 xl:col-span-4")}>
+          <section className={cn(WALLET_CARD, "flex flex-col gap-3 p-4 xl:col-span-4")}>
             <div className="flex flex-wrap items-center gap-4">
               <PortfolioAllocationDonut
                 segments={allocationSegments}
@@ -413,7 +439,7 @@ export function WalletSection({
               </div>
               <button
                 type="button"
-                className="flex size-9 items-center justify-center rounded-full bg-[#151A20] text-white transition-colors hover:bg-[#1c232b]"
+                className={cn(WALLET_SECONDARY_BUTTON, "flex size-8 items-center justify-center p-0")}
                 aria-label="Portfolio settings"
               >
                 <Settings2 className="size-4" />
@@ -421,8 +447,8 @@ export function WalletSection({
             </div>
           </section>
 
-          <section className={cn(CARD, "flex min-h-[220px] flex-col p-4 xl:col-span-4")}>
-            <h2 className="text-sm font-medium text-white">Assets</h2>
+          <section className={cn(WALLET_CARD, "flex min-h-[220px] flex-col p-4 xl:col-span-4")}>
+            <h2 className={cn(WALLET_GRADIENT_TEXT, "text-sm font-semibold")}>Assets</h2>
             <div className="mt-2 min-h-0 flex-1 overflow-y-auto">
               {positionRows.length === 0 ? (
                 <p className="py-6 text-center text-xs text-zinc-500">
@@ -435,7 +461,7 @@ export function WalletSection({
                       <button
                         type="button"
                         onClick={() => onManagePosition(pos.id)}
-                        className="flex w-full items-center gap-2.5 rounded-lg bg-black/30 p-2.5 text-left transition-colors hover:bg-black/50"
+                        className="flex w-full items-center gap-2.5 rounded-full border border-white/10 bg-white/[0.025] px-3 py-2 text-left transition-colors hover:border-[#5988ff]/50 hover:bg-[#316bff]/10"
                       >
                         <AssetLogoIcon symbol={pos.symbol} size="sm" className="shrink-0 rounded-md" />
                         <div className="min-w-0 flex-1">
@@ -486,8 +512,8 @@ export function WalletSection({
             </div>
           </section>
 
-          <section className={cn(CARD, "flex min-h-[220px] flex-col p-4 xl:col-span-4")}>
-            <h2 className="text-sm font-medium text-white">Transactions</h2>
+          <section className={cn(WALLET_CARD, "flex min-h-[220px] flex-col p-4 xl:col-span-4")}>
+            <h2 className={cn(WALLET_GRADIENT_TEXT, "text-sm font-semibold")}>Transactions</h2>
             <div className="mt-2 min-h-0 flex-1">
               <RecentActivityList
                 entries={recentEntries}

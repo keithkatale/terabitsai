@@ -7,8 +7,6 @@ import { PostHogProvider } from "@/components/providers/posthog-provider";
 import { PostHogConfigScript } from "@/components/posthog-config-script";
 import { SupabaseConfigScript } from "@/components/supabase-config-script";
 
-export const dynamic = "force-dynamic";
-
 const dmSans = DM_Sans({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700", "800"],

@@ -2,14 +2,10 @@
 
 import { BrandMark } from "@/components/ui/brand-mark";
 import { ResponsiveHeroBanner } from "@/components/ui/responsive-hero-banner";
-import { useAccount } from "@/hooks/use-account";
 import { LandingHeroBackground } from "./landing-hero-background";
 import { LandingTrustedBy } from "./landing-trusted-by";
 
-export function LandingHero() {
-  const { user } = useAccount();
-  const ctaHref = user ? "/app/markets" : "/signup?next=/app/markets";
-
+export function LandingHero({ ctaHref }: { ctaHref: string }) {
   return (
     <ResponsiveHeroBanner
       className="pb-4"

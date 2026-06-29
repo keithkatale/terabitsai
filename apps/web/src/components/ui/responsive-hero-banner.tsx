@@ -1,7 +1,6 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
 import { ArrowRight, ArrowUpRight, Menu, Play } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
@@ -101,9 +100,9 @@ export function ResponsiveHeroBanner({
         <div className="mx-4 sm:mx-6">
           <div className="flex items-center justify-between gap-3 pt-3 sm:pt-4">
             {logo ? (
-              <Link href="/" className="inline-flex shrink-0">
+              <a href="/" className="inline-flex shrink-0">
                 {logo}
-              </Link>
+              </a>
             ) : (
               <span className="inline-block h-10 w-[100px]" />
             )}
@@ -111,7 +110,7 @@ export function ResponsiveHeroBanner({
             <nav className="hidden items-center gap-2 md:flex">
               <div className="terminal-nav-group">
                 {navLinks.map((link) => (
-                  <Link
+                  <a
                     key={link.href + link.label}
                     href={link.href}
                     className={cn(
@@ -120,15 +119,15 @@ export function ResponsiveHeroBanner({
                     )}
                   >
                     {link.label}
-                  </Link>
+                  </a>
                 ))}
-                <Link
+                <a
                   href={ctaButtonHref}
                   className="terminal-btn terminal-btn-primary ml-1 shrink-0 whitespace-nowrap px-6 py-2 text-sm"
                 >
                   {ctaButtonText}
                   <ArrowUpRight className="size-4" />
-                </Link>
+                </a>
               </div>
             </nav>
 
@@ -146,23 +145,23 @@ export function ResponsiveHeroBanner({
           {mobileMenuOpen ? (
             <div className="mt-3 flex flex-col gap-1 rounded-2xl border border-white/10 bg-black/80 p-3 backdrop-blur-md md:hidden">
               {navLinks.map((link) => (
-                <Link
+                <a
                   key={link.href + link.label}
                   href={link.href}
                   className="rounded-lg px-3 py-2 text-sm text-white/85 hover:bg-white/5"
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   {link.label}
-                </Link>
+                </a>
               ))}
-              <Link
+              <a
                 href={ctaButtonHref}
                 className="terminal-btn terminal-btn-primary mt-1 w-full whitespace-nowrap px-6 py-2.5 text-sm"
                 onClick={() => setMobileMenuOpen(false)}
               >
                 {ctaButtonText}
                 <ArrowUpRight className="size-4" />
-              </Link>
+              </a>
             </div>
           ) : null}
         </div>
@@ -201,20 +200,20 @@ export function ResponsiveHeroBanner({
             ) : null}
 
             <div className="animate-fade-slide-in-4 mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
-              <Link
+              <a
                 href={primaryButtonHref}
                 className="terminal-btn terminal-btn-primary px-5 py-3 text-sm"
               >
                 {primaryButtonText}
                 <ArrowRight className="size-4" />
-              </Link>
-              <Link
+              </a>
+              <a
                 href={secondaryButtonHref}
                 className="inline-flex items-center gap-2 rounded-full px-5 py-3 text-sm font-medium text-white transition hover:text-white sm:text-white/90"
               >
                 {secondaryButtonText}
                 <Play className="size-4 fill-current" />
-              </Link>
+              </a>
             </div>
           </div>
 
@@ -252,7 +251,7 @@ export function ResponsiveHeroBanner({
               ) : (
                 <div className="animate-fade-slide-in-2 mt-6 grid grid-cols-2 items-center justify-items-center gap-4 text-white/70 sm:grid-cols-3 md:grid-cols-5">
                   {partners.map((partner) => (
-                    <Link
+                    <a
                       key={partner.href + partner.logoUrl}
                       href={partner.href}
                       className="inline-flex h-9 w-[120px] items-center justify-center rounded-full bg-cover bg-center opacity-80 transition hover:opacity-100"

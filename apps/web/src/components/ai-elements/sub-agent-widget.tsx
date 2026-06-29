@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AgentOrb } from "@/components/ai-elements/agent-orb";
-import { TraceShimmerText } from "@/components/ai-elements/shimmer";
+import { Shimmer, TraceShimmerText } from "@/components/ai-elements/shimmer";
 import { ActivitySpinner } from "@/components/ai-elements/activity-spinner";
 import { subAgentWidgetTrace } from "@/lib/chat/live-trace";
 import {
@@ -123,9 +123,7 @@ export function SubAgentWidgetRow({
   const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
-    if (!hasRunning) {
-      setExpanded(false);
-    }
+    setExpanded(hasRunning);
   }, [hasRunning]);
 
   const lead = useMemo(() => leadSubAgent(agents), [agents]);
@@ -143,6 +141,17 @@ export function SubAgentWidgetRow({
 
   return (
     <div className="mb-2 w-full">
+      {hasRunning ? (
+        <div className="mb-1.5 px-1">
+          <Shimmer
+            as="p"
+            highlight="#ffffff"
+            className="text-[10px] font-semibold uppercase tracking-[0.14em]"
+          >
+            Sub-agents are running
+          </Shimmer>
+        </div>
+      ) : null}
       <div
         className={cn(
           "overflow-hidden rounded-lg border border-white/[0.08] bg-white/[0.03]",

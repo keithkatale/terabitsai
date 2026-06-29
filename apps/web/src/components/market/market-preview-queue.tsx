@@ -79,7 +79,7 @@ function MarketCard({
   const assetClass = assetClassForSymbol(symbol);
 
   const movementClass = tagged
-    ? "text-[#5988ff]"
+    ? "text-cyan-300"
     : bullish
       ? "text-emerald-400"
       : "text-red-400";
@@ -89,15 +89,15 @@ function MarketCard({
       type="button"
       onClick={() => onSelect?.(symbol)}
       className={cn(
-        "flex h-[52px] w-[128px] shrink-0 items-center gap-2 rounded-lg border px-2 py-2 text-left transition-colors",
+        "terminal-btn terminal-btn-ghost h-9 w-auto min-w-[116px] shrink-0 justify-start px-2.5 py-1.5 text-left text-[11px]",
         tagged
-          ? "border-[#5988ff]/35 bg-[#316bff]/8"
-          : "border-white/8 bg-[#0a0d10] hover:border-white/14 hover:bg-white/[0.03]",
+          ? "border-cyan-300/25 bg-white/[0.06] text-zinc-100"
+          : "border-white/[0.08] bg-white/[0.03] text-zinc-300 hover:border-white/[0.14] hover:bg-white/[0.07]",
         !tagged && tagDisabled && "opacity-50",
         "cursor-pointer",
       )}
     >
-      <AssetLogoIcon symbol={symbol} assetClass={assetClass} size="xs" className="shrink-0 rounded-md" />
+      <AssetLogoIcon symbol={symbol} assetClass={assetClass} size="xs" className="shrink-0 rounded-full" />
       <div className="min-w-0 flex-1">
         <span className="block truncate text-[11px] font-semibold leading-tight text-zinc-100">
           {displayName(symbol)}

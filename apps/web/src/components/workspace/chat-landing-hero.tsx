@@ -18,7 +18,7 @@ const LANDING_COPY = {
     upgrade: (
       <>
         <Link href="/pricing?upgrade=managed" className="font-medium text-cyan-400 hover:underline">
-          Open Wallet
+          Open Managed Account
         </Link>
         {" · "}
         <Link href={chatDraftPath()} className="font-medium text-cyan-400 hover:underline">

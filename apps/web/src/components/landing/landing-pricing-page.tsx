@@ -47,7 +47,7 @@ export function LandingPricingPage() {
   const [loadingPlanId, setLoadingPlanId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const ctaHref = user ? "/app/markets" : "/signup?next=/app/markets";
+  const ctaHref = user ? "/app/home" : "/signup?next=/app/home";
 
   useEffect(() => {
     if (!user) return;
@@ -106,7 +106,7 @@ export function LandingPricingPage() {
         badgeText="Simple plans for every trader"
         title="Choose the plan"
         titleLine2="that fits you"
-        description="Start free with AI chat. Upgrade for the live Markets terminal and managed investing when you're ready."
+        description="Start free with AI chat. Upgrade for managed investing and autonomous portfolio monitoring when you're ready."
         primaryButtonText="Try for free"
         primaryButtonHref={ctaHref}
         secondaryButtonText="View features"

@@ -65,7 +65,7 @@ export function LandingPromptChips({
       <p className="mb-2 px-1 text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-500 font-mono">
         Suggested for you
       </p>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      <div className="flex flex-wrap gap-2">
         {suggestions.map((suggestion) => (
           <button
             key={suggestion}
@@ -73,13 +73,13 @@ export function LandingPromptChips({
             disabled={disabled}
             onClick={() => onSelect(suggestion)}
             className={cn(
-              "w-full rounded-full border px-3.5 py-2.5 text-left text-[11px] font-normal leading-snug transition-all duration-200",
-              "border-zinc-800/60 bg-zinc-950/30 text-zinc-400",
-              "hover:border-zinc-700 hover:bg-zinc-900/50 hover:text-zinc-200",
-              "active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50",
+              "terminal-btn terminal-btn-ghost max-w-full px-3 py-1.5 text-left text-[11px] font-medium leading-snug",
+              "justify-start border-white/[0.08] bg-white/[0.03] text-zinc-400 shadow-none",
+              "hover:border-white/[0.14] hover:bg-white/[0.07] hover:text-zinc-100",
+              "active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50",
             )}
           >
-            {suggestion}
+            <span className="truncate">{suggestion}</span>
           </button>
         ))}
       </div>

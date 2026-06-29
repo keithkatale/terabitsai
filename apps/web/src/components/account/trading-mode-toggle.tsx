@@ -13,7 +13,7 @@ export function TradingModeToggle({
   disabled?: boolean;
 }) {
   return (
-    <div className="terminal-nav-group">
+    <div className="inline-flex rounded-full border border-white/15 bg-white/[0.03] p-0.5 shadow-[0_0_18px_rgba(49,107,255,0.08)] backdrop-blur-sm">
       {(["demo", "live"] as const).map((value) => (
         <button
           key={value}
@@ -21,10 +21,10 @@ export function TradingModeToggle({
           {...(disabled ? { disabled: true } : {})}
           onClick={() => onChange(value)}
           className={cn(
-            "terminal-tab px-3 py-1.5 text-[11px]",
+            "rounded-full px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.14em] transition-all",
             mode === value
-              ? "terminal-tab-active"
-              : "terminal-tab-idle",
+              ? "border border-[#5988ff] bg-[#316bff] text-white shadow-[0_6px_14px_rgba(49,107,255,0.28)]"
+              : "border border-transparent text-white/55 hover:bg-[#316bff]/10 hover:text-white",
             disabled && "cursor-not-allowed opacity-50",
           )}
         >

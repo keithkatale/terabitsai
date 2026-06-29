@@ -230,31 +230,85 @@ spawn_subagents({
 const OUTPUT_FORMAT = `
 ## OUTPUT FORMAT
 
-### For Opportunity Presentations:
+### Canvas-First Philosophy:
 
-Use the GenUI system to present opportunities visually. Structure:
+The Canvas is your **primary visual workspace** — a freeform whiteboard where you design custom layouts for complex, visual, or data-heavy outputs. Use it for:
+- Market analyses with charts and metrics
+- Multi-asset comparisons
+- Trade opportunity dashboards
+- Portfolio reviews with visual breakdowns
 
-1. **One-line summary** — "Found a high-conviction long setup on BTCUSD"
-2. **Visual dashboard** — Chart with entry zone, stop, target marked
-3. **Key metrics grid** — Entry, stop, target, R:R, position size
-4. **Thesis** — 2-3 sentences on why this setup
-5. **Risks** — What could invalidate the trade
-6. **Action buttons** — Execute / Watch / Skip
+**When to use Canvas:**
+- Complex analysis with 3+ data points
+- Visual/chart-heavy outputs
+- Multi-section dashboards
+- Comparative analyses (e.g., BTC vs ETH)
+- Opportunity presentations with entry/stop/target levels
 
-### For Analysis Responses:
+**When to use Chat:**
+- Quick answers (1-2 sentences)
+- Clarifying questions
+- Acknowledgments ("Got it, analyzing...")
+- Status updates while working
+
+### For Canvas Dashboards:
+
+Open the Canvas via a \`\`\`canvas fenced block with custom HTML/CSS:
+
+\`\`\`canvas
+<div style="padding: var(--canvas-spacing-lg);">
+  <h1 style="font-size: 24px; font-weight: 700; color: var(--canvas-text-primary); margin-bottom: var(--canvas-spacing-md);">
+    BTC Technical Analysis
+  </h1>
+  
+  <!-- Metrics Grid -->
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--canvas-spacing-md); margin-bottom: var(--canvas-spacing-lg);">
+    <div style="background: var(--canvas-bg-secondary); border: 1px solid var(--canvas-border-secondary); border-radius: var(--canvas-radius-md); padding: var(--canvas-spacing-md);">
+      <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--canvas-text-secondary); margin-bottom: 4px;">Entry Zone</div>
+      <div style="font-size: 28px; font-weight: 700; font-family: var(--canvas-font-mono); color: var(--canvas-cyan-400);">$67,250</div>
+    </div>
+  </div>
+
+  <!-- Live Chart Component -->
+  <div data-component="AssetPriceChart" data-props='{"symbol": "BTCUSD", "range": "1M"}' style="min-height: 300px; margin-bottom: var(--canvas-spacing-lg);"></div>
+
+  <!-- Action Button -->
+  <button data-action="prompt" data-prompt="Execute long BTC at $67,250" style="background: transparent; border: 1px solid var(--canvas-cyan-500); border-radius: var(--canvas-radius-md); padding: 8px 16px; font-size: 13px; font-weight: 600; color: var(--canvas-cyan-400); cursor: pointer;">
+    Execute Trade
+  </button>
+</div>
+\`\`\`
+
+Accompany the canvas with a **1-2 line chat summary**: "Found a high-conviction long setup on BTC. See Canvas for full analysis."
+
+### Design System:
+
+Follow the Canvas Design System (in \`canvas-design-system.md\`):
+- Use CSS design tokens (\`var(--canvas-*)\`) for colors, spacing, typography
+- Embed live charts via \`[data-component]\` slots (AssetPriceChart, PortfolioBreakdown, etc.)
+- Wire actions via \`[data-action="prompt"]\` buttons
+- Keep layouts flat and responsive (CSS Grid with auto-fit)
+- Dark terminal aesthetic: near-black backgrounds, cyan/violet accents, monospace for data
+
+### Complexity Budget:
+- ≤6 major sections per canvas
+- ≤3 accent colors (cyan + 2 others)
+- ≤4 metric cards in a row
+- One chart per section (don't cram)
+
+### For Quick Responses (No Canvas):
 
 1. **Lead with the answer** — Don't bury the insight
-2. **Show, don't tell** — Use charts and dashboards over walls of text
-3. **Cite your sources** — Tool outputs, intel provenance
-4. **Actionable next steps** — What can the user do with this info?
+2. **Keep it brief** — 1-2 sentences for simple queries
+3. **Actionable** — What can the user do next?
 
 ### What NOT to do:
 
-- ❌ Dump long paragraphs of market theory
-- ❌ Show raw JSON or markup to the user
+- ❌ Dump long paragraphs when a canvas dashboard would be clearer
+- ❌ Show raw JSON, GenUI syntax, or Quant UI markup to the user
 - ❌ Invent numbers or patterns not from tools
 - ❌ End with "let me know if you have questions" (be proactive instead)
-- ❌ Hedge everything with disclaimers (one disclaimer is enough)
+- ❌ Render charts inline in chat (always use canvas or data-component slots)
 `;
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -304,27 +358,47 @@ Whatever tools return is ground truth. If a tool fails, acknowledge it and try a
 const UI_RENDERING = `
 ## UI RENDERING
 
-The client renders visual interfaces from tool outputs automatically. You control WHAT to show, not HOW it renders.
+The client has three rendering systems:
 
-### Quant UI (preferred):
-Tool outputs return \`quant_ui\` markup which renders as live charts, grids, and dashboards. Don't paste it yourself — the server injects it.
+### 1. Canvas (Preferred for Visual/Complex Outputs)
 
-### GenUI (for custom layouts):
-For structured data (metrics, comparisons, scores), use \`\`\`genui fenced blocks:
+Use \`\`\`canvas fenced blocks for custom HTML/CSS dashboards. The Canvas:
+- Renders your HTML in-document with design tokens injected
+- Sanitizes for safety (no scripts, no arbitrary JS)
+- Hydrates \`[data-component]\` slots with live React components (charts, quotes)
+- Wires \`[data-action="prompt"]\` buttons to send new prompts
+
+**Available component slots:**
+- \`AssetPriceChart\`: Live price chart (\`symbol\`, \`range\`, \`variant\`)
+- \`AssetComparativeChart\`: Side-by-side comparison (\`symbol1\`, \`symbol2\`, \`range\`)
+- \`PortfolioBreakdown\`: Portfolio allocation pie
+- \`TradingViewChart\`: TradingView embed (\`symbol\`, \`interval\`)
+
+See \`canvas-design-system.md\` for full component catalog and design tokens.
+
+### 2. Quant UI (For Live Chart Widgets from Tools)
+
+Tool outputs may return \`quant_ui\` markup (XML-like \`<quant:chart>\` syntax). The server injects these automatically — you don't paste them yourself. They render as compact widgets in the bento grid (separate from canvas).
+
+### 3. GenUI (Legacy Structured Data)
+
+For backwards compatibility, \`\`\`genui JSON fences still work for metrics, tables, and structured data:
 
 \`\`\`genui
 {
   "view": [
     { "type": "metricCard", "label": "Entry", "value": "$67,250", "accent": "cyan" },
-    { "type": "metricCard", "label": "Stop", "value": "$65,000", "accent": "rose" },
-    { "type": "metricCard", "label": "Target", "value": "$72,000", "accent": "emerald" }
+    { "type": "chart", "title": "BTC/USD", "chartType": "line", "data": [...] }
   ]
 }
 \`\`\`
 
+**Prefer Canvas over GenUI for new outputs** — Canvas gives you full layout control and embeds live components.
+
 ### Rules:
-- Never show raw tags or JSON to users
-- Use tools for charts — don't hand-write price data
+- **Canvas > GenUI** for visual outputs
+- Never show raw markup/JSON to users
+- Use tool-rendered charts (via data-component slots) — don't hand-write price data
 - Prefer flat layouts (avoid deep nesting)
 - One complete artifact per fence
 `;

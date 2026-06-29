@@ -4,9 +4,10 @@ export type ArtifactSegment =
   | { kind: "prose"; markdown: string }
   | { kind: "quant-ui"; markup: string }
   | { kind: "genui"; body: string }
+  | { kind: "canvas"; html: string; title?: string }
   | { kind: "html"; body: string; lang: string };
 
-const FENCE_RE = /```(quant|genui|html|svg|xml)\s*\n?([\s\S]*?)```/gi;
+const FENCE_RE = /```(quant|genui|canvas|html|svg|xml)\s*\n?([\s\S]*?)```/gi;
 const RAW_QUANT_RE = /(<quant:[\s\S]*?<\/quant:[\w-]+>|<quant:[\w-]+[^>]*\/>)/gi;
 
 /** Split assistant markdown into prose + renderable artifact segments. Artifacts never pass through as code blocks. */
@@ -30,6 +31,8 @@ export function splitMarkdownIntoArtifactSegments(markdown: string): ArtifactSeg
       segments.push({ kind: "quant-ui", markup: body.trim() });
     } else if (langLower === "genui") {
       segments.push({ kind: "genui", body: body.trim() });
+    } else if (langLower === "canvas") {
+      segments.push({ kind: "canvas", html: body.trim() });
     } else {
       segments.push({ kind: "html", body: body.trim(), lang: langLower });
     }

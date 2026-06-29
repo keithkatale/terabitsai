@@ -35,11 +35,11 @@ export default function NotFound() {
 
         <div className="flex flex-col gap-2.5">
           <Link
-            href="/app/markets"
+            href="/app/home"
             className="w-full py-3 bg-[var(--accent-cyan,#00e5ff)] text-zinc-950 hover:brightness-110 font-bold rounded-lg text-xs tracking-wider transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(0,229,255,0.2)]"
           >
             <MoveLeft className="size-4" />
-            RETURN TO TERMINAL
+            RETURN TO APP
           </Link>
           <Link
             href="/"
