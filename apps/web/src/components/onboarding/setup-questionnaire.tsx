@@ -368,7 +368,7 @@ export function SetupQuestionnaire() {
             <p className="text-sm text-zinc-500">
               {account?.isOnFreeTrial ? (
                 <>
-                  Your free trial includes{" "}
+                  Your one-day free trial includes{" "}
                   <span className="font-semibold text-zinc-200">
                     {account.trialCreditsRemaining.toLocaleString()} Terabits credits
                   </span>{" "}

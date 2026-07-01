@@ -19,6 +19,13 @@ export type ChatStreamEvent =
   | { type: "genui"; payload: unknown; source?: string }
   | { type: "quant_ui"; markup: string; source?: string }
   | { type: "canvas"; html: string; title?: string; source?: string }
+  | {
+      type: "chart_drawings";
+      symbol: string;
+      drawings: import("@/lib/chart/chart-drawings").ChartDrawing[];
+      clearPrevious?: boolean;
+      source?: string;
+    }
   | { type: "tool_start"; toolUseId: string; name: string; args?: Record<string, unknown> }
   | {
       type: "tool_end";
@@ -90,3 +97,5 @@ export function extractToolCanvas(output: unknown): { html: string; title?: stri
   const title = typeof obj.canvas_title === "string" ? obj.canvas_title : undefined;
   return { html, title };
 }
+
+export { extractToolChartDrawings } from "@/lib/chart/chart-drawings";

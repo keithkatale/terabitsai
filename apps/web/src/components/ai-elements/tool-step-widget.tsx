@@ -8,6 +8,7 @@ import { ActivitySpinner } from "@/components/ai-elements/activity-spinner";
 
 const TOOL_LABELS: Record<string, string> = {
   analyze_chart: "Chart analysis",
+  apply_chart_drawings: "Chart drawings",
   get_asset_market_data: "Market data",
   render_asset_chart: "Price chart",
   render_comparative_chart: "Compare assets",

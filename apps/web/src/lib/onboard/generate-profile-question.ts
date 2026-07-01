@@ -117,7 +117,7 @@ export async function generateWelcomeMessage(
       : account.plan === "pro"
         ? "Welcome to Terabits Terminal. I'll tailor signals and analytics to how you trade."
         : account.isOnFreeTrial
-          ? `Welcome to Terabits. You have ${account.credits.balance.toLocaleString()} free trial credits — let me learn how you want to use AI for markets.`
+          ? `Welcome to Terabits. Your one-day free trial includes ${account.credits.balance.toLocaleString()} credits — let me learn how you want to use AI for markets.`
           : "Welcome to Terabits. I'll ask a few quick questions so your AI advisor understands how you trade and invest.";
 
   if (!isGeminiRuntimeConfigured()) return fallback;

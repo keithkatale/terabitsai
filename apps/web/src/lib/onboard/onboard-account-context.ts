@@ -3,6 +3,8 @@ import { getUserPlan, type UserPlan } from "@/lib/subscription/access";
 import {
   ensureTrialCredits,
   FREE_TRIAL_CREDITS,
+  getTrialExpiresAt,
+  isTrialActive,
   type UserCredits,
 } from "@/lib/subscription/credits";
 import type { ProfileFieldKey } from "@/lib/onboard/profile-types";
@@ -104,7 +106,7 @@ export async function buildOnboardAccountContext(userId: string): Promise<Onboar
     email: user?.email ?? null,
     tradingMode,
     credits,
-    isOnFreeTrial: credits.trial_granted && credits.balance > 0,
+    isOnFreeTrial: isTrialActive(credits) && credits.balance > 0,
     isNewAccount: daysSinceSignup <= 7,
     daysSinceSignup,
     hasCompletedOnboarding: Boolean(profileRow.data?.onboarding_completed),
@@ -121,6 +123,7 @@ export function toClientAccountSnapshot(account: OnboardAccountContext) {
     isOnFreeTrial: account.isOnFreeTrial,
     trialCreditsRemaining: account.credits.balance,
     trialCreditsTotal: FREE_TRIAL_CREDITS,
+    trialExpiresAt: getTrialExpiresAt(account.credits)?.toISOString() ?? null,
     isNewAccount: account.isNewAccount,
     daysSinceSignup: account.daysSinceSignup,
   };

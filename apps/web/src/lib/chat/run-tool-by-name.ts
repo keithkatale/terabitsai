@@ -14,6 +14,7 @@ import { fetchFundamentals, fetchMacroData } from "@/lib/chat/tools/macro-tools"
 import { scheduleAgentTask, type ScheduleTaskArgs } from "@/lib/chat/tools/schedule-task-tool";
 import { executeQueryTradingKnowledge } from "@/lib/chat/tools/knowledge-tool";
 import { executeWebScrape, executeHttpRequest } from "@/lib/chat/tools/web-tools";
+import { executeApplyChartDrawings } from "@/lib/chart/apply-chart-drawings-tool";
 import { executeAnalyzeChart } from "@/lib/chart/analyze-chart-tool";
 import {
   resolveAnalyzeChartDefaults,
@@ -127,6 +128,14 @@ export async function runToolByName(
       style: args?.style as string | undefined,
       question: args?.question as string | undefined,
       userId: ctx.userId,
+    });
+  }
+
+  if (name === "apply_chart_drawings") {
+    return executeApplyChartDrawings({
+      symbol: args?.symbol as string | undefined,
+      drawings: args?.drawings,
+      clearPrevious: args?.clearPrevious as boolean | undefined,
     });
   }
 

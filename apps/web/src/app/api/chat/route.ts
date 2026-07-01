@@ -29,6 +29,8 @@ import {
   buildCreditsPrompt,
   deductCredits,
   ensureTrialCredits,
+  getTrialExpiresAt,
+  isTrialActive,
 } from "@/lib/subscription/credits";
 import {
   buildAccountProfilePrompt,
@@ -78,16 +80,31 @@ export async function POST(req: Request) {
     const profileContext = buildAccountProfilePrompt(accountProfile);
     const creditsContext = buildCreditsPrompt(credits.balance);
 
-    const creditCheck = await deductCredits(user.id);
-    if (!creditCheck.ok) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: "Free trial credits exhausted. Upgrade at /pricing to continue.",
-          creditsRemaining: creditCheck.balance,
-        }),
-        { status: 402, headers: { "Content-Type": "application/json" } },
-      );
+    if (userPlan === "free") {
+      if (!isTrialActive(credits)) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: "Your one-day free trial has ended. Upgrade at /pricing to continue.",
+            creditsRemaining: credits.balance,
+            trialExpiresAt: getTrialExpiresAt(credits)?.toISOString() ?? null,
+          }),
+          { status: 402, headers: { "Content-Type": "application/json" } },
+        );
+      }
+
+      const creditCheck = await deductCredits(user.id);
+      if (!creditCheck.ok) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: "Free trial credits exhausted. Upgrade at /pricing to continue.",
+            creditsRemaining: creditCheck.balance,
+            trialExpiresAt: getTrialExpiresAt(credits)?.toISOString() ?? null,
+          }),
+          { status: 402, headers: { "Content-Type": "application/json" } },
+        );
+      }
     }
 
     let sessionContext: Awaited<ReturnType<typeof getSessionContext>> | null = null;

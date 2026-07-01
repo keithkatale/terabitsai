@@ -2,6 +2,7 @@ import { Type } from "@google/genai";
 import {
   analyzeChartDeclaration,
 } from "@/lib/chart/analyze-chart-tool";
+import { applyChartDrawingsDeclaration } from "@/lib/chart/apply-chart-drawings-tool";
 import {
   executeSkillDeclaration,
 } from "@/lib/skills/tool-declaration";
@@ -399,6 +400,7 @@ export const subagentReadOnlyDeclarations = [
   renderAssetChartDeclaration,
   renderComparativeChartDeclaration,
   analyzeChartDeclaration,
+  applyChartDrawingsDeclaration,
   getMarketOverviewDeclaration,
   searchMarketIntelDeclaration,
   getCatalystBriefDeclaration,
@@ -429,6 +431,7 @@ export const orchestratorToolDeclarations = [
   renderAssetChartDeclaration,
   renderComparativeChartDeclaration,
   analyzeChartDeclaration,
+  applyChartDrawingsDeclaration,
   spawnSubagentsDeclaration,
   searchMarketIntelDeclaration,
   getCatalystBriefDeclaration,

@@ -1,5 +1,6 @@
 import { Type } from "@google/genai";
 import { buildChartAnalysisGenui } from "@/lib/genui/chart-analysis-genui";
+import { keyLevelsToDrawings } from "@/lib/chart/chart-drawings";
 import { analyzeChartVision } from "./analyze-chart-vision";
 import { persistChartInsight } from "./chart-insights-persistence";
 import { renderTradingViewChart } from "./render-tradingview";
@@ -129,6 +130,8 @@ export async function executeAnalyzeChart(args: {
     snapshot_hash: hash,
     snapshot_url: snapshotUrl(hash),
     analysis,
+    chart_drawings: keyLevelsToDrawings(analysis.keyLevels),
+    clearPrevious: true,
     insight_id: insightId,
     genui: {
       view: [

@@ -3,7 +3,7 @@ import {
   getVertexGeminiClient,
   geminiIncludeThoughts,
 } from "@/lib/gemini/vertex-client";
-import { extractToolGenui, extractToolQuantUi, extractToolCanvas } from "@/lib/chat/stream-types";
+import { extractToolGenui, extractToolQuantUi, extractToolCanvas, extractToolChartDrawings } from "@/lib/chat/stream-types";
 import { isToolResultOk, runToolByName, type RunToolOptions, type ToolRunContext } from "@/lib/chat/run-tool-by-name";
 
 /** Minimum visible report length after tool calls before accepting completion. */
@@ -17,6 +17,13 @@ export type AgentLoopEvent =
   | { type: "genui"; payload: unknown; source?: string }
   | { type: "quant_ui"; markup: string; source?: string }
   | { type: "canvas"; html: string; title?: string; source?: string }
+  | {
+      type: "chart_drawings";
+      symbol: string;
+      drawings: import("@/lib/chart/chart-drawings").ChartDrawing[];
+      clearPrevious?: boolean;
+      source?: string;
+    }
   | { type: "tool_start"; toolUseId: string; name: string; args?: Record<string, unknown> }
   | {
       type: "tool_end";
@@ -406,12 +413,22 @@ export async function runAgentLoop(params: {
       const toolQuantUi = ok ? extractToolQuantUi(toolResult) : null;
       const toolGenui = ok ? extractToolGenui(toolResult) : null;
       const toolCanvas = ok ? extractToolCanvas(toolResult) : null;
+      const toolChartDrawings = ok ? extractToolChartDrawings(toolResult) : null;
       if (toolQuantUi) {
         onEvent({ type: "quant_ui", markup: toolQuantUi, source: name });
       } else if (toolGenui) {
         onEvent({ type: "genui", payload: toolGenui, source: name });
       } else if (toolCanvas) {
         onEvent({ type: "canvas", html: toolCanvas.html, title: toolCanvas.title, source: name });
+      }
+      if (toolChartDrawings && toolChartDrawings.drawings.length > 0) {
+        onEvent({
+          type: "chart_drawings",
+          symbol: toolChartDrawings.symbol,
+          drawings: toolChartDrawings.drawings,
+          clearPrevious: toolChartDrawings.clearPrevious,
+          source: name,
+        });
       }
 
       // For failed GenUI/chart tools, provide detailed error feedback to help the model retry

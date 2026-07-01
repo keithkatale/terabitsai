@@ -14,10 +14,10 @@ export const plans: Plan[] = [
     id: "free",
     name: "Chat",
     price: "$0",
-    period: "forever",
+    period: "one-day trial",
     description: "AI market analysis in a focused chat experience.",
     features: [
-      "3,000 Terabits credits free trial",
+      "One-day free trial with 3,000 Terabits credits",
       "Unlimited AI chat on /try",
       "Market reasoning & education",
       "No managed wallet or automated trading",

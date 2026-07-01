@@ -157,6 +157,12 @@ import { readHomeTabCache, writeHomeTabCache } from "@/lib/portfolio/home-tab-ca
 import { APP_BASE, CHAT_DRAFT_SEGMENT } from "@/lib/routes";
 import { readCachedTradingMode } from "@/lib/account/user-app-preferences-client";
 import { usePortfolioSnapshotPoll } from "@/hooks/use-portfolio-snapshot-poll";
+import { ChartDrawingsProvider, useChartDrawings } from "@/contexts/chart-drawings-context";
+import { AssetWorkspace } from "@/components/workspace/asset-workspace";
+import type { EnrichedAsset } from "@/components/workspace/app-sections/home-section";
+import { resolveTradingViewSymbol } from "@/lib/chart/tradingview-spec";
+import type { TvInterval } from "@/lib/chart/tradingview-spec";
+import type { MarketsChartSessionContext } from "@/lib/chat/markets-chart-context";
 import { synthesizeConversationTitleFromFirstUserText } from "@/lib/chat/conversation-title";
 
 function SkeletonBlock({ className }: { className?: string }) {
@@ -327,6 +333,69 @@ function mapPersistedParts(
   });
 }
 
+/** Strip client-only fields (canvas html, etc.) before POSTing to the messages API. */
+function sanitizePartsForPersistence(parts: MessagePart[]): PersistedMessagePart[] {
+  return parts.map((p) => {
+    if (p.type === "genui" && p.payload != null) {
+      return { type: "genui", payload: p.payload };
+    }
+    if (p.type === "quant-ui" && p.text) {
+      return { type: "quant-ui", text: p.text };
+    }
+    if (p.type === "canvas" && p.html) {
+      return { type: "canvas", text: p.html, payload: p.title ? { title: p.title } : undefined };
+    }
+    if (p.type === "tool_ref" && p.toolUseId) {
+      return { type: "tool_ref", text: p.toolUseId };
+    }
+    return { type: p.type, text: p.text, payload: p.payload };
+  });
+}
+
+type PersistedMessagePart = {
+  type: string;
+  text?: string;
+  payload?: unknown;
+};
+
+async function persistConversationMessagesWithRetry(
+  convId: string,
+  messages: Array<{
+    id: string;
+    role: ChatMessage["role"];
+    parts: MessagePart[];
+    toolPods?: ChatToolPod[];
+    subAgents?: SubAgentState[];
+  }>,
+  attempts = 3,
+): Promise<{ title?: string | null; updated_at?: string | null } | null> {
+  const body = {
+    messages: messages.map((m) => ({
+      id: m.id,
+      role: m.role,
+      parts: sanitizePartsForPersistence(m.parts),
+      toolPods: m.toolPods,
+      subAgents: m.subAgents,
+    })),
+  };
+
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const res = await fetch(`/api/chat/conversations/${convId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(body),
+    });
+    if (res.ok) {
+      return (await res.json()) as { title?: string | null; updated_at?: string | null };
+    }
+    if (attempt < attempts - 1) {
+      await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+    }
+  }
+  return null;
+}
+
 function isVisibleChatMessage(msg: {
   role: string;
   parts: Array<{ type?: string }>;
@@ -479,6 +548,16 @@ function toPickerItem(row: {
   };
 }
 
+function ChartDrawingsSync({
+  ctxRef,
+}: {
+  ctxRef: React.MutableRefObject<ReturnType<typeof useChartDrawings> | null>;
+}) {
+  const ctx = useChartDrawings();
+  ctxRef.current = ctx;
+  return null;
+}
+
 // --- Main workspace ---
 export function TradingWorkspace() {
   const {
@@ -524,6 +603,10 @@ export function TradingWorkspace() {
   const [planLoading, setPlanLoading] = useState(true);
   const [isHomeChatSidebarOpen, setIsHomeChatSidebarOpen] = useState(false);
   const [canvasLayoutMode, setCanvasLayoutMode] = useState<"auto" | "grid" | "focus">("auto");
+  const [selectedHomeAsset, setSelectedHomeAsset] = useState<EnrichedAsset | null>(null);
+  const [workspaceInterval, setWorkspaceInterval] = useState<TvInterval>("D");
+  const [workspaceIndicators, setWorkspaceIndicators] = useState<string[]>(["RSI", "MACD", "Volume"]);
+  const chartDrawingsRef = useRef<ReturnType<typeof useChartDrawings> | null>(null);
 
 
   // Helper for micro-sparklines on terminal canvas
@@ -858,7 +941,6 @@ export function TradingWorkspace() {
 
   const bootstrapFirstConversationTurn = useCallback(
     async (convId: string, userMsg: ChatMessage, rawUserText: string) => {
-      // Show smart optimistic title immediately (never raw user text)
       const optimisticTitle = synthesizeConversationTitleFromFirstUserText(rawUserText);
       setConversations((prev) =>
         sortConversations(
@@ -866,8 +948,12 @@ export function TradingWorkspace() {
         ),
       );
 
+      const persisted = await persistConversationMessagesWithRetry(convId, [userMsg]);
+      if (!persisted) {
+        console.warn("[chat] User message persistence failed after retries");
+      }
+
       try {
-        // Generate AI title first (this is fast and important for UX)
         const titleRes = await fetch(`/api/chat/conversations/${convId}/generate-title`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -902,26 +988,6 @@ export function TradingWorkspace() {
           }
         } else {
           console.warn(`[chat] Title generation failed: ${titleRes.status}`);
-        }
-
-        // Persist user message (can happen in parallel or after title)
-        const persistRes = await fetch(`/api/chat/conversations/${convId}/messages`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            messages: [
-              {
-                id: userMsg.id,
-                role: userMsg.role,
-                parts: userMsg.parts,
-              },
-            ],
-          }),
-        });
-
-        if (!persistRes.ok) {
-          console.warn(`[chat] Message persistence failed: ${persistRes.status}`);
         }
       } catch (err) {
         console.error("[chat] Failed to bootstrap conversation title:", err);
@@ -1838,8 +1904,21 @@ export function TradingWorkspace() {
       void bootstrapFirstConversationTurn(convId, newUserMessage, apiMessage);
     }
 
+    let skipFinalPersist = false;
+
     try {
       const history = buildHistoryFromMessages(messages);
+      const clientSessionContext: MarketsChartSessionContext | string | undefined = selectedHomeAsset
+        ? {
+            chartSymbol: selectedHomeAsset.symbol,
+            tvSymbol: resolveTradingViewSymbol(selectedHomeAsset.symbol),
+            chartInterval: workspaceInterval,
+            chartIndicators: workspaceIndicators,
+            displayName: selectedHomeAsset.name,
+            analysisPreset: "full-chart-analysis",
+          }
+        : sessionContextRef.current || undefined;
+
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1850,15 +1929,33 @@ export function TradingWorkspace() {
           history,
           conversationId: convId,
           tradingMode,
-          sessionContext: sessionContextRef.current,
+          sessionContext: clientSessionContext,
         }),
       });
 
       if (!response.ok) {
         const errBody = await response.json().catch(() => ({}));
-        throw new Error(
-          typeof errBody.error === "string" ? errBody.error : `Request failed (${response.status})`,
-        );
+        const errMsg =
+          typeof errBody.error === "string" ? errBody.error : `Request failed (${response.status})`;
+
+        if (response.status === 402) {
+          skipFinalPersist = true;
+          setMessages((prev) => {
+            const updated = [...prev];
+            const lastMsg = updated[updated.length - 1];
+            if (lastMsg?.id === assistantMsgId) {
+              updated[updated.length - 1] = {
+                ...lastMsg,
+                parts: [{ type: "text", text: errMsg }],
+              };
+            }
+            return updated;
+          });
+          setLoading(false);
+          return;
+        }
+
+        throw new Error(errMsg);
       }
 
       if (!response.body) {
@@ -1883,6 +1980,13 @@ export function TradingWorkspace() {
 
           try {
             const event = JSON.parse(trimmed) as ChatStreamEvent;
+
+            if (event.type === "chart_drawings") {
+              chartDrawingsRef.current?.applyDrawings(event.symbol, event.drawings, {
+                clearPrevious: event.clearPrevious,
+              });
+              continue;
+            }
 
             setMessages((prev) => {
               const updated = [...prev];
@@ -2053,6 +2157,7 @@ export function TradingWorkspace() {
       });
     } finally {
       setLoading(false);
+      if (skipFinalPersist) return;
       setMessages((prev) => {
         if (prev.length >= 2) {
           void loadFollowUpSuggestions(prev);
@@ -2062,36 +2167,22 @@ export function TradingWorkspace() {
             const userMsg = prev.find((m) => m.id === userMsgId);
             const assistantMsg = prev.find((m) => m.id === assistantMsgId);
             if (userMsg && assistantMsg && assistantMsg.parts.length > 0) {
-              void fetch(`/api/chat/conversations/${convId}/messages`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  messages: [
-                    {
-                      id: userMsg.id,
-                      role: userMsg.role,
-                      parts: userMsg.parts,
-                    },
-                    {
-                      id: assistantMsg.id,
-                      role: assistantMsg.role,
-                      parts: assistantMsg.parts,
-                      toolPods: assistantMsg.toolPods,
-                      subAgents: assistantMsg.subAgents,
-                    },
-                  ],
-                }),
-              })
-                .then(async (persistRes) => {
-                  if (!persistRes.ok) return;
-                  const persistJson = (await persistRes.json()) as {
-                    title?: string | null;
-                    updated_at?: string | null;
-                  };
+              const hasSubstantiveReply = assistantMsg.parts.some(
+                (p) =>
+                  (p.type === "text" && p.text && !p.text.includes("streaming connection failure")) ||
+                  p.type === "genui" ||
+                  p.type === "quant-ui" ||
+                  p.type === "canvas",
+              );
+              if (!hasSubstantiveReply) return prev;
+
+              void persistConversationMessagesWithRetry(convId, [userMsg, assistantMsg])
+                .then((persistJson) => {
+                  if (!persistJson) return;
                   if (persistJson.title || persistJson.updated_at) {
-                    setConversations((prev) =>
+                    setConversations((prevConvs) =>
                       sortConversations(
-                        prev.map((c) =>
+                        prevConvs.map((c) =>
                           c.id === convId
                             ? {
                                 ...c,
@@ -2159,6 +2250,30 @@ Provide:
   const activeQuoteSpread = activeQuoteAsk - activeQuoteBid;
   const activeQuoteSpreadPct = (activeQuoteSpread / activeQuoteSpot) * 100;
 
+  const handleHomeAssetSelect = useCallback((asset: EnrichedAsset) => {
+    setSelectedHomeAsset(asset);
+    setIsHomeChatSidebarOpen(false);
+    setTaggedAssets([
+      {
+        symbol: asset.symbol,
+        name: asset.name,
+        assetClass: asset.asset_class,
+        sector: asset.sector,
+      },
+    ]);
+  }, []);
+
+  const handleHomeAssetClose = useCallback(() => {
+    setSelectedHomeAsset(null);
+    chartDrawingsRef.current?.clearDrawings();
+    setTaggedAssets([]);
+  }, []);
+
+  useEffect(() => {
+    if (!selectedHomeAsset) return;
+    chartDrawingsRef.current?.setActiveSymbol(selectedHomeAsset.symbol);
+  }, [selectedHomeAsset]);
+
   const goToChatWithPrompt = useCallback(
     (prompt: string) => {
       if (typeof window !== "undefined") {
@@ -2206,6 +2321,111 @@ Provide:
         {accountInitialLoading ? (
           <TabContentSkeleton label="Loading your trading dashboard" />
         ) : (
+        <ChartDrawingsProvider>
+          <ChartDrawingsSync ctxRef={chartDrawingsRef} />
+          {selectedHomeAsset ? (
+            <AssetWorkspace
+              asset={selectedHomeAsset}
+              spotPrice={sidebarQuotes[selectedHomeAsset.symbol]?.spot ?? selectedHomeAsset.spotPrice}
+              change24h={
+                sidebarQuotes[selectedHomeAsset.symbol]?.change24hPct ?? selectedHomeAsset.change24h
+              }
+              interval={workspaceInterval}
+              indicators={workspaceIndicators}
+              onIntervalChange={setWorkspaceInterval}
+              onIndicatorsChange={setWorkspaceIndicators}
+              onClose={handleHomeAssetClose}
+              onPromptChip={(prompt) => {
+                const pin: TaggedAsset = {
+                  symbol: selectedHomeAsset.symbol,
+                  name: selectedHomeAsset.name,
+                  assetClass: selectedHomeAsset.asset_class,
+                  sector: selectedHomeAsset.sector,
+                };
+                void handleSend(prompt, [pin]);
+              }}
+              aiPanel={
+                <ChatWidgetProvider onWidgetAction={handleWidgetAction}>
+                  <div className="flex h-full min-h-0 flex-col">
+                    <div className="flex items-center justify-between border-b border-white/[0.08] bg-black/20 p-4">
+                      <div className="flex items-center gap-2">
+                        <div className="size-2 shrink-0 animate-pulse rounded-full bg-cyan-400" />
+                        <span className="text-[10px] font-black uppercase tracking-wider text-white">
+                          AI Copilot
+                        </span>
+                      </div>
+                    </div>
+                    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-black/10">
+                      <div className="relative flex min-h-0 flex-1 flex-col px-2 py-4 sm:px-4">
+                        <Conversation className="min-h-0 flex-1 pb-24">
+                          <ConversationContent
+                            ref={chatScrollRef}
+                            className="space-y-4 bg-transparent"
+                          >
+                            <div className="mx-auto w-full max-w-3xl space-y-4 px-2">
+                              {messages.map((message, messageIndex) => {
+                                const isLastMessage = messageIndex === messages.length - 1;
+                                const isActiveUserTurn =
+                                  loading &&
+                                  message.role === "user" &&
+                                  messageIndex === messages.length - 2;
+                                return (
+                                  <ChatMessageBubble
+                                    key={message.id}
+                                    message={message}
+                                    isAssistantStreaming={loading && isLastMessage}
+                                    hideAssistantOrb
+                                    livePrices={sidebarQuotes}
+                                    onClosePosition={closePosition}
+                                    onOpenAgentDetail={(agent) => setOpenAgentId(agent.id)}
+                                    rootRef={
+                                      isActiveUserTurn
+                                        ? (el) => {
+                                            lastUserMessageRef.current = el;
+                                          }
+                                        : undefined
+                                    }
+                                  />
+                                );
+                              })}
+                            </div>
+                          </ConversationContent>
+                          <ConversationScrollButton />
+                        </Conversation>
+                      </div>
+                      <div className="pointer-events-none absolute bottom-0 left-0 right-0 bg-transparent px-4 pb-3 pt-6">
+                        <div className="pointer-events-auto">
+                          <InputBar
+                            value={value}
+                            onChange={setValue}
+                            onSend={({ content }) => {
+                              const pin: TaggedAsset = {
+                                symbol: selectedHomeAsset.symbol,
+                                name: selectedHomeAsset.name,
+                                assetClass: selectedHomeAsset.asset_class,
+                                sector: selectedHomeAsset.sector,
+                              };
+                              void handleSend(content, [pin]);
+                            }}
+                            disabled={loading}
+                            status={loading ? "streaming" : "ready"}
+                            placeholder={`Ask about ${selectedHomeAsset.symbol}...`}
+                            variant="landing"
+                            taggedAssets={taggedAssets}
+                            onRemoveTaggedAsset={removeTaggedAsset}
+                            onToggleTaggedAsset={toggleTaggedAsset}
+                            maxTaggedAssets={MAX_TAGGED_ASSETS}
+                            selectedAiTools={selectedAiTools}
+                            onSelectedAiToolsChange={setSelectedAiTools}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </ChatWidgetProvider>
+              }
+            />
+          ) : (
         <div className="flex h-full min-h-0 flex-row overflow-hidden relative">
           <div className="flex flex-1 min-w-0 flex-col overflow-hidden pb-0">
             <HomeSection
@@ -2213,6 +2433,8 @@ Provide:
               goToChatWithPrompt={goToChatWithPrompt}
               onSignalTrigger={onSignalTrigger}
               isHomeChatSidebarOpen={isHomeChatSidebarOpen}
+              onAssetSelect={handleHomeAssetSelect}
+              selectedAssetSymbol={null}
             />
           </div>
           
@@ -2358,6 +2580,8 @@ Provide:
             </ResizablePane>
           )}
         </div>
+          )}
+        </ChartDrawingsProvider>
         )}
       </TabPanel>
 

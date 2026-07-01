@@ -53,13 +53,14 @@ MARKETS TERMINAL — ACTIVE CHART CONTEXT (authoritative for this turn):
 - Active indicators on chart: ${indicators}${tv}
 
 MARKETS CHAT RULES:
-1. The user is viewing this asset in the embedded TradingView terminal — treat ${symbol} as the primary subject unless they ask about something else.
+1. The user is viewing this asset on the interactive annotated price chart — treat ${symbol} as the primary subject unless they ask about something else.
 2. For technical analysis, patterns, support/resistance, or entry setups — call \`analyze_chart\` with symbol="${symbol}", interval="${interval}", indicators=[${ctx.chartIndicators?.map((i) => `"${i}"`).join(", ") || '"RSI","MACD","Volume"'}].
-3. You may call \`analyze_chart\` multiple times with different intervals (e.g. 4h then 1D) to build multi-timeframe confluence — like a professional trader zooming the chart.
-4. Combine chart analysis with \`execute_skill\` (technical-analyst, breakout-trade-planner, vcp-screener, macro-regime-detector) and \`query_trading_knowledge\` for pattern validation.
-5. Use \`get_asset_market_data\` / \`render_asset_chart\` for live Capital.com quotes; use \`analyze_chart\` for TradingView visual TA.
-6. Present opportunities as GenUI/Quant UI — entry zone, stop, target, conviction score — not walls of text.
-7. If the user asks for a trade idea, run the pre-trade checklist mentally before recommending.${buildMarketsAnalysisPresetPrompt(ctx)}`;
+3. After \`analyze_chart\`, call \`apply_chart_drawings\` to mark verified levels on the chart (support=green hlines, resistance=red hlines, entry/stop/target zones). Prefer visual markup over long prose.
+4. Chat reply for TA requests: 1–2 line summary only — the chart overlay carries the detail. Never invent prices; use tool output only.
+5. You may call \`analyze_chart\` multiple times with different intervals (e.g. 4h then 1D) to build multi-timeframe confluence.
+6. Combine chart analysis with \`execute_skill\` and \`query_trading_knowledge\` for pattern validation.
+7. Use \`get_asset_market_data\` for live Capital.com quotes.
+8. If the user asks for a trade idea, run the pre-trade checklist mentally before recommending.${buildMarketsAnalysisPresetPrompt(ctx)}`;
 }
 
 const HIGHER_TF: Record<string, string> = {
@@ -90,18 +91,17 @@ function buildFullChartAnalysisPreset(ctx: MarketsChartSessionContext): string {
   const symbol = ctx.chartSymbol ?? "unknown";
   const interval = ctx.chartInterval ?? "D";
   const higherTf = HIGHER_TF[String(interval)] ?? "D";
-  const hlCoin = inferHyperliquidCoinFromSymbol(symbol);
 
   return `
 
 FULL CHART ANALYSIS PRESET — execute immediately without clarifying questions:
 1. \`analyze_chart\` symbol="${symbol}" interval="${interval}" with active indicators
-2. \`analyze_chart\` symbol="${symbol}" interval="${higherTf}" for higher-timeframe confluence
-3. \`execute_skill\` skill_id="technical-analyst" with symbol and intervals
-4. \`get_asset_market_data\` for live quote from Capital.com catalog
-5. \`hyperliquid_markets\` coin="${hlCoin}" (on-chain perp context — tool returns GenUI metrics)
+2. \`apply_chart_drawings\` with keyLevels from step 1 (hline for S/R, zones for entry bands)
+3. \`analyze_chart\` symbol="${symbol}" interval="${higherTf}" for higher-timeframe confluence
+4. \`execute_skill\` skill_id="technical-analyst" with symbol and intervals
+5. \`get_asset_market_data\` for live quote from Capital.com catalog
 6. \`query_trading_knowledge\` to validate any patterns identified
-7. Synthesize as GenUI: entry zone, stop, target, R:R, conviction score (0-1), key risks`;
+7. Chat: 1–2 line bias summary only; levels live on the chart overlay`;
 }
 
 function buildDailyRegimeScanPreset(ctx: MarketsChartSessionContext): string {
