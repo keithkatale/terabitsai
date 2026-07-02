@@ -38,6 +38,14 @@ export const SKILL_TOOL_MAPPINGS: SkillToolMapping[] = [
     category: "technical-analysis",
     marketsTerminal: true,
   },
+  {
+    skillId: "workspace-chart-analyst",
+    mode: "tool",
+    tool: "analyze_chart",
+    companionTools: ["get_asset_market_data", "query_trading_knowledge"],
+    category: "technical-analysis",
+    marketsTerminal: true,
+  },
 
   // ── Claude trading skills → tool delegation ──
   {
@@ -209,7 +217,8 @@ AVAILABLE ANALYSIS SKILLS (Markets terminal):
 ${lines.join("\n")}
 
 Use \`execute_skill\` with these IDs when the SKILL workflow adds structure beyond a raw tool call.
-Prefer \`analyze_chart\` first for anything visible on the TradingView chart.`;
+Prefer \`analyze_chart\` first for anything visible on the TradingView chart.
+In the **asset workspace**, use \`workspace-chart-analyst\` — it screenshots the user's current chart (interval + indicators) and returns analysis cards only (no chart embed in sidebar).`;
 }
 
 /** Native tool names used across the trading agent stack */

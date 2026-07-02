@@ -4,6 +4,11 @@ import {
   geminiIncludeThoughts,
 } from "@/lib/gemini/vertex-client";
 import { extractToolGenui, extractToolQuantUi, extractToolCanvas, extractToolChartDrawings } from "@/lib/chat/stream-types";
+import { isWorkspaceChartSurface } from "@/lib/chat/markets-chart-context";
+import {
+  filterChartEmbedsFromGenui,
+  filterChartEmbedsFromQuantUi,
+} from "@/lib/genui/filter-chart-embeds";
 import { isToolResultOk, runToolByName, type RunToolOptions, type ToolRunContext } from "@/lib/chat/run-tool-by-name";
 
 /** Minimum visible report length after tool calls before accepting completion. */
@@ -414,11 +419,20 @@ export async function runAgentLoop(params: {
       const toolGenui = ok ? extractToolGenui(toolResult) : null;
       const toolCanvas = ok ? extractToolCanvas(toolResult) : null;
       const toolChartDrawings = ok ? extractToolChartDrawings(toolResult) : null;
-      if (toolQuantUi) {
-        onEvent({ type: "quant_ui", markup: toolQuantUi, source: name });
-      } else if (toolGenui) {
-        onEvent({ type: "genui", payload: toolGenui, source: name });
-      } else if (toolCanvas) {
+      const workspaceSurface = isWorkspaceChartSurface(toolCtx.marketsChartContext);
+
+      const filteredQuantUi =
+        toolQuantUi && workspaceSurface
+          ? filterChartEmbedsFromQuantUi(toolQuantUi)
+          : toolQuantUi;
+      const filteredGenui =
+        toolGenui && workspaceSurface ? filterChartEmbedsFromGenui(toolGenui) : toolGenui;
+
+      if (filteredQuantUi) {
+        onEvent({ type: "quant_ui", markup: filteredQuantUi, source: name });
+      } else if (filteredGenui) {
+        onEvent({ type: "genui", payload: filteredGenui, source: name });
+      } else if (toolCanvas && !workspaceSurface) {
         onEvent({ type: "canvas", html: toolCanvas.html, title: toolCanvas.title, source: name });
       }
       if (toolChartDrawings && toolChartDrawings.drawings.length > 0) {

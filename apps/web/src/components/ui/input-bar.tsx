@@ -11,7 +11,7 @@ import {
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { TypingPlaceholderOverlay } from "@/components/ui/typing-placeholder";
-import { PromptBox } from "@/components/ui/chatgpt-prompt-input";
+import { PromptBox, type AiModel } from "@/components/ui/chatgpt-prompt-input";
 import { AssetLogoIcon } from "@/components/ui/asset-logo";
 import type { AiToolId } from "@/lib/chat/ai-tools";
 
@@ -66,6 +66,9 @@ export type InputBarProps = {
   maxTaggedAssets?: number;
   selectedAiTools?: AiToolId[];
   onSelectedAiToolsChange?: (tools: AiToolId[]) => void;
+  selectedModel?: AiModel;
+  onModelChange?: (model: AiModel) => void;
+  onAnalyticsClick?: () => void;
 };
 
 const PaperclipIcon = ({ className = "w-[18px] h-[18px]" }) => (
@@ -356,6 +359,9 @@ export const InputBar = memo(function InputBar({
   maxTaggedAssets = 3,
   selectedAiTools = [],
   onSelectedAiToolsChange,
+  selectedModel,
+  onModelChange,
+  onAnalyticsClick,
 }: InputBarProps) {
   const [internalInput, setInternalInput] = useState("");
   const [focused, setFocused] = useState(false);
@@ -455,6 +461,9 @@ export const InputBar = memo(function InputBar({
             maxTaggedAssets={maxTaggedAssets}
             selectedAiTools={selectedAiTools}
             onSelectedAiToolsChange={onSelectedAiToolsChange}
+            selectedModel={selectedModel}
+            onModelChange={onModelChange}
+            onAnalyticsClick={onAnalyticsClick}
           />
         </div>
       </div>
@@ -478,6 +487,9 @@ export const InputBar = memo(function InputBar({
           maxTaggedAssets={maxTaggedAssets}
           selectedAiTools={selectedAiTools}
           onSelectedAiToolsChange={onSelectedAiToolsChange}
+          selectedModel={selectedModel}
+          onModelChange={onModelChange}
+          onAnalyticsClick={onAnalyticsClick}
         />
       </div>
     </div>

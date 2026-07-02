@@ -100,13 +100,13 @@ export function resolveStudyId(name: string): string | null {
   return INDICATOR_CATALOG[key] ?? null;
 }
 
-/** Resolve list of indicators to TV study IDs */
+/** Resolve list of indicators to TV study IDs (empty when none selected). */
 export function resolveStudies(indicators?: string[]): string[] {
-  if (!indicators?.length) return ["RSI@tv-basicstudies", "MACD@tv-basicstudies"];
+  if (!indicators?.length) return [];
   const studies = indicators
     .map(resolveStudyId)
     .filter((s): s is string => Boolean(s));
-  return studies.length ? [...new Set(studies)] : ["RSI@tv-basicstudies"];
+  return studies.length ? [...new Set(studies)] : [];
 }
 
 const STYLE_MAP: Record<ChartStyle, string> = {

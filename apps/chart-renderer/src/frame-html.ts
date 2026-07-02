@@ -66,7 +66,7 @@ export function buildChartFrameHtml(params: {
           locale: "en",
           enable_publishing: false,
           hide_top_toolbar: true,
-          hide_legend: false,
+          hide_legend: true,
           hide_side_toolbar: true,
           allow_symbol_change: false,
           studies,

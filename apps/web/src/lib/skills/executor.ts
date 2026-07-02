@@ -241,6 +241,12 @@ export class SkillExecutor {
 
       case "tradingview-chart-analyst":
         return this.executeTradingViewChartAnalyst(inputs, context);
+
+      case "workspace-chart-analyst":
+        return this.executeTradingViewChartAnalyst(
+          { ...inputs, embedChartInChat: false },
+          context,
+        );
       
       default:
         // Try to load and execute custom script
@@ -566,17 +572,33 @@ export class SkillExecutor {
    * TradingView Chart Analyst — visual TA via TradingView + Gemini vision
    */
   private async executeTradingViewChartAnalyst(
-    inputs: { symbols?: string[]; interval?: string; indicators?: string[] },
+    inputs: {
+      symbols?: string[];
+      symbol?: string;
+      interval?: string;
+      indicators?: string[];
+      range?: string;
+      style?: string;
+      embedChartInChat?: boolean;
+    },
     context: SkillExecutionContext
   ): Promise<any> {
     const { executeTradingViewChartAnalyst } = await import(
       "@/lib/chart/analyze-chart-tool"
     );
+    const symbols = inputs.symbols?.length
+      ? inputs.symbols
+      : inputs.symbol
+        ? [String(inputs.symbol)]
+        : undefined;
     return executeTradingViewChartAnalyst({
-      symbols: inputs.symbols,
+      symbols,
       interval: inputs.interval,
       indicators: inputs.indicators,
+      range: inputs.range,
+      style: inputs.style,
       userId: context.userId,
+      embedChartInChat: inputs.embedChartInChat,
     });
   }
 

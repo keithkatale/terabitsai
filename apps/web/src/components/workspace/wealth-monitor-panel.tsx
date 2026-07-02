@@ -527,7 +527,7 @@ export function WealthMonitorPanel({ className }: Props) {
               <ChatMessage message={streamingMessage} isAssistantStreaming />
             ) : null}
           </ConversationContent>
-          <ConversationScrollButton className="border-white/8 bg-[var(--terminal-surface)] text-zinc-300 hover:text-white" />
+          <ConversationScrollButton bottomOffset="bottom-12" className="border-white/8 bg-[var(--terminal-surface)] text-zinc-300 hover:text-white" />
         </Conversation>
       )}
 

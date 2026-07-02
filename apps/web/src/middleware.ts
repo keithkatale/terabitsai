@@ -3,6 +3,13 @@ import { createServerClient } from "@supabase/ssr";
 import { readSupabasePublicEnv } from "@/lib/runtime-env";
 import { APP_BASE, chatDraftPath } from "@/lib/routes";
 
+function isPlanLimitsDisabled(): boolean {
+  const flag = process.env.DISABLE_PLAN_LIMITS?.trim().toLowerCase();
+  if (flag === "true" || flag === "1" || flag === "yes") return true;
+  if (flag === "false" || flag === "0" || flag === "no") return false;
+  return process.env.NODE_ENV === "development";
+}
+
 const AUTH_PATHS = new Set(["/login", "/signup"]);
 const PUBLIC_PATHS = new Set(["/pricing", "/auth/callback", "/api/webhooks/dodo"]);
 const ONBOARDED_USER_COOKIE = "terabits_onboarded_user";
@@ -167,7 +174,7 @@ export async function middleware(request: NextRequest) {
 
   let activePaidSubscription: { plan_id: string; status: string } | null = null;
 
-  if (isTrialEnforcedPath(pathname)) {
+  if (isTrialEnforcedPath(pathname) && !isPlanLimitsDisabled()) {
     const { data: sub, error: subError } = await supabase
       .from("app_subscriptions")
       .select("plan_id, status")
@@ -278,7 +285,7 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  if (isProRequired(pathname)) {
+  if (isProRequired(pathname) && !isPlanLimitsDisabled()) {
     const sub = activePaidSubscription;
 
     if (!sub) {

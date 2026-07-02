@@ -24,7 +24,7 @@ function ChartFrameInner() {
 
     const symbol = searchParams.get("symbol") ?? "NASDAQ:AAPL";
     const interval = (searchParams.get("interval") ?? "D") as TvInterval;
-    const studiesRaw = searchParams.get("studies") ?? "RSI@tv-basicstudies,MACD@tv-basicstudies";
+    const studiesRaw = searchParams.get("studies") ?? "";
     const studies = studiesRaw.split(",").filter(Boolean);
     const theme = searchParams.get("theme") === "light" ? "light" : "dark";
     const style = searchParams.get("style") ?? "candles";

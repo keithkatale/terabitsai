@@ -1,21 +1,17 @@
 "use client";
 
 import { useMemo } from "react";
-import {
-  ArrowLeft,
-  Eye,
-  EyeOff,
-  Eraser,
-  TrendingDown,
-  TrendingUp,
-} from "lucide-react";
+import { ArrowLeft, TrendingDown, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AssetLogoIcon } from "@/components/ui/asset-logo";
 import { ResizablePane } from "@/components/ui/resizable-pane";
-import { AnnotatedPriceChart } from "@/components/chart/annotated-price-chart";
+import { TradingViewChart } from "@/components/generative-ui/tradingview-chart";
 import type { EnrichedAsset } from "@/components/workspace/app-sections/home-section";
-import type { TvInterval } from "@/lib/chart/tradingview-spec";
-import { useChartDrawings } from "@/contexts/chart-drawings-context";
+import {
+  resolveStudies,
+  resolveTradingViewSymbol,
+  type TvInterval,
+} from "@/lib/chart/tradingview-spec";
 
 const TIMEFRAMES: Array<{ label: string; value: TvInterval }> = [
   { label: "1H", value: "60" },
@@ -26,12 +22,12 @@ const TIMEFRAMES: Array<{ label: string; value: TvInterval }> = [
 
 const INDICATOR_OPTIONS = ["RSI", "MACD", "Volume"] as const;
 
-const PROMPT_CHIPS = [
-  "Mark support and resistance",
-  "Find a high-conviction entry",
-  "Should I be bullish on this?",
-  "Draw my stop and target",
-] as const;
+const INTERVAL_TO_RANGE: Record<string, string> = {
+  "60": "1W",
+  "240": "1M",
+  D: "3M",
+  W: "6M",
+};
 
 function formatPrice(val: number, symbol = "") {
   if (symbol.includes("USD") || symbol === "") {
@@ -51,7 +47,6 @@ export interface AssetWorkspaceProps {
   onIntervalChange: (interval: TvInterval) => void;
   onIndicatorsChange: (indicators: string[]) => void;
   onClose: () => void;
-  onPromptChip: (prompt: string) => void;
   aiPanel: React.ReactNode;
 }
 
@@ -64,13 +59,15 @@ export function AssetWorkspace({
   onIntervalChange,
   onIndicatorsChange,
   onClose,
-  onPromptChip,
   aiPanel,
 }: AssetWorkspaceProps) {
-  const { overlayVisible, setOverlayVisible, clearDrawings } = useChartDrawings();
   const price = spotPrice ?? asset.spotPrice;
   const change = change24h ?? asset.change24h;
   const isUp = change >= 0;
+
+  const tvSymbol = useMemo(() => resolveTradingViewSymbol(asset.symbol), [asset.symbol]);
+  const tvStudies = useMemo(() => resolveStudies(indicators), [indicators]);
+  const chartRange = INTERVAL_TO_RANGE[interval] ?? "3M";
 
   const activeIndicators = useMemo(() => new Set(indicators.map((i) => i.toUpperCase())), [indicators]);
 
@@ -159,44 +156,23 @@ export function AssetWorkspace({
               </button>
             ))}
           </div>
-
-          <button
-            type="button"
-            onClick={() => setOverlayVisible(!overlayVisible)}
-            className="flex size-8 items-center justify-center rounded-lg border border-white/[0.08] text-zinc-400 hover:text-white"
-            title={overlayVisible ? "Hide AI drawings" : "Show AI drawings"}
-          >
-            {overlayVisible ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}
-          </button>
-          <button
-            type="button"
-            onClick={() => clearDrawings(asset.symbol)}
-            className="flex size-8 items-center justify-center rounded-lg border border-white/[0.08] text-zinc-400 hover:text-white"
-            title="Clear AI drawings"
-          >
-            <Eraser className="size-3.5" />
-          </button>
         </div>
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col border-b border-white/[0.06] p-3 lg:border-b-0 lg:border-r lg:p-4">
-          <AnnotatedPriceChart
-            symbol={asset.symbol}
-            interval={interval}
-            className="min-h-[240px] flex-1 rounded-xl border border-white/[0.06] bg-black/50"
-          />
-          <div className="mt-3 flex flex-wrap gap-2">
-            {PROMPT_CHIPS.map((chip) => (
-              <button
-                key={chip}
-                type="button"
-                onClick={() => onPromptChip(chip)}
-                className="terminal-btn terminal-btn-ghost rounded-full px-3 py-1 text-[10px] font-semibold text-zinc-400 hover:text-cyan-300"
-              >
-                {chip}
-              </button>
-            ))}
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-b border-white/[0.06] lg:border-b-0 lg:border-r">
+          <div className="min-h-0 flex-1 overflow-hidden bg-black">
+            <TradingViewChart
+              key={`${tvSymbol}-${interval}-${tvStudies.join(",")}`}
+              symbol={tvSymbol}
+              displayName={`${asset.symbol} · ${asset.name}`}
+              interval={interval}
+              indicators={tvStudies}
+              range={chartRange}
+              variant="terminal"
+              theme="dark"
+              style="candles"
+            />
           </div>
         </div>
 

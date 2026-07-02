@@ -19,6 +19,7 @@ import { executeAnalyzeChart } from "@/lib/chart/analyze-chart-tool";
 import {
   resolveAnalyzeChartDefaults,
   inferHyperliquidCoinFromSymbol,
+  isWorkspaceChartSurface,
   type MarketsChartSessionContext,
 } from "@/lib/chat/markets-chart-context";
 import { handleExecuteSkill, normalizeSkillToolArgs } from "@/lib/skills/tool-declaration";
@@ -93,15 +94,30 @@ export async function runToolByName(
   }
 
   if (name === "get_asset_market_data") {
-    return fetchAssetChartData({
+    const result = await fetchAssetChartData({
       symbol: args?.symbol as string | undefined,
       query: args?.query as string | undefined,
       range: (args?.range as string | undefined) ?? "1M",
       variant: "area",
     });
+    if (isWorkspaceChartSurface(ctx.marketsChartContext) && result.success) {
+      const { genui: _genui, quant_ui: _quant, chart_props: _props, ...rest } = result;
+      return {
+        ...rest,
+        note: "Live chart is visible in the workspace — quote and stats only; no chart widget embedded in sidebar.",
+      };
+    }
+    return result;
   }
 
   if (name === "render_asset_chart") {
+    if (isWorkspaceChartSurface(ctx.marketsChartContext)) {
+      return {
+        success: false,
+        error:
+          "render_asset_chart is disabled in the asset workspace — the user already has the live chart open. Use analyze_chart or get_asset_market_data instead.",
+      };
+    }
     return fetchAssetChartData({
       symbol: args?.symbol as string | undefined,
       query: args?.query as string | undefined,
@@ -111,6 +127,13 @@ export async function runToolByName(
   }
 
   if (name === "render_comparative_chart") {
+    if (isWorkspaceChartSurface(ctx.marketsChartContext)) {
+      return {
+        success: false,
+        error:
+          "render_comparative_chart is disabled in the asset workspace. Compare assets on the main Chat tab or describe relative performance in text.",
+      };
+    }
     return fetchComparativeChartData({
       symbol1: String(args?.symbol1 ?? ""),
       symbol2: String(args?.symbol2 ?? ""),
@@ -120,14 +143,16 @@ export async function runToolByName(
 
   if (name === "analyze_chart") {
     const defaults = resolveAnalyzeChartDefaults(args, ctx.marketsChartContext ?? null);
+    const workspace = isWorkspaceChartSurface(ctx.marketsChartContext);
     return executeAnalyzeChart({
       symbol: defaults.symbol,
       interval: defaults.interval,
       indicators: defaults.indicators,
-      range: args?.range as string | undefined,
-      style: args?.style as string | undefined,
+      range: defaults.range ?? (args?.range as string | undefined),
+      style: defaults.style ?? (args?.style as string | undefined),
       question: args?.question as string | undefined,
       userId: ctx.userId,
+      embedChartInChat: !workspace,
     });
   }
 
@@ -244,6 +269,31 @@ export async function runToolByName(
 
     if (!skill_id) {
       return { success: false, error: true, message: "skill_id is required" };
+    }
+
+    if (skill_id === "workspace-chart-analyst") {
+      const defaults = resolveAnalyzeChartDefaults(inputs, ctx.marketsChartContext ?? null);
+      const symbols = Array.isArray(inputs.symbols)
+        ? (inputs.symbols as string[])
+        : inputs.symbol
+          ? [String(inputs.symbol)]
+          : defaults.symbol
+            ? [defaults.symbol]
+            : [];
+      const primary = symbols[0] ?? defaults.symbol;
+      if (!primary) {
+        return { success: false, error: "symbol is required for workspace-chart-analyst" };
+      }
+      return executeAnalyzeChart({
+        symbol: primary,
+        interval: (inputs.interval as string | undefined) ?? defaults.interval,
+        indicators: (inputs.indicators as string[] | undefined) ?? defaults.indicators,
+        range: defaults.range,
+        style: defaults.style,
+        question: inputs.question as string | undefined,
+        userId: ctx.userId,
+        embedChartInChat: false,
+      });
     }
 
     const skillResult = await handleExecuteSkill({

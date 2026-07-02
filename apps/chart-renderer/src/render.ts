@@ -40,7 +40,9 @@ export async function renderChartPng(frameUrl: string): Promise<Buffer> {
     const root = page.locator("#chart-root");
     await root.waitFor({ state: "visible", timeout: 15_000 });
 
-    const png = await root.screenshot({ type: "png", timeout: 60_000 });
+    const iframe = root.locator("iframe").first();
+    const target = (await iframe.count()) > 0 ? iframe : root;
+    const png = await target.screenshot({ type: "png", timeout: 60_000 });
     return Buffer.from(png);
   } finally {
     await page.close();

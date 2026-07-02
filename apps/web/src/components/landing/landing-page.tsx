@@ -10,7 +10,6 @@ import {
   ComparisonBars,
   FaqItem,
   LandingCtaButton,
-  LandingGradientText,
   SectionSubtitle,
   TestimonialRow,
 } from "./landing-ui";
@@ -65,7 +64,7 @@ export function LandingPage() {
 
   return (
     <div
-      className={`landing-page min-h-screen w-full max-w-full overflow-x-clip pb-[calc(var(--landing-sticky-footer-height)+env(safe-area-inset-bottom,0px))] font-[family-name:var(--font-inter)] sm:pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] ${manrope.variable} ${inter.variable} ${poppins.variable}`}
+      className={`landing-page min-h-screen w-full max-w-full overflow-x-clip font-[family-name:var(--font-inter)] ${manrope.variable} ${inter.variable} ${poppins.variable}`}
     >
       <LandingHero ctaHref={ctaHref} />
 
@@ -208,17 +207,6 @@ export function LandingPage() {
       </main>
 
       <LandingCtaSection ctaHref={ctaHref} />
-
-      {/* Sticky footer banner */}
-      <div className="landing-sticky-footer fixed inset-x-0 bottom-0 z-50 flex items-center justify-center">
-        <div className="landing-footer-glow pointer-events-none absolute inset-x-0 top-0 h-5" />
-        <LandingGradientText className="hidden text-[clamp(1rem,2vw,1.5rem)] font-semibold tracking-[-0.03em] sm:block">
-          Ready to revolutionize your trading workflow?
-        </LandingGradientText>
-        <LandingCtaButton href={ctaHref} size="md">
-          Try for free
-        </LandingCtaButton>
-      </div>
     </div>
   );
 }

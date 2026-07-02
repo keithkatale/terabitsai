@@ -1,4 +1,5 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { isPlanLimitsDisabled } from "@/lib/subscription/dev-access";
 
 export const FREE_TRIAL_CREDITS = 3000;
 export const CREDITS_PER_CHAT_TURN = 5;
@@ -19,12 +20,14 @@ export function getTrialExpiresAt(credits: Pick<UserCredits, "trial_granted_at">
 }
 
 export function isTrialActive(credits: Pick<UserCredits, "trial_granted" | "trial_granted_at">): boolean {
+  if (isPlanLimitsDisabled()) return true;
   if (!credits.trial_granted) return false;
   const expiresAt = getTrialExpiresAt(credits);
   return Boolean(expiresAt && expiresAt.getTime() > Date.now());
 }
 
 export function isTrialExpired(credits: Pick<UserCredits, "trial_granted" | "trial_granted_at">): boolean {
+  if (isPlanLimitsDisabled()) return false;
   if (!credits.trial_granted) return false;
   const expiresAt = getTrialExpiresAt(credits);
   return Boolean(expiresAt && expiresAt.getTime() <= Date.now());
@@ -75,6 +78,11 @@ export async function deductCredits(
   userId: string,
   amount = CREDITS_PER_CHAT_TURN,
 ): Promise<{ ok: boolean; balance: number }> {
+  if (isPlanLimitsDisabled()) {
+    const credits = await ensureTrialCredits(userId);
+    return { ok: true, balance: Math.max(credits.balance, FREE_TRIAL_CREDITS) };
+  }
+
   const supabase = await createSupabaseServerClient();
   const credits = await ensureTrialCredits(userId);
 
@@ -100,6 +108,9 @@ export async function deductCredits(
 }
 
 export function buildCreditsPrompt(balance: number): string {
+  if (isPlanLimitsDisabled()) {
+    return "\n\nTERABITS CREDITS: Development mode — plan limits disabled, unlimited AI usage.";
+  }
   if (balance <= 0) {
     return `\n\nTERABITS CREDITS: User has 0 credits remaining. They used their one-day free trial (${FREE_TRIAL_CREDITS} credits). Suggest upgrading at /pricing for continued AI usage.`;
   }

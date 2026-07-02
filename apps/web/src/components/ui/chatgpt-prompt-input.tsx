@@ -6,11 +6,11 @@ import * as PopoverPrimitive from "@radix-ui/react-popover";
 import {
   ArrowUp,
   Check,
+  ChevronDown,
   Globe,
   Lightbulb,
   LineChart,
   Plus,
-  Settings2,
   Telescope,
   X,
 } from "lucide-react";
@@ -19,6 +19,14 @@ import { AI_TOOLS, type AiToolId } from "@/lib/chat/ai-tools";
 import { AssetLogoIcon } from "@/components/ui/asset-logo";
 import { AssetTagPicker } from "@/components/ui/asset-tag-picker";
 import type { ChatStatus, TaggedAsset } from "@/components/ui/input-bar";
+
+export type AiModel = "flash" | "pro" | "thinking";
+
+const AI_MODELS: { id: AiModel; label: string; description: string }[] = [
+  { id: "flash", label: "Flash", description: "Fast responses" },
+  { id: "pro", label: "Pro", description: "Advanced reasoning" },
+  { id: "thinking", label: "Thinking", description: "Deep analysis" },
+];
 
 const TooltipProvider = TooltipPrimitive.Provider;
 const Tooltip = TooltipPrimitive.Root;
@@ -129,6 +137,9 @@ export type PromptBoxProps = Omit<
   maxTaggedAssets?: number;
   selectedAiTools?: AiToolId[];
   onSelectedAiToolsChange?: (tools: AiToolId[]) => void;
+  selectedModel?: AiModel;
+  onModelChange?: (model: AiModel) => void;
+  onAnalyticsClick?: () => void;
 };
 
 export const PromptBox = React.forwardRef<HTMLTextAreaElement, PromptBoxProps>(
@@ -141,13 +152,16 @@ export const PromptBox = React.forwardRef<HTMLTextAreaElement, PromptBoxProps>(
       onStop,
       status = "ready",
       disabled,
-      placeholder = "Message…",
+      placeholder = "Type @ to ask about a tab",
       taggedAssets = [],
       onToggleTaggedAsset,
       onRemoveTaggedAsset,
       maxTaggedAssets = 3,
       selectedAiTools = [],
       onSelectedAiToolsChange,
+      selectedModel = "flash",
+      onModelChange,
+      onAnalyticsClick,
       onKeyDown,
       ...props
     },
@@ -157,6 +171,7 @@ export const PromptBox = React.forwardRef<HTMLTextAreaElement, PromptBoxProps>(
     const [internalValue, setInternalValue] = React.useState("");
     const [toolsOpen, setToolsOpen] = React.useState(false);
     const [assetsOpen, setAssetsOpen] = React.useState(false);
+    const [modelOpen, setModelOpen] = React.useState(false);
 
     const isControlled = controlledValue !== undefined;
     const value = isControlled ? controlledValue : internalValue;
@@ -182,6 +197,8 @@ export const PromptBox = React.forwardRef<HTMLTextAreaElement, PromptBoxProps>(
     const hasTags = taggedAssets.length > 0;
     const hasValue = value.trim().length > 0 || hasTags;
     const canSend = hasValue && !disabled && !isStreaming;
+
+    const currentModel = AI_MODELS.find((m) => m.id === selectedModel) ?? AI_MODELS[0];
 
     const toggleTool = (toolId: AiToolId) => {
       const next = selectedAiTools.includes(toolId)
@@ -210,12 +227,12 @@ export const PromptBox = React.forwardRef<HTMLTextAreaElement, PromptBoxProps>(
     return (
       <div
         className={cn(
-          "neo-surface flex cursor-text flex-col rounded-[30px] p-2 shadow-2xl transition-colors",
+          "flex cursor-text flex-col rounded-xl border border-white/[0.08] bg-[#18181b] px-3 py-2 shadow-lg transition-colors",
           className,
         )}
       >
         {hasTags ? (
-          <div className="flex flex-wrap items-center gap-1.5 px-2 pt-1">
+          <div className="flex flex-wrap items-center gap-1 pb-1.5">
             {taggedAssets.map((tag) => (
               <AssetTagChip
                 key={tag.symbol}
@@ -237,128 +254,94 @@ export const PromptBox = React.forwardRef<HTMLTextAreaElement, PromptBoxProps>(
           placeholder={placeholder}
           disabled={disabled}
           className={cn(
-            "custom-scrollbar min-h-11 w-full resize-none border-0 bg-transparent p-3 text-[14px] text-zinc-100 placeholder:text-zinc-500",
+            "custom-scrollbar min-h-[24px] w-full resize-none border-0 bg-transparent px-0 py-0.5 text-[14px] text-zinc-100 placeholder:text-zinc-500",
             "focus:ring-0 focus-visible:outline-none",
             disabled && "cursor-not-allowed opacity-50",
           )}
           {...props}
         />
 
-        <div className="mt-0.5 p-1 pt-0">
-          <TooltipProvider delayDuration={100}>
-            <div className="flex items-center gap-1.5">
-              <Popover open={assetsOpen} onOpenChange={setAssetsOpen}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <PopoverTrigger asChild>
-                      <button
-                        type="button"
-                        disabled={disabled}
-                        className="flex size-8 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-white/[0.06] hover:text-zinc-200 disabled:opacity-50"
-                      >
-                        <Plus className="size-5" strokeWidth={2} />
-                        <span className="sr-only">Tag assets</span>
-                      </button>
-                    </PopoverTrigger>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" showArrow>
-                    <p>Tag assets</p>
-                  </TooltipContent>
-                </Tooltip>
-                <PopoverContent side="top" align="start" className="w-auto p-3">
-                  {onToggleTaggedAsset ? (
-                    <AssetTagPicker
-                      taggedAssets={taggedAssets}
-                      maxTaggedAssets={maxTaggedAssets}
-                      onToggleAsset={(symbol) => {
-                        onToggleTaggedAsset(symbol);
-                      }}
-                    />
-                  ) : (
-                    <p className="text-xs text-zinc-500">Asset tagging unavailable.</p>
-                  )}
-                </PopoverContent>
-              </Popover>
+        <div className="mt-1.5 flex items-center justify-between">
+          <Popover open={assetsOpen} onOpenChange={setAssetsOpen}>
+            <TooltipProvider delayDuration={100}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      disabled={disabled}
+                      className="flex size-6 items-center justify-center rounded text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-300 disabled:opacity-50"
+                    >
+                      <Plus className="size-4" strokeWidth={1.5} />
+                      <span className="sr-only">Tag assets</span>
+                    </button>
+                  </PopoverTrigger>
+                </TooltipTrigger>
+                <TooltipContent side="top" showArrow>
+                  <p>Tag assets</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <PopoverContent side="top" align="start" className="w-auto p-3">
+              {onToggleTaggedAsset ? (
+                <AssetTagPicker
+                  taggedAssets={taggedAssets}
+                  maxTaggedAssets={maxTaggedAssets}
+                  onToggleAsset={(symbol) => {
+                    onToggleTaggedAsset(symbol);
+                  }}
+                />
+              ) : (
+                <p className="text-xs text-zinc-500">Asset tagging unavailable.</p>
+              )}
+            </PopoverContent>
+          </Popover>
 
-              <Popover open={toolsOpen} onOpenChange={setToolsOpen}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <PopoverTrigger asChild>
+          <div className="flex items-center gap-1.5">
+            <Popover open={modelOpen} onOpenChange={setModelOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  disabled={disabled}
+                  className="flex h-6 items-center gap-1 rounded px-2 text-zinc-400 transition-colors hover:bg-white/[0.06] hover:text-zinc-200 disabled:opacity-50"
+                >
+                  <span className="text-[12px] font-medium">{currentModel.label}</span>
+                  <ChevronDown className="size-3.5" strokeWidth={1.5} />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent side="top" align="end" className="w-44 p-1">
+                <div className="flex flex-col gap-0.5">
+                  {AI_MODELS.map((model) => {
+                    const active = selectedModel === model.id;
+                    return (
                       <button
+                        key={model.id}
                         type="button"
-                        disabled={disabled}
+                        onClick={() => {
+                          onModelChange?.(model.id);
+                          setModelOpen(false);
+                        }}
                         className={cn(
-                          "flex h-8 items-center gap-1.5 rounded-full px-2.5 text-sm text-zinc-300 transition-colors hover:bg-white/[0.06] hover:text-zinc-100 disabled:opacity-50",
-                          selectedAiTools.length > 0 && "text-cyan-300",
+                          "flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-sm transition-colors",
+                          active
+                            ? "bg-white/[0.08] text-white"
+                            : "text-zinc-300 hover:bg-white/[0.04]",
                         )}
                       >
-                        <Settings2 className="size-4" />
-                        {selectedAiTools.length === 0 ? (
-                          <span className="text-xs font-medium">Tools</span>
-                        ) : (
-                          <span className="text-xs font-medium">{selectedAiTools.length}</span>
-                        )}
+                        <div className="flex flex-col">
+                          <span className="text-[12px] font-medium">{model.label}</span>
+                          <span className="text-[9px] text-zinc-500">{model.description}</span>
+                        </div>
+                        {active ? <Check className="size-3.5 text-zinc-400" /> : null}
                       </button>
-                    </PopoverTrigger>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" showArrow>
-                    <p>AI tools</p>
-                  </TooltipContent>
-                </Tooltip>
-                <PopoverContent side="top" align="start" className="w-64 p-2">
-                  <p className="mb-1 px-2 pt-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-                    AI capabilities
-                  </p>
-                  <div className="flex flex-col gap-0.5">
-                    {AI_TOOLS.map((tool) => {
-                      const Icon = TOOL_ICONS[tool.id];
-                      const active = selectedAiTools.includes(tool.id);
-                      return (
-                        <button
-                          key={tool.id}
-                          type="button"
-                          onClick={() => toggleTool(tool.id)}
-                          className={cn(
-                            "flex w-full items-start gap-2 rounded-lg p-2 text-left text-sm transition-colors",
-                            active
-                              ? "bg-cyan-500/15 text-cyan-100"
-                              : "text-zinc-200 hover:bg-white/[0.06]",
-                          )}
-                        >
-                          <Icon className="mt-0.5 size-4 shrink-0" />
-                          <span className="min-w-0 flex-1">
-                            <span className="block font-medium">{tool.name}</span>
-                            <span className="mt-0.5 block text-[10px] text-zinc-500">
-                              {tool.description}
-                            </span>
-                          </span>
-                          {active ? <Check className="mt-0.5 size-3.5 shrink-0 text-cyan-400" /> : null}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </PopoverContent>
-              </Popover>
+                    );
+                  })}
+                </div>
+              </PopoverContent>
+            </Popover>
 
-              {selectedAiTools.map((toolId) => {
-                const tool = AI_TOOLS.find((t) => t.id === toolId);
-                const Icon = TOOL_ICONS[toolId];
-                if (!tool) return null;
-                return (
-                  <button
-                    key={toolId}
-                    type="button"
-                    onClick={() => toggleTool(toolId)}
-                    className="flex h-8 items-center gap-1 rounded-full border border-cyan-500/25 bg-cyan-500/10 px-2 text-xs font-medium text-cyan-200 transition-colors hover:bg-cyan-500/15"
-                  >
-                    <Icon className="size-3.5" />
-                    {tool.shortName}
-                    <X className="size-3.5 opacity-70" />
-                  </button>
-                );
-              })}
-
-              <div className="ml-auto flex items-center">
+            <TooltipProvider delayDuration={100}>
+              {(canSend || isStreaming) && (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
@@ -366,7 +349,7 @@ export const PromptBox = React.forwardRef<HTMLTextAreaElement, PromptBoxProps>(
                       onClick={handleSubmit}
                       disabled={!canSend && !isStreaming}
                       className={cn(
-                        "flex size-8 items-center justify-center rounded-full text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40",
+                        "flex size-6 items-center justify-center rounded text-sm font-medium transition-colors",
                         canSend || isStreaming
                           ? "bg-white text-black hover:bg-white/90"
                           : "bg-white/10 text-zinc-600",
@@ -374,9 +357,9 @@ export const PromptBox = React.forwardRef<HTMLTextAreaElement, PromptBoxProps>(
                       )}
                     >
                       {isStreaming ? (
-                        <span className="size-2.5 rounded-sm bg-black" />
+                        <span className="size-2 rounded-sm bg-black" />
                       ) : (
-                        <ArrowUp className="size-5" strokeWidth={2.25} />
+                        <ArrowUp className="size-3.5" strokeWidth={2.25} />
                       )}
                       <span className="sr-only">{isStreaming ? "Stop" : "Send"}</span>
                     </button>
@@ -385,13 +368,13 @@ export const PromptBox = React.forwardRef<HTMLTextAreaElement, PromptBoxProps>(
                     <p>{isStreaming ? "Stop" : "Send"}</p>
                   </TooltipContent>
                 </Tooltip>
-              </div>
-            </div>
-          </TooltipProvider>
+              )}
+            </TooltipProvider>
+          </div>
         </div>
 
         {taggedAssets.length >= maxTaggedAssets ? (
-          <p className="px-3 pb-1 text-center text-[10px] text-zinc-500">
+          <p className="mt-1 text-center text-[9px] text-zinc-500">
             Max {maxTaggedAssets} assets — remove one to tag another.
           </p>
         ) : null}

@@ -89,6 +89,8 @@ export async function executeAnalyzeChart(args: {
   theme?: string;
   question?: string;
   userId?: string;
+  /** When false, omit TradingViewChart embed from GenUI (workspace sidebar). */
+  embedChartInChat?: boolean;
 }) {
   const spec = buildChartSpec({
     symbol: args.symbol,
@@ -118,6 +120,16 @@ export async function executeAnalyzeChart(args: {
     insightId = saved?.id;
   }
 
+  const embedChart = args.embedChartInChat !== false;
+  const analysisGenui = buildChartAnalysisGenui(spec.symbol, spec.interval, analysis);
+  const chartEmbedGenui = embedChart
+    ? buildTradingViewChartGenui(spec, hash, {
+        summary: analysis.summary,
+        bias: analysis.bias,
+        confidence: analysis.confidence,
+      }).view
+    : [];
+
   return {
     success: true as const,
     symbol: spec.symbol,
@@ -133,15 +145,9 @@ export async function executeAnalyzeChart(args: {
     chart_drawings: keyLevelsToDrawings(analysis.keyLevels),
     clearPrevious: true,
     insight_id: insightId,
+    analyzed_current_chart: !embedChart,
     genui: {
-      view: [
-        ...buildTradingViewChartGenui(spec, hash, {
-          summary: analysis.summary,
-          bias: analysis.bias,
-          confidence: analysis.confidence,
-        }).view,
-        ...buildChartAnalysisGenui(spec.symbol, spec.interval, analysis).view,
-      ],
+      view: [...chartEmbedGenui, ...analysisGenui.view],
     },
   };
 }
@@ -151,7 +157,10 @@ export async function executeTradingViewChartAnalyst(inputs: {
   symbols?: string[];
   interval?: string;
   indicators?: string[];
+  range?: string;
+  style?: string;
   userId?: string;
+  embedChartInChat?: boolean;
 }): Promise<Record<string, unknown>> {
   const symbols = inputs.symbols?.length ? inputs.symbols : ["BTCUSD"];
   const results: Record<string, unknown> = {};
@@ -161,8 +170,11 @@ export async function executeTradingViewChartAnalyst(inputs: {
       const result = await executeAnalyzeChart({
         symbol,
         interval: inputs.interval ?? "1D",
-        indicators: inputs.indicators ?? ["RSI", "MACD", "Volume"],
+        indicators: inputs.indicators ?? [],
+        range: inputs.range,
+        style: inputs.style,
         userId: inputs.userId,
+        embedChartInChat: inputs.embedChartInChat,
       });
       results[symbol] = result.analysis;
     } catch (err) {

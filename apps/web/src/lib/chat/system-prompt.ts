@@ -321,8 +321,7 @@ const TOOL_USAGE = `
 ### Data Tools (use freely):
 - \`get_market_overview\` — Multi-asset pulse check
 - \`render_asset_chart\` — Live Capital.com price chart
-- \`analyze_chart\` — AI-powered technical analysis (patterns, S/R, indicators)
-- \`apply_chart_drawings\` — Draw S/R lines, zones, trendlines, entry markers on the user's live chart (use after analyze_chart; prices must be tool-verified)
+- \`analyze_chart\` — AI-powered technical analysis (patterns, S/R, indicators); returns GenUI + snapshot for home workspace and chat
 - \`get_asset_market_data\` — Quote + OHLCV history
 - \`search_market_intel\` — News, catalysts, headlines
 - \`get_macro_data\` — Fear & Greed, VIX, rates

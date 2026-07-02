@@ -37,6 +37,8 @@ const DEFAULT_STUDIES = [
   "Volume@tv-basicstudies",
 ] as const;
 
+const CARD_DEFAULT_STUDIES = DEFAULT_STUDIES as unknown as string[];
+
 const INTERVAL_LABELS: Record<string, string> = {
   "1": "1m",
   "5": "5m",
@@ -69,7 +71,7 @@ export function TradingViewChart({
   symbol = "NASDAQ:AAPL",
   displayName,
   interval = "D",
-  indicators = DEFAULT_STUDIES as unknown as string[],
+  indicators,
   range,
   style = "candles",
   theme = "dark",
@@ -79,6 +81,9 @@ export function TradingViewChart({
   confidence,
   variant = "card",
 }: TradingViewChartProps) {
+  const resolvedIndicators =
+    indicators ??
+    (variant === "terminal" ? [] : CARD_DEFAULT_STUDIES);
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetId = useId().replace(/:/g, "");
   const lastInitKeyRef = useRef<string | null>(null);
@@ -87,11 +92,8 @@ export function TradingViewChart({
 
   const label = displayName ?? symbol.split(":").pop() ?? symbol;
   const intervalLabel = INTERVAL_LABELS[String(interval)] ?? String(interval);
-  const studiesKey = useMemo(() => indicators.join("|"), [indicators]);
-  const initKey =
-    variant === "terminal"
-      ? symbol
-      : `${symbol}|${interval}|${studiesKey}|${style}|${theme}`;
+  const studiesKey = useMemo(() => resolvedIndicators.join("|"), [resolvedIndicators]);
+  const initKey = `${symbol}|${interval}|${studiesKey}|${style}|${theme}|${variant}`;
 
   useEffect(() => {
     if (lastInitKeyRef.current === initKey) return;
@@ -106,7 +108,12 @@ export function TradingViewChart({
         }
         const existing = document.querySelector('script[src*="tradingview.com/tv.js"]');
         if (existing) {
-          existing.addEventListener("load", () => resolve());
+          if (window.TradingView?.widget) {
+            resolve();
+          } else {
+            existing.addEventListener("load", () => resolve());
+            existing.addEventListener("error", () => reject(new Error("Failed to load TradingView")));
+          }
           return;
         }
         const script = document.createElement("script");
@@ -125,6 +132,8 @@ export function TradingViewChart({
 
         containerRef.current.innerHTML = `<div id="${widgetId}" class="h-full w-full"></div>`;
 
+        const isTerminal = variant === "terminal";
+
         // eslint-disable-next-line new-cap
         new window.TradingView.widget({
           autosize: true,
@@ -135,12 +144,15 @@ export function TradingViewChart({
           style: chartStyleCode(style),
           locale: "en",
           enable_publishing: false,
-          allow_symbol_change: true,
-          studies: indicators,
+          allow_symbol_change: !isTerminal,
+          studies: resolvedIndicators,
           container_id: widgetId,
-          withdateranges: true,
-          details: true,
+          hide_side_toolbar: isTerminal,
+          hide_top_toolbar: false,
+          withdateranges: !isTerminal,
+          details: false,
           hotlist: false,
+          calendar: false,
         });
 
         if (!cancelled) {
@@ -167,11 +179,11 @@ export function TradingViewChart({
       className={cn(
         variant === "terminal"
           ? "flex h-full w-full flex-col overflow-hidden bg-zinc-950"
-          : "my-3 w-full rounded-2xl border border-zinc-900 bg-zinc-950/50 shadow-xl backdrop-blur-xl animate-fade-in text-left overflow-hidden",
+          : "my-2 w-full rounded-xl border border-zinc-900 bg-zinc-950/50 shadow-xl backdrop-blur-xl animate-fade-in text-left overflow-hidden",
       )}
     >
       {variant === "card" ? (
-      <div className="border-b border-zinc-900/80 px-4 py-3">
+      <div className="border-b border-zinc-900/80 px-3 py-2">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
@@ -211,7 +223,7 @@ export function TradingViewChart({
       <div
         className={cn(
           "relative w-full bg-zinc-950",
-          variant === "terminal" ? "min-h-0 flex-1" : "h-[420px]",
+          variant === "terminal" ? "min-h-0 flex-1 [&_iframe]:h-full [&_iframe]:w-full" : "h-[360px]",
         )}
       >
         {showSnapshot && snapshotUrl ? (
@@ -219,7 +231,7 @@ export function TradingViewChart({
           <img
             src={snapshotUrl}
             alt={`${label} chart snapshot analyzed by AI`}
-            className="h-full w-full object-contain"
+            className="h-full w-full object-cover object-top"
           />
         ) : loadError ? (
           <div className="flex h-full items-center justify-center p-4 text-xs text-rose-400">
@@ -235,12 +247,12 @@ export function TradingViewChart({
             ) : null}
           </div>
         ) : (
-          <div ref={containerRef} className="h-full w-full" />
+          <div ref={containerRef} className="h-full w-full [&_iframe]:h-full [&_iframe]:w-full" />
         )}
       </div>
 
       {variant === "card" ? (
-      <div className="border-t border-zinc-900/60 px-4 py-2">
+      <div className="border-t border-zinc-900/60 px-3 py-1.5">
         <p className="text-[9px] text-zinc-600">
           Charts by{" "}
           <a
@@ -251,7 +263,7 @@ export function TradingViewChart({
           >
             TradingView
           </a>
-          {indicators.length ? ` · ${indicators.map((i) => i.split("@")[0]).join(", ")}` : null}
+          {resolvedIndicators.length ? ` · ${resolvedIndicators.map((i) => i.split("@")[0]).join(", ")}` : null}
         </p>
       </div>
       ) : null}

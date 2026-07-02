@@ -25,6 +25,7 @@ import { orchestratorToolDeclarations } from "@/lib/chat/tool-declarations";
 import { subAgentColorAt } from "@/lib/chat/subagent-types";
 import { getUserPlan } from "@/lib/subscription/access";
 import { buildPlanContextPrompt, filterToolsForPlan } from "@/lib/subscription/plan-context";
+import { isPlanLimitsDisabled } from "@/lib/subscription/dev-access";
 import {
   buildCreditsPrompt,
   deductCredits,
@@ -80,7 +81,7 @@ export async function POST(req: Request) {
     const profileContext = buildAccountProfilePrompt(accountProfile);
     const creditsContext = buildCreditsPrompt(credits.balance);
 
-    if (userPlan === "free") {
+    if (userPlan === "free" && !isPlanLimitsDisabled()) {
       if (!isTrialActive(credits)) {
         return new Response(
           JSON.stringify({

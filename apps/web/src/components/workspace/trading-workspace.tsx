@@ -138,6 +138,7 @@ import {
   Conversation,
   ConversationContent,
   ConversationScrollButton,
+  scrollConversationToBottom,
 } from "@/components/ai-elements/conversation";
 import type { TradeData } from "@/components/terminal/types";
 import { categoryForAsset } from "@/lib/catalog/asset-catalog";
@@ -157,13 +158,20 @@ import { readHomeTabCache, writeHomeTabCache } from "@/lib/portfolio/home-tab-ca
 import { APP_BASE, CHAT_DRAFT_SEGMENT } from "@/lib/routes";
 import { readCachedTradingMode } from "@/lib/account/user-app-preferences-client";
 import { usePortfolioSnapshotPoll } from "@/hooks/use-portfolio-snapshot-poll";
-import { ChartDrawingsProvider, useChartDrawings } from "@/contexts/chart-drawings-context";
 import { AssetWorkspace } from "@/components/workspace/asset-workspace";
+import { CopilotGreetingPanel } from "@/components/workspace/copilot-greeting-panel";
 import type { EnrichedAsset } from "@/components/workspace/app-sections/home-section";
 import { resolveTradingViewSymbol } from "@/lib/chart/tradingview-spec";
 import type { TvInterval } from "@/lib/chart/tradingview-spec";
 import type { MarketsChartSessionContext } from "@/lib/chat/markets-chart-context";
 import { synthesizeConversationTitleFromFirstUserText } from "@/lib/chat/conversation-title";
+
+const WORKSPACE_INTERVAL_TO_RANGE: Record<string, string> = {
+  "60": "1W",
+  "240": "1M",
+  D: "3M",
+  W: "6M",
+};
 
 function SkeletonBlock({ className }: { className?: string }) {
   return (
@@ -548,16 +556,6 @@ function toPickerItem(row: {
   };
 }
 
-function ChartDrawingsSync({
-  ctxRef,
-}: {
-  ctxRef: React.MutableRefObject<ReturnType<typeof useChartDrawings> | null>;
-}) {
-  const ctx = useChartDrawings();
-  ctxRef.current = ctx;
-  return null;
-}
-
 // --- Main workspace ---
 export function TradingWorkspace() {
   const {
@@ -605,8 +603,7 @@ export function TradingWorkspace() {
   const [canvasLayoutMode, setCanvasLayoutMode] = useState<"auto" | "grid" | "focus">("auto");
   const [selectedHomeAsset, setSelectedHomeAsset] = useState<EnrichedAsset | null>(null);
   const [workspaceInterval, setWorkspaceInterval] = useState<TvInterval>("D");
-  const [workspaceIndicators, setWorkspaceIndicators] = useState<string[]>(["RSI", "MACD", "Volume"]);
-  const chartDrawingsRef = useRef<ReturnType<typeof useChartDrawings> | null>(null);
+  const [workspaceIndicators, setWorkspaceIndicators] = useState<string[]>([]);
 
 
   // Helper for micro-sparklines on terminal canvas
@@ -1846,6 +1843,11 @@ export function TradingWorkspace() {
     followUpRequestId.current += 1;
     pendingChatScrollRef.current = true;
     setLoading(true);
+    
+    // Auto-scroll to bottom with extra padding for the incoming AI response
+    requestAnimationFrame(() => {
+      scrollConversationToBottom();
+    });
 
     // Now create conversation if needed
     let convId = conversationIdRef.current;
@@ -1914,8 +1916,11 @@ export function TradingWorkspace() {
             tvSymbol: resolveTradingViewSymbol(selectedHomeAsset.symbol),
             chartInterval: workspaceInterval,
             chartIndicators: workspaceIndicators,
+            chartRange: WORKSPACE_INTERVAL_TO_RANGE[workspaceInterval] ?? "3M",
+            chartStyle: "candles",
             displayName: selectedHomeAsset.name,
             analysisPreset: "full-chart-analysis",
+            surface: "workspace",
           }
         : sessionContextRef.current || undefined;
 
@@ -1980,13 +1985,6 @@ export function TradingWorkspace() {
 
           try {
             const event = JSON.parse(trimmed) as ChatStreamEvent;
-
-            if (event.type === "chart_drawings") {
-              chartDrawingsRef.current?.applyDrawings(event.symbol, event.drawings, {
-                clearPrevious: event.clearPrevious,
-              });
-              continue;
-            }
 
             setMessages((prev) => {
               const updated = [...prev];
@@ -2251,6 +2249,7 @@ Provide:
   const activeQuoteSpreadPct = (activeQuoteSpread / activeQuoteSpot) * 100;
 
   const handleHomeAssetSelect = useCallback((asset: EnrichedAsset) => {
+    resetCommandChatUi();
     setSelectedHomeAsset(asset);
     setIsHomeChatSidebarOpen(false);
     setTaggedAssets([
@@ -2261,18 +2260,12 @@ Provide:
         sector: asset.sector,
       },
     ]);
-  }, []);
+  }, [resetCommandChatUi]);
 
   const handleHomeAssetClose = useCallback(() => {
     setSelectedHomeAsset(null);
-    chartDrawingsRef.current?.clearDrawings();
     setTaggedAssets([]);
   }, []);
-
-  useEffect(() => {
-    if (!selectedHomeAsset) return;
-    chartDrawingsRef.current?.setActiveSymbol(selectedHomeAsset.symbol);
-  }, [selectedHomeAsset]);
 
   const goToChatWithPrompt = useCallback(
     (prompt: string) => {
@@ -2320,10 +2313,7 @@ Provide:
       <TabPanel tab="home" activeTab={mode}>
         {accountInitialLoading ? (
           <TabContentSkeleton label="Loading your trading dashboard" />
-        ) : (
-        <ChartDrawingsProvider>
-          <ChartDrawingsSync ctxRef={chartDrawingsRef} />
-          {selectedHomeAsset ? (
+        ) : selectedHomeAsset ? (
             <AssetWorkspace
               asset={selectedHomeAsset}
               spotPrice={sidebarQuotes[selectedHomeAsset.symbol]?.spot ?? selectedHomeAsset.spotPrice}
@@ -2335,15 +2325,6 @@ Provide:
               onIntervalChange={setWorkspaceInterval}
               onIndicatorsChange={setWorkspaceIndicators}
               onClose={handleHomeAssetClose}
-              onPromptChip={(prompt) => {
-                const pin: TaggedAsset = {
-                  symbol: selectedHomeAsset.symbol,
-                  name: selectedHomeAsset.name,
-                  assetClass: selectedHomeAsset.asset_class,
-                  sector: selectedHomeAsset.sector,
-                };
-                void handleSend(prompt, [pin]);
-              }}
               aiPanel={
                 <ChatWidgetProvider onWidgetAction={handleWidgetAction}>
                   <div className="flex h-full min-h-0 flex-col">
@@ -2356,6 +2337,22 @@ Provide:
                       </div>
                     </div>
                     <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-black/10">
+                      {messages.length === 0 ? (
+                        <CopilotGreetingPanel
+                          user={user}
+                          focusSymbol={selectedHomeAsset.symbol}
+                          disabled={loading}
+                          onSelectPrompt={(prompt) => {
+                            const pin: TaggedAsset = {
+                              symbol: selectedHomeAsset.symbol,
+                              name: selectedHomeAsset.name,
+                              assetClass: selectedHomeAsset.asset_class,
+                              sector: selectedHomeAsset.sector,
+                            };
+                            void handleSend(prompt, [pin]);
+                          }}
+                        />
+                      ) : (
                       <div className="relative flex min-h-0 flex-1 flex-col px-2 py-4 sm:px-4">
                         <Conversation className="min-h-0 flex-1 pb-24">
                           <ConversationContent
@@ -2375,6 +2372,7 @@ Provide:
                                     message={message}
                                     isAssistantStreaming={loading && isLastMessage}
                                     hideAssistantOrb
+                                    suppressChartEmbeds
                                     livePrices={sidebarQuotes}
                                     onClosePosition={closePosition}
                                     onOpenAgentDetail={(agent) => setOpenAgentId(agent.id)}
@@ -2390,9 +2388,10 @@ Provide:
                               })}
                             </div>
                           </ConversationContent>
-                          <ConversationScrollButton />
+                          <ConversationScrollButton bottomOffset="bottom-24" />
                         </Conversation>
                       </div>
+                      )}
                       <div className="pointer-events-none absolute bottom-0 left-0 right-0 bg-transparent px-4 pb-3 pt-6">
                         <div className="pointer-events-auto">
                           <InputBar
@@ -2580,8 +2579,6 @@ Provide:
             </ResizablePane>
           )}
         </div>
-          )}
-        </ChartDrawingsProvider>
         )}
       </TabPanel>
 
@@ -2923,7 +2920,7 @@ Provide:
                           ) : null}
                         </div>
                       </ConversationContent>
-                      <ConversationScrollButton className="border-white/8 bg-[var(--terminal-surface)] text-zinc-300 hover:text-white" />
+                      <ConversationScrollButton bottomOffset="bottom-24" className="border-white/8 bg-[var(--terminal-surface)] text-zinc-300 hover:text-white" />
                     </Conversation>
 
                     <div className="absolute bottom-0 left-0 right-0 pointer-events-none pb-3 pt-6 bg-transparent z-10">
@@ -3015,7 +3012,7 @@ Provide:
                       ) : null}
                     </div>
                   </ConversationContent>
-                  <ConversationScrollButton className="border-white/8 bg-[var(--terminal-surface)] text-zinc-300 hover:text-white" />
+                  <ConversationScrollButton bottomOffset="bottom-24" className="border-white/8 bg-[var(--terminal-surface)] text-zinc-300 hover:text-white" />
                 </Conversation>
                 <div className="absolute bottom-0 left-0 right-0 pointer-events-none pb-3 pt-6 bg-transparent">
                   <div className="relative mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 pointer-events-auto">

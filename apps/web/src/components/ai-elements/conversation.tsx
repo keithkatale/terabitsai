@@ -63,13 +63,28 @@ export function ConversationEmptyState({
   );
 }
 
-interface ConversationScrollButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {}
+interface ConversationScrollButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  bottomOffset?: string;
+  scrollContainerId?: string;
+}
 
-export function ConversationScrollButton({ className, ...props }: ConversationScrollButtonProps) {
+export function ConversationScrollButton({ 
+  className, 
+  bottomOffset = "bottom-20",
+  scrollContainerId,
+  ...props 
+}: ConversationScrollButtonProps) {
   const [visible, setVisible] = React.useState(false);
 
+  const getScrollContainer = React.useCallback(() => {
+    if (scrollContainerId) {
+      return document.getElementById(scrollContainerId);
+    }
+    return document.querySelector("[data-conversation-scroll]");
+  }, [scrollContainerId]);
+
   React.useEffect(() => {
-    const scrollContainer = document.querySelector("[data-conversation-scroll]");
+    const scrollContainer = getScrollContainer();
     if (!scrollContainer) return;
 
     const handleScroll = () => {
@@ -82,12 +97,15 @@ export function ConversationScrollButton({ className, ...props }: ConversationSc
     scrollContainer.addEventListener("scroll", handleScroll);
     handleScroll();
     return () => scrollContainer.removeEventListener("scroll", handleScroll);
-  }, []);
+  }, [getScrollContainer]);
 
   const handleScrollToBottom = () => {
-    const scrollContainer = document.querySelector("[data-conversation-scroll]") as HTMLElement | null;
+    const scrollContainer = getScrollContainer() as HTMLElement | null;
     if (scrollContainer) {
-      scrollContainer.scrollTop = scrollContainer.scrollHeight;
+      scrollContainer.scrollTo({
+        top: scrollContainer.scrollHeight,
+        behavior: "smooth",
+      });
     }
   };
 
@@ -98,7 +116,8 @@ export function ConversationScrollButton({ className, ...props }: ConversationSc
       type="button"
       onClick={handleScrollToBottom}
       className={cn(
-        "absolute bottom-4 right-4 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-neutral-800 bg-neutral-900/90 text-neutral-300 hover:text-white hover:bg-neutral-800 shadow-md transition-all duration-200",
+        "absolute right-4 z-20 flex h-8 w-8 items-center justify-center rounded-full border border-neutral-800 bg-neutral-900/90 text-neutral-300 hover:text-white hover:bg-neutral-800 shadow-md transition-all duration-200",
+        bottomOffset,
         className
       )}
       {...props}
@@ -107,6 +126,23 @@ export function ConversationScrollButton({ className, ...props }: ConversationSc
       <span className="sr-only">Scroll to bottom</span>
     </button>
   );
+}
+
+export function scrollConversationToBottom(scrollContainerId?: string, addPadding = true) {
+  const scrollContainer = scrollContainerId
+    ? document.getElementById(scrollContainerId)
+    : document.querySelector("[data-conversation-scroll]") as HTMLElement | null;
+  
+  if (scrollContainer) {
+    const targetScroll = addPadding 
+      ? scrollContainer.scrollHeight + 100
+      : scrollContainer.scrollHeight;
+    
+    scrollContainer.scrollTo({
+      top: targetScroll,
+      behavior: "smooth",
+    });
+  }
 }
 
 interface ConversationDownloadProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {

@@ -27,8 +27,10 @@ function parseRenderParams(searchParams: URLSearchParams) {
   const symbol = searchParams.get("symbol")?.trim();
   if (!symbol) throw new Error("symbol is required");
 
-  const studiesRaw = searchParams.get("studies") ?? "RSI@tv-basicstudies,MACD@tv-basicstudies";
-  const studies = studiesRaw.split(",").map((s) => s.trim()).filter(Boolean);
+  const studiesRaw = searchParams.get("studies");
+  const studies = studiesRaw
+    ? studiesRaw.split(",").map((s) => s.trim()).filter(Boolean)
+    : [];
 
   return {
     symbol,

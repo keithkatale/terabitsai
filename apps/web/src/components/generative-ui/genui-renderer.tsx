@@ -14,6 +14,7 @@ import {
   normalizeGenUiPayload,
 } from "./genui-types";
 import { GenUiErrorBoundary } from "./genui-error-boundary";
+import { filterChartEmbedsFromGenui } from "@/lib/genui/filter-chart-embeds";
 
 /* ──────────────────────────────────────────────────────────────────────────
  * Branded accent palette
@@ -924,11 +925,18 @@ function NodeList({
 export function GenUiRenderer({
   payload,
   onWidgetAction,
+  suppressChartEmbeds = false,
 }: {
   payload: unknown;
   onWidgetAction?: (action: WidgetAction) => void;
+  suppressChartEmbeds?: boolean;
 }) {
-  const nodes = React.useMemo(() => normalizeGenUiPayload(payload), [payload]);
+  const filteredPayload = React.useMemo(() => {
+    if (!suppressChartEmbeds) return payload;
+    return filterChartEmbedsFromGenui(payload) ?? payload;
+  }, [payload, suppressChartEmbeds]);
+
+  const nodes = React.useMemo(() => normalizeGenUiPayload(filteredPayload), [filteredPayload]);
   const [animate] = React.useState(true);
   const contextAction = useChatWidgetAction();
   const handleAction = React.useCallback(

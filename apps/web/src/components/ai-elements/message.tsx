@@ -199,6 +199,7 @@ export function ChatMessage({
   guestSignInCta = false,
   rootRef,
   hideVisualWidgets = false,
+  suppressChartEmbeds = false,
 }: {
   message: ChatMessageData;
   isAssistantStreaming?: boolean;
@@ -209,6 +210,7 @@ export function ChatMessage({
   guestSignInCta?: boolean;
   rootRef?: React.Ref<HTMLDivElement | null>;
   hideVisualWidgets?: boolean;
+  suppressChartEmbeds?: boolean;
 }) {
   const sessionDivider = message.parts.find((p) => p.type === "session_divider");
   if (sessionDivider?.text) {
@@ -368,7 +370,13 @@ export function ChatMessage({
                   </div>
                 );
               }
-              return <GenUiRenderer key={`${message.id}-${idx}`} payload={part.payload} />;
+              return (
+                <GenUiRenderer
+                  key={`${message.id}-${idx}`}
+                  payload={part.payload}
+                  suppressChartEmbeds={suppressChartEmbeds}
+                />
+              );
             }
             if (part.type === "quant-ui" && part.text?.includes("<quant:")) {
               if (hideVisualWidgets) {
@@ -378,6 +386,9 @@ export function ChatMessage({
                     Visualization Loaded on Canvas
                   </div>
                 );
+              }
+              if (suppressChartEmbeds && /<quant:(chart|compare)/i.test(part.text)) {
+                return null;
               }
               return <QuantUiRenderer key={`${message.id}-${idx}`} markup={part.text} />;
             }
