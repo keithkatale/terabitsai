@@ -1,0 +1,166 @@
+//@version=6
+strategy("SMC + VSA Mechanical Strategy v2", overlay=true, initial_capital=10000,
+     default_qty_type=strategy.fixed, currency=currency.USD, max_labels_count=500,
+     pyramiding=0, commission_type=strategy.commission.percent, commission_value=0.04,
+     slippage=2, process_orders_on_close=false)
+
+// ==========================================
+// 1. ENVIRONMENT & INPUTS
+// ==========================================
+var_htf         = input.timeframe("240", "Higher Timeframe (Macro Bias)")
+killzone_input  = input.string("0300-1100:23456", "Trading Window (EST / NYC Time)")
+risk_perc       = input.float(1.0, "Risk Per Trade (%)", minval=0.5, maxval=2.5)
+rr_target1      = input.float(3.0, "Target 1 Risk-to-Reward Ratio")
+max_daily_loss  = input.int(2, "Max Consecutive Losing Positions Kill Switch")
+
+// Account-level circuit breaker (separate from the position-count kill switch below)
+strategy.risk.max_intraday_loss(5.0, strategy.risk.percent_of_equity)
+
+// Check Session / Killzone
+in_killzone = not na(time(timeframe.period, killzone_input, "America/New_York"))
+
+// ==========================================
+// FIX #4: Kill switch now counts losing POSITIONS, not individual exit legs.
+// A position that exits in two pieces (TP1 + runner) used to count as two
+// separate closed trades, which double-counted or mis-counted losing streaks.
+// This tracks equity at the moment a position opens and compares it to
+// equity once the position is fully flat again.
+// ==========================================
+var int   daily_losses      = 0
+var float equity_at_open    = na
+
+if ta.change(time("D"))
+    daily_losses := 0
+
+if strategy.position_size != 0 and strategy.position_size[1] == 0
+    equity_at_open := strategy.equity
+
+if strategy.position_size == 0 and strategy.position_size[1] != 0
+    if not na(equity_at_open)
+        if strategy.equity < equity_at_open
+            daily_losses := daily_losses + 1
+        else
+            daily_losses := 0
+    equity_at_open := na
+
+// ==========================================
+// 2. MACRO BIAS (HTF)
+// ==========================================
+[htf_close, htf_ema] = request.security(syminfo.tickerid, var_htf, [close, ta.ema(close, 50)], barmerge.gaps_off, barmerge.lookahead_off)
+htf_bullish_bias = htf_close > htf_ema
+htf_bearish_bias = htf_close < htf_ema
+
+// ==========================================
+// 3. LIQUIDITY SWEEPS & VSA SIGNALS (LTF)
+//
+// FIX #1 (the critical one): sweep direction was inverted in the original.
+//
+// A sweep ABOVE recent highs that closes back BELOW them = buy-side
+// liquidity was grabbed and rejected = BEARISH signal -> feeds SHORTS.
+//
+// A sweep BELOW recent lows that closes back ABOVE them = sell-side
+// liquidity was grabbed and rejected = BULLISH signal -> feeds LONGS.
+// ==========================================
+lookback = 50
+ltf_highest = ta.highest(high[1], lookback)
+ltf_lowest  = ta.lowest(low[1], lookback)
+
+sell_side_liquidity_grab = low < ltf_lowest and close > ltf_lowest    // bullish -> longs
+buy_side_liquidity_grab  = high > ltf_highest and close < ltf_highest // bearish -> shorts
+
+is_high_volume = volume > ta.sma(volume, 20) * 1.5
+spread = high - low
+vsa_shakeout   = is_high_volume and spread > ta.sma(spread, 20) and close > (low + spread * 0.6) and htf_bullish_bias   // bullish
+vsa_no_demand  = volume < ta.sma(volume, 20)[1] * 0.5 and spread < ta.sma(spread, 20) and close > open and htf_bearish_bias // bearish continuation
+
+// ==========================================
+// 4. EXECUTION TRIGGER (10-bar close breakout - NOT true market-structure CHoCH)
+// ==========================================
+ltf_highest_close = ta.highest(close[1], 10)
+ltf_lowest_close  = ta.lowest(close[1], 10)
+bullish_break = ta.crossover(close, ltf_highest_close)
+bearish_break = ta.crossunder(close, ltf_lowest_close)
+
+// ==========================================
+// 5. TRADING LOGIC & RISK MANAGEMENT
+// ==========================================
+can_trade = in_killzone and (daily_losses < max_daily_loss) and (strategy.opentrades == 0)
+
+long_condition  = can_trade and htf_bullish_bias and (sell_side_liquidity_grab or vsa_shakeout)  and bullish_break
+short_condition = can_trade and htf_bearish_bias and (buy_side_liquidity_grab  or vsa_no_demand)  and bearish_break
+
+var float stop_loss_price = na
+var float target_1_price  = na
+var bool  target_1_hit    = false
+
+// FIX #2: position sizing accounts for instrument point value (syminfo.pointvalue),
+// so risk_perc means what it says on futures, not just stocks/crypto.
+
+// FIX #3: exit quantities tracked as fixed contract counts set at entry,
+// not recalculated qty_percent against a shrinking position.
+var float entry_qty  = na
+var float tp1_qty     = na
+var float runner_qty  = na
+
+if long_condition
+    proposed_sl   = math.min(low, ltf_lowest)
+    risk_distance = close - proposed_sl
+    if risk_distance > 0
+        stop_loss_price := proposed_sl
+        target_1_price  := close + (risk_distance * rr_target1)
+        target_1_hit    := false
+        risk_amount = strategy.equity * (risk_perc / 100)
+        qty = math.max(1, math.round(risk_amount / (risk_distance * syminfo.pointvalue)))
+        entry_qty  := qty
+        tp1_qty     := math.max(1, math.floor(qty / 2))
+        runner_qty  := qty - tp1_qty
+        alert_payload = '{"action":"buy","symbol":"' + syminfo.ticker + '","qty":' + str.tostring(qty) + ',"stop":' + str.tostring(stop_loss_price) + ',"target":' + str.tostring(target_1_price) + '}'
+        strategy.entry("Long", strategy.long, qty=qty, alert_message=alert_payload)
+
+if short_condition
+    proposed_sl   = math.max(high, ltf_highest)
+    risk_distance = proposed_sl - close
+    if risk_distance > 0
+        stop_loss_price := proposed_sl
+        target_1_price  := close - (risk_distance * rr_target1)
+        target_1_hit    := false
+        risk_amount = strategy.equity * (risk_perc / 100)
+        qty = math.max(1, math.round(risk_amount / (risk_distance * syminfo.pointvalue)))
+        entry_qty  := qty
+        tp1_qty     := math.max(1, math.floor(qty / 2))
+        runner_qty  := qty - tp1_qty
+        alert_payload = '{"action":"sell","symbol":"' + syminfo.ticker + '","qty":' + str.tostring(qty) + ',"stop":' + str.tostring(stop_loss_price) + ',"target":' + str.tostring(target_1_price) + '}'
+        strategy.entry("Short", strategy.short, qty=qty, alert_message=alert_payload)
+
+// ==========================================
+// 6. EXIT & PARTIAL PROFIT CONTROLS
+// ==========================================
+if strategy.position_size > 0
+    if high >= target_1_price and not target_1_hit
+        target_1_hit := true
+    runner_stop = target_1_hit ? strategy.position_avg_price : stop_loss_price
+    strategy.exit("Long_TP1", "Long", qty=tp1_qty, limit=target_1_price, stop=stop_loss_price, alert_message='{"action":"partial_exit_long","symbol":"' + syminfo.ticker + '"}')
+    strategy.exit("Long_Runner", "Long", qty=runner_qty, stop=runner_stop, alert_message='{"action":"exit_long_be","symbol":"' + syminfo.ticker + '"}')
+
+if strategy.position_size < 0
+    if low <= target_1_price and not target_1_hit
+        target_1_hit := true
+    runner_stop = target_1_hit ? strategy.position_avg_price : stop_loss_price
+    strategy.exit("Short_TP1", "Short", qty=tp1_qty, limit=target_1_price, stop=stop_loss_price, alert_message='{"action":"partial_exit_short","symbol":"' + syminfo.ticker + '"}')
+    strategy.exit("Short_Runner", "Short", qty=runner_qty, stop=runner_stop, alert_message='{"action":"exit_short_be","symbol":"' + syminfo.ticker + '"}')
+
+// Reset trade state only after the position is fully closed
+if strategy.position_size == 0 and strategy.position_size[1] != 0
+    stop_loss_price := na
+    target_1_price  := na
+    target_1_hit    := false
+    entry_qty       := na
+    tp1_qty          := na
+    runner_qty       := na
+
+// ==========================================
+// 7. VISUAL CONFIRMATION
+// ==========================================
+plot(strategy.position_size != 0 ? stop_loss_price : na, "Stop Loss", color=color.red, style=plot.style_linebr)
+plot(strategy.position_size != 0 ? target_1_price : na, "Target 1", color=color.green, style=plot.style_linebr)
+bgcolor(in_killzone ? color.new(color.blue, 92) : na, title="Killzone")
