@@ -64,7 +64,7 @@ export function LandingPage() {
 
   return (
     <div
-      className={`landing-page min-h-screen w-full max-w-full overflow-x-clip font-[family-name:var(--font-inter)] ${manrope.variable} ${inter.variable} ${poppins.variable}`}
+      className={`landing-page min-h-screen w-full max-w-full overflow-x-clip pb-[calc(var(--landing-sticky-footer-height)+env(safe-area-inset-bottom,0px))] font-[family-name:var(--font-inter)] sm:pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] ${manrope.variable} ${inter.variable} ${poppins.variable}`}
     >
       <LandingHero ctaHref={ctaHref} />
 
