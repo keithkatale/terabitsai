@@ -584,3 +584,18 @@ external_skills:
     status: reference
     description: >
       >
+
+  - id: smc-vsa-strategy
+    source: claude-trading-skills
+    path: claude-trading-skills/smc-vsa-strategy
+    category: smc-vsa-strategy
+    status: reference
+    description: >
+      Analyze any tradable asset (stocks, crypto, forex, futures, indices) using the SMC + VSA
+      Mechanical Strategy v2. Detects liquidity sweeps (sell-side / buy-side grabs), VSA
+      shakeout and no-demand patterns, and 10-bar close breakouts filtered by Higher-Timeframe
+      EMA bias and NYC kill-zone windows. Calculates risk-adjusted position sizing (accounts for
+      instrument point value), partial TP1 levels, trailing runner stops, and a consecutive-loss
+      kill switch. Use when the user asks for SMC/VSA signal analysis, trade entry/stop/target
+      levels, position sizing for a given asset, or wants to display current trade information
+      from this strategy.

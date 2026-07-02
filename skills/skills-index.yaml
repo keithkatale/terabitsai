@@ -134,6 +134,60 @@ skills:
       - command-chart-analysis
       - ta-signal-generation
 
+  - id: smc-vsa-strategy
+    name: SMC + VSA Mechanical Strategy v2
+    category: technical-analysis
+    status: active
+    autonomous: true
+    priority: 1
+    description: >
+      Analyze any tradable asset using the Smart Money Concepts + Volume Spread Analysis
+      Mechanical Strategy v2. Detects liquidity sweeps (buy-side / sell-side grabs), VSA
+      shakeout and no-demand patterns, and 10-bar close breakouts filtered by Higher-Timeframe
+      EMA bias and NYC kill-zone windows. Calculates risk-adjusted position sizing (accounting
+      for instrument point value), partial TP1 + runner exit levels, and enforces a consecutive-
+      loss kill switch. Outputs a structured trade card (JSON + Markdown) for any asset.
+    triggers:
+      - "User asks for SMC or VSA signal analysis"
+      - "User requests trade entry, stop, and target levels using this strategy"
+      - "User wants position sizing for SMC+VSA trade"
+      - "User wants to display current trade information from the SMC+VSA strategy"
+    integrations:
+      data_required:
+        - yfinance  # free OHLCV data (no API key required)
+      knowledge_refs:
+        - references/strategy_logic.md
+        - references/pine_script_source.pine
+    inputs:
+      - symbol: string           # e.g. "BTCUSD", "AAPL", "ES=F", "EURUSD=X"
+      - ltf_interval: string     # "1m" | "5m" | "15m" | "30m" | "1h" | "4h" | "1d"
+      - htf_interval: string     # "4h" | "1d"
+      - equity: number           # account size in USD
+      - risk_pct: number         # risk per trade as % (default 1.0)
+      - rr_target: number        # TP1 R:R ratio (default 3.0)
+      - point_value: number      # instrument point value (1.0 stocks/crypto, 50 for ES)
+      - consecutive_losses: int  # for kill switch state
+    outputs:
+      direction:
+        type: enum
+        values: [LONG, SHORT, FLAT]
+      entry: number
+      stop_loss: number
+      tp1: number
+      runner_stop: number
+      total_qty: integer
+      tp1_qty: integer
+      runner_qty: integer
+      risk_dollars: number
+      htf_bias: string
+      in_killzone: boolean
+      kill_switch_active: boolean
+      conditions: object
+      alerts: object
+    workflows:
+      - command-trade-planning
+      - ta-signal-generation
+
   - id: support-resistance-identifier
     name: Support/Resistance Identifier
     category: technical-analysis
