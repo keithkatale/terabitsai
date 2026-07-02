@@ -1,0 +1,206 @@
+// @version=5
+// =============================================================================
+// SMC + VSA Mechanical Strategy  –  Bug-fixed edition
+// =============================================================================
+// BUG FIXES applied vs. the original submission
+// -----------------------------------------------
+// BUG 1 (Critical) – TP1 exit re-submitted every bar after fill
+//   In Pine Script v5, calling strategy.exit() with the same `id` after that
+//   order has already been filled creates a NEW exit order against the
+//   remaining (runner) position on every subsequent bar.  This silently
+//   liquidates the runner piece-by-piece, entirely defeating the
+//   partial-exit design.
+//   FIX: wrap Long_TP1 / Short_TP1 submission in `if not target_1_hit` so the
+//        order is only placed while it has not yet triggered.
+//
+// BUG 2 (Critical) – Runner qty_percent=50 leaves 25 % of the position stranded
+//   Pine Script evaluates qty_percent against the CURRENT open position at
+//   fill time, not the original entry size.  After TP1 closes 50 % of the
+//   original position, the remaining position is 50 % of original.  A second
+//   qty_percent=50 order therefore closes only 50 % of *that* remainder
+//   (= 25 % of original), leaving 25 % with no active exit order.
+//   FIX: once target_1_hit becomes true, switch Long_Runner / Short_Runner to
+//        qty_percent=100 so it closes 100 % of whatever remains.
+//
+// BUG 3 (Minor) – Redundant HTF-bias guard in entry conditions
+//   vsa_shakeout already contains `and htf_bullish_bias`; vsa_no_demand
+//   already contains `and htf_bearish_bias`.  The outer long_condition /
+//   short_condition redundantly re-test those same flags.  Harmless but
+//   confusing – the redundant references have been removed from the VSA
+//   signal definitions, keeping the single authoritative check in the entry
+//   conditions.
+//
+// BUG 4 (Minor) – Inconsistent SMA reference bar for VSA volume
+//   vsa_shakeout compared volume to ta.sma(volume, 20) (current bar's
+//   rolling average), while vsa_no_demand used ta.sma(volume, 20)[1]
+//   (previous bar's average).  In live execution the current-bar SMA
+//   includes partial (incomplete) volume, creating a subtle asymmetry.
+//   FIX: both signals now reference ta.sma(volume, 20)[1] so neither
+//        depends on a still-forming bar's volume.
+// =============================================================================
+
+strategy("SMC + VSA Mechanical Strategy", overlay=true, initial_capital=10000,
+         default_qty_type=strategy.fixed, currency=currency.USD,
+         max_labels_count=500, pyramiding=0)
+
+// ==========================================
+// 1. ENVIRONMENT & INPUTS
+// ==========================================
+var_htf        = input.timeframe("240", "Higher Timeframe (Macro Bias)")
+killzone_input = input.string("0300-1100:23456", "Trading Window (EST / NYC Time)")
+risk_perc      = input.float(1.0, "Risk Per Trade (%)", minval=0.5, maxval=2.5)
+rr_target1     = input.float(3.0, "Target 1 Risk-to-Reward Ratio")
+max_daily_loss = input.int(2, "Max Consecutive Daily Losses Kill Switch")
+
+// Account & Fee Configurations
+strategy.risk.max_intraday_loss(5.0, strategy.risk.percent_of_equity)
+
+// Check Session / Killzone
+in_killzone = not na(time(timeframe.period, killzone_input, "America/New_York"))
+
+// Daily Loss Tracker Logic
+var int daily_losses = 0
+if ta.change(time("D"))
+    daily_losses := 0
+
+// Track consecutive losses for the kill switch; reset the streak on a winning trade
+if ta.change(strategy.closedtrades) and strategy.closedtrades > 0
+    if strategy.closedtrades.profit(strategy.closedtrades - 1) < 0
+        daily_losses := daily_losses + 1
+    else
+        daily_losses := 0
+
+// ==========================================
+// 2. MACRO BIAS (HTF)
+// ==========================================
+[htf_close, htf_ema] = request.security(syminfo.tickerid, var_htf,
+     [close, ta.ema(close, 50)], barmerge.gaps_off, barmerge.lookahead_off)
+
+htf_bullish_bias = htf_close > htf_ema
+htf_bearish_bias = htf_close < htf_ema
+
+// ==========================================
+// 3. LIQUIDITY SWEEPS & VSA SIGNALS (LTF)
+// ==========================================
+lookback     = 50
+ltf_highest  = ta.highest(high[1], lookback)
+ltf_lowest   = ta.lowest(low[1],  lookback)
+
+bullish_sweep = high > ltf_highest and close < ltf_highest
+bearish_sweep = low  < ltf_lowest  and close > ltf_lowest
+
+// FIX (Bug 4): use [1] on all SMA volume references for consistency –
+// avoids comparing live-bar partial volume to a still-forming average.
+spread     = high - low
+vol_sma    = ta.sma(volume, 20)[1]
+spread_sma = ta.sma(spread, 20)          // spread is price-derived, no partial-bar concern
+
+// FIX (Bug 3): HTF bias removed from vsa_* definitions; the authoritative
+// bias check lives in long_condition / short_condition below.
+vsa_shakeout  = volume > vol_sma * 1.5 and spread > spread_sma and close > (low + spread * 0.6)
+vsa_no_demand = volume < vol_sma * 0.5  and spread < spread_sma and close > open
+
+// ==========================================
+// 4. EXECUTION TRIGGER (CHoCH)
+// ==========================================
+ltf_highest_close = ta.highest(close[1], 10)
+ltf_lowest_close  = ta.lowest(close[1],  10)
+
+bullish_choch = ta.crossover(close,  ltf_highest_close)
+bearish_choch = ta.crossunder(close, ltf_lowest_close)
+
+// ==========================================
+// 5. TRADING LOGIC & RISK MANAGEMENT
+// ==========================================
+can_trade = in_killzone and (daily_losses < max_daily_loss) and (strategy.opentrades == 0)
+
+long_condition  = can_trade and htf_bullish_bias and (bullish_sweep or vsa_shakeout) and bullish_choch
+short_condition = can_trade and htf_bearish_bias and (bearish_sweep or vsa_no_demand) and bearish_choch
+
+var float stop_loss_price = na
+var float target_1_price  = na
+var bool  target_1_hit    = false
+
+if long_condition
+    proposed_sl   = math.min(low, ltf_lowest)
+    risk_distance = close - proposed_sl
+    if risk_distance > 0
+        stop_loss_price := proposed_sl
+        target_1_price  := close + (risk_distance * rr_target1)
+        target_1_hit    := false
+        risk_amount     = strategy.equity * (risk_perc / 100)
+        qty             = math.max(1, math.round(risk_amount / risk_distance))
+        alert_payload   = '{"action":"buy","symbol":"'  + syminfo.ticker + '","qty":' + str.tostring(qty) + ',"stop":' + str.tostring(stop_loss_price) + ',"target":' + str.tostring(target_1_price) + '}'
+        strategy.entry("Long", strategy.long, qty=qty, alert_message=alert_payload)
+
+if short_condition
+    proposed_sl   = math.max(high, ltf_highest)
+    risk_distance = proposed_sl - close
+    if risk_distance > 0
+        stop_loss_price := proposed_sl
+        target_1_price  := close - (risk_distance * rr_target1)
+        target_1_hit    := false
+        risk_amount     = strategy.equity * (risk_perc / 100)
+        qty             = math.max(1, math.round(risk_amount / risk_distance))
+        alert_payload   = '{"action":"sell","symbol":"' + syminfo.ticker + '","qty":' + str.tostring(qty) + ',"stop":' + str.tostring(stop_loss_price) + ',"target":' + str.tostring(target_1_price) + '}'
+        strategy.entry("Short", strategy.short, qty=qty, alert_message=alert_payload)
+
+// ==========================================
+// 6. EXIT & PARTIAL PROFIT CONTROLS
+// ==========================================
+// FIX (Bug 1 + Bug 2):
+//
+// Before TP1 fires  → submit Long_TP1 (50 %) and Long_Runner (50 %).
+//   Together they cover 100 % of the position whether stop or limit fires first.
+//
+// After TP1 fires   → Long_TP1 is NOT re-submitted (guarded by `not target_1_hit`).
+//   Long_Runner is updated to qty_percent=100 so it closes the full remaining
+//   50 % of original (= 100 % of what is left), with stop moved to breakeven.
+
+if strategy.position_size > 0
+    if high >= target_1_price and not target_1_hit
+        target_1_hit := true
+    runner_stop = target_1_hit ? strategy.position_avg_price : stop_loss_price
+
+    if not target_1_hit
+        // Both exits active simultaneously; together they cover 100 % of the position.
+        strategy.exit("Long_TP1",    "Long", qty_percent=50, limit=target_1_price,
+             stop=stop_loss_price,
+             alert_message='{"action":"partial_exit_long","symbol":"' + syminfo.ticker + '"}')
+        strategy.exit("Long_Runner", "Long", qty_percent=50, stop=runner_stop,
+             alert_message='{"action":"exit_long_be","symbol":"' + syminfo.ticker + '"}')
+    else
+        // TP1 already filled – close 100 % of the remaining runner at the
+        // breakeven stop; do NOT re-submit Long_TP1 (Bug 1 fix).
+        strategy.exit("Long_Runner", "Long", qty_percent=100, stop=runner_stop,
+             alert_message='{"action":"exit_long_be","symbol":"' + syminfo.ticker + '"}')
+
+if strategy.position_size < 0
+    if low <= target_1_price and not target_1_hit
+        target_1_hit := true
+    runner_stop = target_1_hit ? strategy.position_avg_price : stop_loss_price
+
+    if not target_1_hit
+        strategy.exit("Short_TP1",    "Short", qty_percent=50, limit=target_1_price,
+             stop=stop_loss_price,
+             alert_message='{"action":"partial_exit_short","symbol":"' + syminfo.ticker + '"}')
+        strategy.exit("Short_Runner", "Short", qty_percent=50, stop=runner_stop,
+             alert_message='{"action":"exit_short_be","symbol":"' + syminfo.ticker + '"}')
+    else
+        strategy.exit("Short_Runner", "Short", qty_percent=100, stop=runner_stop,
+             alert_message='{"action":"exit_short_be","symbol":"' + syminfo.ticker + '"}')
+
+// Only reset trade state after a position closes, not while flat on the entry signal bar
+if strategy.position_size == 0 and strategy.position_size[1] != 0
+    stop_loss_price := na
+    target_1_price  := na
+    target_1_hit    := false
+
+// ==========================================
+// 7. VISUAL CONFIRMATION
+// ==========================================
+plot(strategy.position_size != 0 ? stop_loss_price : na, "Stop Loss",
+     color=color.red,   style=plot.style_linebr)
+plot(strategy.position_size != 0 ? target_1_price  : na, "Target 1",
+     color=color.green, style=plot.style_linebr)
+bgcolor(in_killzone ? color.new(color.blue, 92) : na, title="Killzone")
